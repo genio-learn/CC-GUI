@@ -230,22 +230,17 @@ async function lifecycle(action: string, id: string): Promise<void> {
   }
 }
 
-function renderSessionRow(s: SessionRow): HTMLDivElement {
-  const row = document.createElement("div");
-  row.className = "session-row";
-  if (s.tmux_session_name === activeTerm) row.classList.add("active");
-  if (terminals.has(s.tmux_session_name)) row.classList.add("attached");
+type RowRefs = {
+  row: HTMLDivElement;
+  main: HTMLDivElement;
+  actions: HTMLDivElement;
+  status: string;
+  session: SessionRow;
+};
 
-  const main = document.createElement("div");
-  main.className = "row-main";
-  const title = document.createElement("span");
-  title.className = "title";
-  title.textContent = s.title;
-  const branch = document.createElement("span");
-  branch.className = "meta";
-  branch.textContent = s.branch;
-  main.append(statusGlyph(s), title, branch);
+const rowRefs = new Map<string, RowRefs>(); // keyed by session id
 
+function buildActions(s: SessionRow): HTMLDivElement {
   const actions = document.createElement("div");
   actions.className = "row-actions";
   if (s.status === "stopped") {
@@ -264,10 +259,44 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
       void lifecycle("delete_session", s.id);
     }),
   );
+  return actions;
+}
 
-  row.append(main, actions);
-  row.addEventListener("click", () => void openTerminal(s));
+function renderSessionRow(s: SessionRow): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "session-row";
+
+  const main = document.createElement("div");
+  main.className = "row-main";
+  const title = document.createElement("span");
+  title.className = "title";
+  const branch = document.createElement("span");
+  branch.className = "meta";
+  main.append(statusGlyph(s), title, branch);
+
+  const refs: RowRefs = { row, main, actions: buildActions(s), status: s.status, session: s };
+  rowRefs.set(s.id, refs);
+
+  row.append(main, refs.actions);
+  row.addEventListener("click", () => void openTerminal(refs.session));
+  updateRow(refs, s);
   return row;
+}
+
+/** Refresh a row's dynamic bits without rebuilding it (preserves hover/confirm state). */
+function updateRow(refs: RowRefs, s: SessionRow): void {
+  refs.session = s;
+  refs.main.replaceChild(statusGlyph(s), refs.main.firstChild!);
+  (refs.main.children[1] as HTMLElement).textContent = s.title;
+  (refs.main.children[2] as HTMLElement).textContent = s.branch;
+  refs.row.classList.toggle("active", s.tmux_session_name === activeTerm);
+  refs.row.classList.toggle("attached", terminals.has(s.tmux_session_name));
+  if (refs.status !== s.status) {
+    const actions = buildActions(s);
+    refs.row.replaceChild(actions, refs.actions);
+    refs.actions = actions;
+    refs.status = s.status;
+  }
 }
 
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
@@ -294,7 +323,30 @@ function renderCreateInput(group: ProjectGroup): HTMLDivElement {
   return wrap;
 }
 
+let sidebarSignature = "";
+
+/**
+ * Rebuild the sidebar DOM only when its structure (projects, session set/order,
+ * open create-input) changes; otherwise patch rows in place. A periodic full
+ * rebuild would wipe the create-input text and confirm-button state every tick.
+ */
 function renderSidebar(): void {
+  const signature =
+    groups.map((g) => `${g.id}:${g.sessions.map((s) => s.id).join(",")}`).join("|") +
+    `#${newSessionProject}`;
+
+  if (signature === sidebarSignature) {
+    for (const group of groups) {
+      for (const s of group.sessions) {
+        const refs = rowRefs.get(s.id);
+        if (refs) updateRow(refs, s);
+      }
+    }
+    return;
+  }
+
+  sidebarSignature = signature;
+  rowRefs.clear();
   sessionsEl.innerHTML = "";
   for (const group of groups) {
     const header = document.createElement("div");
