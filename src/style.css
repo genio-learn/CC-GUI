@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #1e1e2e;
+  color: #cdd6f4;
+}
+
+#app {
+  display: flex;
+}
+
+#sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid #313244;
+  display: flex;
+  flex-direction: column;
+}
+
+#sidebar header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #313244;
+}
+
+#sidebar h1 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#refresh {
+  background: none;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  color: #cdd6f4;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+#sessions {
+  list-style: none;
+  padding: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+#sessions li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+#sessions li:hover {
+  background: #313244;
+}
+
+#sessions li.active {
+  background: #45475a;
+}
+
+#sessions .title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+#sessions .meta {
+  font-size: 11px;
+  color: #a6adc8;
+}
+
+#sessions .status-running {
+  color: #a6e3a1;
+}
+
+#sessions .status-stopped {
+  color: #6c7086;
+}
+
+#terminal-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#terminal-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #a6adc8;
+  border-bottom: 1px solid #313244;
+}
+
+#terminal {
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+}
