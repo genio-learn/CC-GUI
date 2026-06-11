@@ -6,4 +6,4 @@ src-tauri/gen/
 .DS_Store
 
 # Local working plan (not published)
-PLAN.md
+docs/PLAN.md
