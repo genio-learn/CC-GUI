@@ -9,14 +9,15 @@
     <div id="app">
       <aside id="sidebar">
         <header>
-          <h1>Sessions</h1>
-          <button id="refresh" title="Refresh">&#x21bb;</button>
+          <h1>claude-commander</h1>
         </header>
-        <ul id="sessions"></ul>
+        <div id="sessions"></div>
       </aside>
       <main id="terminal-pane">
-        <div id="terminal-header">Select a session to attach</div>
-        <div id="terminal"></div>
+        <div id="tabs"></div>
+        <div id="terminals">
+          <div id="placeholder">Select a session to attach</div>
+        </div>
       </main>
     </div>
     <script type="module" src="/src/main.ts"></script>
