@@ -175,6 +175,31 @@ async fn get_session_detail(
     .await
 }
 
+/// Generate an AI summary of the branch (committed vs main + uncommitted),
+/// piped through the Claude CLI with the model from claude-commander config.
+/// Slow (up to 60s); the frontend caches results per session.
+#[tauri::command]
+async fn generate_summary(id: String) -> Result<String, String> {
+    let sid = parse_session_id(&id)?;
+    let svc = service().await?;
+    let config = svc.read_config();
+    if !config.ai_summary_enabled {
+        return Err("AI summaries are disabled in claude-commander config".into());
+    }
+    let info = {
+        let state = svc.store().read().await;
+        state.sessions.get(&sid).and_then(|s| {
+            let project = state.projects.get(&s.project_id)?;
+            Some((s.worktree_path.clone(), project.main_branch.clone()))
+        })
+    };
+    let Some((worktree_path, main_branch)) = info else {
+        return Err("session not found".into());
+    };
+    let diff = claude_commander::git::compute_branch_diff(&worktree_path, &main_branch).await;
+    claude_commander::git::fetch_branch_summary(&diff, &config.ai_summary_model).await
+}
+
 // -- Session lifecycle -------------------------------------------------------
 
 fn parse_session_id(id: &str) -> Result<SessionId, String> {
@@ -354,6 +379,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_groups,
             get_session_detail,
+            generate_summary,
             create_session,
             kill_session,
             restart_session,

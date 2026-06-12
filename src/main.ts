@@ -36,7 +36,6 @@ type SessionDetail = {
   created_at: string;
   agent_state: string;
   diff_stat: string | null;
-  pane_content: string | null;
 };
 
 const sessionsEl = document.querySelector<HTMLDivElement>("#sessions")!;
@@ -47,7 +46,8 @@ const detailEl = document.querySelector<HTMLElement>("#detail")!;
 const detailTitleEl = document.querySelector<HTMLSpanElement>("#detail-title")!;
 const detailMetaEl = document.querySelector<HTMLDListElement>("#detail-meta")!;
 const detailDiffstatEl = document.querySelector<HTMLDivElement>("#detail-diffstat")!;
-const detailPreviewEl = document.querySelector<HTMLDivElement>("#detail-preview")!;
+const detailSummaryEl = document.querySelector<HTMLDivElement>("#detail-summary")!;
+const summaryGenEl = document.querySelector<HTMLButtonElement>("#summary-gen")!;
 
 // ---------------------------------------------------------------- terminals
 
@@ -180,15 +180,15 @@ function refitActive(): void {
 
 window.addEventListener("resize", () => {
   refitActive();
-  previewFit?.fit();
 });
 
 // ------------------------------------------------------------- detail panel
 
 let detailId: string | null = null;
 let detailTimer: ReturnType<typeof setInterval> | null = null;
-let previewTerm: Terminal | null = null;
-let previewFit: FitAddon | null = null;
+
+type Summary = { state: "loading" } | { state: "ready"; text: string } | { state: "error"; text: string };
+const summaries = new Map<string, Summary>(); // keyed by session id, app-session cache
 
 function metaRow(label: string, value: string): [HTMLElement, HTMLElement] {
   const dt = document.createElement("dt");
@@ -234,34 +234,50 @@ function renderDetail(d: SessionDetail): void {
   } else {
     detailDiffstatEl.textContent = "No changes";
   }
-
-  if (!previewTerm) {
-    previewTerm = new Terminal({
-      fontFamily: "Menlo, Monaco, monospace",
-      fontSize: 11,
-      disableStdin: true,
-      convertEol: true,
-      theme: { background: "#1e1e2e" },
-    });
-    previewFit = new FitAddon();
-    previewTerm.loadAddon(previewFit);
-    previewTerm.open(detailPreviewEl);
-  }
-  previewFit!.fit();
-  previewTerm.reset();
-  previewTerm.write(
-    d.pane_content ?? "\x1b[90m(no preview — session not running)\x1b[0m",
-  );
 }
+
+function renderSummary(): void {
+  if (!detailId) return;
+  const summary = summaries.get(detailId);
+  detailSummaryEl.classList.remove("placeholder", "error");
+  summaryGenEl.disabled = summary?.state === "loading";
+  summaryGenEl.textContent = summary?.state === "ready" ? "Regenerate" : "Generate";
+  if (!summary) {
+    detailSummaryEl.classList.add("placeholder");
+    detailSummaryEl.textContent = "No summary yet — Generate sends the branch diff to Claude.";
+  } else if (summary.state === "loading") {
+    detailSummaryEl.classList.add("placeholder");
+    detailSummaryEl.textContent = "Generating…";
+  } else if (summary.state === "error") {
+    detailSummaryEl.classList.add("error");
+    detailSummaryEl.textContent = summary.text;
+  } else {
+    detailSummaryEl.textContent = summary.text;
+  }
+}
+
+async function generateSummary(): Promise<void> {
+  if (!detailId) return;
+  const id = detailId;
+  if (summaries.get(id)?.state === "loading") return;
+  summaries.set(id, { state: "loading" });
+  renderSummary();
+  try {
+    const text = await invoke<string>("generate_summary", { id });
+    summaries.set(id, { state: "ready", text });
+  } catch (e) {
+    summaries.set(id, { state: "error", text: String(e) });
+  }
+  renderSummary();
+}
+
+summaryGenEl.addEventListener("click", () => void generateSummary());
 
 async function refreshDetail(): Promise<void> {
   if (!detailId) return;
   let d: SessionDetail | null = null;
   try {
-    d = await invoke<SessionDetail | null>("get_session_detail", {
-      id: detailId,
-      lines: 200,
-    });
+    d = await invoke<SessionDetail | null>("get_session_detail", { id: detailId });
   } catch {
     return; // transient failure; next tick retries
   }
@@ -291,6 +307,7 @@ function toggleDetail(s: SessionRow): void {
   detailTitleEl.textContent = s.title;
   detailMetaEl.innerHTML = "";
   detailDiffstatEl.textContent = "Loading…";
+  renderSummary();
   if (detailTimer) clearInterval(detailTimer);
   detailTimer = setInterval(() => void refreshDetail(), 2000);
   void refreshDetail();
