@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
+import { openReview } from "./review";
 
 type SessionRow = {
   id: string;
@@ -415,6 +416,7 @@ function buildActions(s: SessionRow): HTMLDivElement {
   const actions = document.createElement("div");
   actions.className = "row-actions";
   actions.appendChild(actionButton("ⓘ", "Session details", () => toggleDetail(s)));
+  actions.appendChild(actionButton("±", "Review diff", () => void openReview(s.id, s.title)));
   if (s.status === "stopped") {
     actions.appendChild(
       actionButton("▶", "Restart session", () => void lifecycle("restart_session", s.id)),

@@ -200,6 +200,15 @@ async fn generate_summary(id: String) -> Result<String, String> {
     claude_commander::git::fetch_branch_summary(&diff, &config.ai_summary_model).await
 }
 
+/// Open the review diff for a session: parsed base→working-tree diff plus the
+/// session's re-anchored comments.
+#[tauri::command]
+async fn open_review(id: String) -> Result<claude_commander::api::ReviewSnapshot, String> {
+    let id = parse_session_id(&id)?;
+    with_service(move |svc| async move { svc.open_review(&id).await.map_err(|e| e.to_string()) })
+        .await
+}
+
 // -- Session lifecycle -------------------------------------------------------
 
 fn parse_session_id(id: &str) -> Result<SessionId, String> {
@@ -396,6 +405,7 @@ fn main() {
             get_groups,
             get_session_detail,
             generate_summary,
+            open_review,
             create_session,
             kill_session,
             restart_session,

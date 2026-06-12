@@ -261,6 +261,247 @@ body {
   font-size: 13px;
 }
 
+/* ------------------------------------------------------------ review view */
+
+#review {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #1e1e2e;
+  display: flex;
+  flex-direction: column;
+}
+
+#review.hidden {
+  display: none;
+}
+
+#review header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+
+#review-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#review-base {
+  font-size: 12px;
+  color: #6c7086;
+}
+
+#review header .spacer {
+  flex: 1;
+}
+
+#review-close {
+  background: none;
+  border: none;
+  color: #6c7086;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 4px;
+}
+
+#review-close:hover {
+  color: #f38ba8;
+}
+
+#review-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+#review-files {
+  width: 280px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid #313244;
+  padding: 6px;
+}
+
+.review-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.review-file:hover {
+  background: #313244;
+}
+
+.review-file.active {
+  background: #45475a;
+}
+
+.file-status {
+  width: 12px;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.file-added {
+  color: #a6e3a1;
+}
+
+.file-deleted {
+  color: #f38ba8;
+}
+
+.file-modified {
+  color: #f9e2af;
+}
+
+.file-renamed {
+  color: #89b4fa;
+}
+
+.file-path {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* ellipsis on the left, keep the filename visible */
+  text-align: left;
+}
+
+.file-counts {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.file-counts .added {
+  color: #a6e3a1;
+}
+
+.file-counts .removed {
+  color: #f38ba8;
+}
+
+.file-comments {
+  color: #89b4fa;
+}
+
+#review-diff {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 0;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hunk-header {
+  padding: 6px 12px;
+  margin: 8px 0 2px;
+  color: #89b4fa;
+  background: #181825;
+}
+
+.diff-line {
+  display: flex;
+  white-space: pre;
+}
+
+.diff-line .lineno {
+  width: 44px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-right: 8px;
+  color: #6c7086;
+  user-select: none;
+}
+
+.diff-line .line-content {
+  flex: 1;
+  padding-left: 6px;
+}
+
+.diff-addition {
+  background: rgba(166, 227, 161, 0.12);
+}
+
+.diff-addition .line-content {
+  color: #a6e3a1;
+}
+
+.diff-deletion {
+  background: rgba(243, 139, 168, 0.12);
+}
+
+.diff-deletion .line-content {
+  color: #f38ba8;
+}
+
+.review-comment {
+  margin: 4px 12px 4px 100px;
+  border: 1px solid #45475a;
+  border-left: 3px solid #89b4fa;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #181825;
+}
+
+.comment-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.comment-status {
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.comment-staged {
+  color: #89b4fa;
+}
+
+.comment-drifted {
+  color: #fab387;
+}
+
+.comment-applied {
+  color: #6c7086;
+}
+
+.comment-range {
+  color: #6c7086;
+}
+
+.comment-body {
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.review-empty {
+  padding: 16px;
+  color: #6c7086;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.review-empty.error {
+  color: #f38ba8;
+}
+
 /* ----------------------------------------------------------- detail panel */
 
 #detail {
