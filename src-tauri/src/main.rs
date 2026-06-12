@@ -71,6 +71,7 @@ struct ProjectGroup {
     id: String,
     name: String,
     repo_path: String,
+    main_branch: String,
     sessions: Vec<SessionRow>,
 }
 
@@ -119,6 +120,7 @@ async fn build_groups(
                 id: p.id.to_string(),
                 name: p.name.clone(),
                 repo_path: p.repo_path.to_string_lossy().to_string(),
+                main_branch: p.main_branch.clone(),
                 sessions,
             }
         })
@@ -208,17 +210,29 @@ fn parse_session_id(id: &str) -> Result<SessionId, String> {
         .map_err(|e| format!("invalid session id {id}: {e}"))
 }
 
+/// Default program for new sessions, used as a placeholder in the create form.
 #[tauri::command]
-async fn create_session(project_path: String, title: String) -> Result<String, String> {
+async fn get_default_program() -> Result<String, String> {
+    Ok(service().await?.read_config().default_program)
+}
+
+#[tauri::command]
+async fn create_session(
+    project_path: String,
+    title: String,
+    program: Option<String>,
+    base_branch: Option<String>,
+    initial_prompt: Option<String>,
+) -> Result<String, String> {
     with_service(move |svc| async move {
         let opts = CreateSessionOpts {
             project_path: PathBuf::from(project_path),
             title,
-            program: None,
-            initial_prompt: None,
+            program,
+            initial_prompt,
             effort: None,
             mode: None,
-            base_branch: None,
+            base_branch,
             section: None,
         };
         let id = svc.create_session(opts).await.map_err(|e| e.to_string())?;
@@ -249,6 +263,22 @@ async fn delete_session(id: String) -> Result<(), String> {
     with_service(
         move |svc| async move { svc.delete_session(&id).await.map_err(|e| e.to_string()) },
     )
+    .await
+}
+
+/// Ensure a session's tmux session is alive before attaching, mirroring the
+/// TUI: a stopped session (or dead pane) is transparently recreated, with
+/// `--resume` if configured.
+#[tauri::command]
+async fn prepare_attach(id: String) -> Result<(), String> {
+    let id = parse_session_id(&id)?;
+    with_service(move |svc| async move {
+        svc.session_manager()
+            .get_attach_command(&id)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
     .await
 }
 
@@ -380,10 +410,12 @@ fn main() {
             get_groups,
             get_session_detail,
             generate_summary,
+            get_default_program,
             create_session,
             kill_session,
             restart_session,
             delete_session,
+            prepare_attach,
             attach,
             write_pty,
             resize_pty,

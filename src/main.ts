@@ -19,6 +19,7 @@ type ProjectGroup = {
   id: string;
   name: string;
   repo_path: string;
+  main_branch: string;
   sessions: SessionRow[];
 };
 
@@ -158,6 +159,9 @@ async function openTerminal(session: SessionRow): Promise<void> {
   onData.onmessage = (chunk) => term.write(new Uint8Array(chunk));
 
   try {
+    // Recreates the tmux session first if the session is stopped or its pane
+    // died, matching the TUI's attach behaviour.
+    await invoke("prepare_attach", { id: session.id });
     await invoke("attach", { tmuxSession: name, onData });
   } catch (e) {
     term.write(`\r\nFailed to attach: ${e}\r\n`);
@@ -328,6 +332,13 @@ void listen<string>("pty-exit", (event) => {
 
 let groups: ProjectGroup[] = [];
 let newSessionProject: string | null = null; // project id with open create-input
+let defaultProgram = "claude"; // placeholder only; corrected from config at startup
+
+invoke<string>("get_default_program")
+  .then((p) => {
+    defaultProgram = p;
+  })
+  .catch(() => {});
 
 const AGENT_GLYPHS: Record<string, [string, string]> = {
   working: ["●", "agent-working"],
@@ -471,24 +482,54 @@ function updateRow(refs: RowRefs, s: SessionRow): void {
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = "create-input";
-  const input = document.createElement("input");
-  input.placeholder = "new session title…";
-  input.addEventListener("keydown", (e) => {
+
+  const title = document.createElement("input");
+  title.placeholder = "new session title…";
+  const program = document.createElement("input");
+  program.placeholder = `program (${defaultProgram})`;
+  const baseBranch = document.createElement("input");
+  baseBranch.placeholder = `base branch (${group.main_branch})`;
+  const prompt = document.createElement("textarea");
+  prompt.placeholder = "initial prompt (optional)";
+  prompt.rows = 2;
+
+  const submit = (): void => {
+    if (!title.value.trim()) {
+      title.focus();
+      return;
+    }
+    const args = {
+      projectPath: group.repo_path,
+      title: title.value.trim(),
+      program: program.value.trim() || null,
+      baseBranch: baseBranch.value.trim() || null,
+      initialPrompt: prompt.value.trim() || null,
+    };
+    newSessionProject = null;
+    for (const el of [title, program, baseBranch, prompt]) el.disabled = true;
+    invoke("create_session", args).catch((err) => alert(`create failed: ${err}`));
+  };
+
+  wrap.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       newSessionProject = null;
       renderSidebar();
     }
-    if (e.key === "Enter" && input.value.trim()) {
-      const title = input.value.trim();
-      newSessionProject = null;
-      input.disabled = true;
-      invoke("create_session", { projectPath: group.repo_path, title }).catch((err) =>
-        alert(`create failed: ${err}`),
-      );
+    // Enter submits from the inputs; in the prompt textarea Enter inserts a
+    // newline and Cmd/Ctrl+Enter submits.
+    if (e.key === "Enter" && (e.target !== prompt || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      submit();
     }
   });
-  wrap.appendChild(input);
-  setTimeout(() => input.focus(), 0);
+
+  const create = document.createElement("button");
+  create.className = "row-action create-btn";
+  create.textContent = "Create";
+  create.addEventListener("click", submit);
+
+  wrap.append(title, program, baseBranch, prompt, create);
+  setTimeout(() => title.focus(), 0);
   return wrap;
 }
 
