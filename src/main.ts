@@ -11,7 +11,7 @@ import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
 import { registerPaletteProvider } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
-import { initKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
+import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
 import { openSettings } from "./settings";
 
 type SessionRow = {
@@ -1507,6 +1507,16 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
   show_settings: { label: "Open settings", run: () => void openSettings() },
 };
 
+function applyHelpKeybindings(): void {
+  setHelpKeybindings(
+    Object.entries(KEY_ACTIONS)
+      .map(
+        ([action, a]) => [loadedBindings[action]?.join(", ") ?? "", a.label] as [string, string],
+      )
+      .filter(([keys]) => keys.length > 0),
+  );
+}
+
 void initKeybindings(
   Object.fromEntries(Object.entries(KEY_ACTIONS).map(([action, a]) => [action, a.run])),
 ).then((loaded) => {
@@ -1520,13 +1530,13 @@ void initKeybindings(
     });
     return;
   }
-  setHelpKeybindings(
-    Object.entries(KEY_ACTIONS)
-      .map(
-        ([action, a]) => [loadedBindings[action]?.join(", ") ?? "", a.label] as [string, string],
-      )
-      .filter(([keys]) => keys.length > 0),
-  );
+  applyHelpKeybindings();
+});
+
+// Backend hot-reloaded config.toml (edited by another instance or by hand):
+// refresh the keybinding table and the help overlay's listing.
+void listen("config-updated", async () => {
+  if (await reloadKeybindings()) applyHelpKeybindings();
 });
 
 // Esc clears the keyboard cursor (overlays handle their own Esc).

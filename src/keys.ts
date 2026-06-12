@@ -102,12 +102,12 @@ export function overlayOpen(): boolean {
   );
 }
 
-/**
- * Fetch the config's keybindings and dispatch the actions in `actions`.
- * Actions the GUI doesn't support are simply not registered. Returns whether
- * the table loaded (callers may install fallbacks when it didn't).
- */
-export async function initKeybindings(actions: Record<string, () => void>): Promise<boolean> {
+const table: { binding: ParsedBinding; handler: () => void }[] = [];
+let boundActions: Record<string, () => void> = {};
+let listenerInstalled = false;
+
+/** Fetch the config's keybinding table and rebuild the dispatch table. */
+async function loadTable(): Promise<boolean> {
   let raw: Record<string, string[]>;
   try {
     raw = await invoke<Record<string, string[]>>("get_keybindings");
@@ -115,17 +115,28 @@ export async function initKeybindings(actions: Record<string, () => void>): Prom
     return false; // no keybinds; everything stays mouse-reachable
   }
   loadedBindings = raw;
-
-  const table: { binding: ParsedBinding; handler: () => void }[] = [];
+  table.length = 0;
   for (const [action, keys] of Object.entries(raw)) {
-    const handler = actions[action];
+    const handler = boundActions[action];
     if (!handler) continue;
     for (const k of keys) {
       const binding = parseBinding(k);
       if (binding) table.push({ binding, handler });
     }
   }
+  return true;
+}
 
+/**
+ * Fetch the config's keybindings and dispatch the actions in `actions`.
+ * Actions the GUI doesn't support are simply not registered. Returns whether
+ * the table loaded (callers may install fallbacks when it didn't).
+ */
+export async function initKeybindings(actions: Record<string, () => void>): Promise<boolean> {
+  boundActions = actions;
+  if (!(await loadTable())) return false;
+
+  listenerInstalled = true;
   document.addEventListener("keydown", (e) => {
     if (isTyping(e) || overlayOpen()) return;
     for (const { binding, handler } of table) {
@@ -137,4 +148,15 @@ export async function initKeybindings(actions: Record<string, () => void>): Prom
     }
   });
   return true;
+}
+
+/**
+ * Re-fetch the keybinding table after an external config change (the backend
+ * emits `config-updated` when config.toml is hot-reloaded). No-op when the
+ * initial load failed: the dispatch listener was never installed and main.ts
+ * runs its own fallback instead.
+ */
+export async function reloadKeybindings(): Promise<boolean> {
+  if (!listenerInstalled) return false;
+  return loadTable();
 }

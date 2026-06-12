@@ -318,6 +318,13 @@ pub fn spawn_sessions_loop(app: AppHandle) {
                     )
                 });
                 let _ = svc.store().reload_if_changed().await;
+                // Config hot-reload, mirroring the TUI's check_config_reload:
+                // picks up edits from another instance's settings UI or a
+                // hand-edited config.toml. Backend consumers re-read config
+                // every tick; the event lets the frontend refresh keybindings.
+                if let Ok(true) = svc.reload_config() {
+                    let _ = app.emit("config-updated", ());
+                }
                 let mut snapshot = build_snapshot(svc, Some(detector)).await;
                 let groups = &mut snapshot.groups;
 
