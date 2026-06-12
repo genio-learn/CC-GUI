@@ -49,15 +49,29 @@ type ReviewSnapshot = {
   comments: Comment[];
 };
 
+type ApplyOutcome =
+  | { outcome: "nothing" }
+  | { outcome: "blocked"; drifted: string[] }
+  | { outcome: "applied"; path: string; count: number }
+  | { outcome: "deferred"; path: string; count: number };
+
 const reviewEl = document.querySelector<HTMLDivElement>("#review")!;
 const titleEl = document.querySelector<HTMLSpanElement>("#review-title")!;
 const baseEl = document.querySelector<HTMLSpanElement>("#review-base")!;
+const statusEl = document.querySelector<HTMLSpanElement>("#review-status")!;
+const applyEl = document.querySelector<HTMLButtonElement>("#review-apply")!;
 const filesEl = document.querySelector<HTMLDivElement>("#review-files")!;
 const diffEl = document.querySelector<HTMLDivElement>("#review-diff")!;
 
 let sessionId: string | null = null;
 let snapshot: ReviewSnapshot | null = null;
 let selectedFile: string | null = null;
+
+// Line selection for a new comment: inclusive index range into the rendered
+// (selectable) lines of the current file, in click order.
+let selection: { anchor: number; head: number } | null = null;
+let draftText = ""; // survives re-renders while extending the selection
+let applying = false;
 
 function displayPath(f: FileDiff): string {
   return f.status === "deleted" ? f.old_path : f.new_path;
@@ -74,6 +88,8 @@ export async function openReview(id: string, title: string): Promise<void> {
   sessionId = id;
   titleEl.textContent = title;
   baseEl.textContent = "";
+  statusEl.textContent = "";
+  clearSelection();
   filesEl.innerHTML = "";
   diffEl.innerHTML = '<div class="review-empty">Loading…</div>';
   reviewEl.classList.remove("hidden");
@@ -99,16 +115,30 @@ async function refresh(): Promise<void> {
   baseEl.textContent = `vs ${snap.base}`;
   if (!snap.diff.files.some((f) => displayPath(f) === selectedFile)) {
     selectedFile = snap.diff.files.length ? displayPath(snap.diff.files[0]) : null;
+    clearSelection();
   }
   renderFiles();
   renderDiff();
+  renderApply();
 }
 
 export function closeReview(): void {
   sessionId = null;
   snapshot = null;
+  clearSelection();
   reviewEl.classList.add("hidden");
 }
+
+function clearSelection(): void {
+  selection = null;
+  draftText = "";
+}
+
+function currentFile(): FileDiff | undefined {
+  return snapshot?.diff.files.find((f) => displayPath(f) === selectedFile);
+}
+
+// ------------------------------------------------------------------- files
 
 function renderFiles(): void {
   filesEl.innerHTML = "";
@@ -135,7 +165,6 @@ function renderFiles(): void {
     const counts = document.createElement("span");
     counts.className = "file-counts";
     const comments = commentCounts.get(path);
-    counts.innerHTML = "";
     if (comments) {
       const c = document.createElement("span");
       c.className = "file-comments";
@@ -153,6 +182,7 @@ function renderFiles(): void {
     row.append(status, name, counts);
     row.addEventListener("click", () => {
       selectedFile = path;
+      clearSelection();
       renderFiles();
       renderDiff();
     });
@@ -165,6 +195,8 @@ function renderFiles(): void {
     filesEl.appendChild(empty);
   }
 }
+
+// ---------------------------------------------------------------- comments
 
 /** Comments anchored to a line: keyed by `${side}:${end-of-range lineno}`. */
 function commentsByAnchor(path: string): Map<string, Comment[]> {
@@ -193,6 +225,16 @@ function renderCommentBlock(c: Comment): HTMLDivElement {
   const [start, end] = c.line_range;
   range.textContent = `${c.side} ${start === end ? start : `${start}–${end}`}`;
   head.append(badge, range);
+  if (c.status !== "applied") {
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    const del = document.createElement("button");
+    del.className = "comment-delete";
+    del.textContent = "✕";
+    del.title = "Delete comment";
+    del.addEventListener("click", () => void deleteComment(c.id));
+    head.append(spacer, del);
+  }
   const body = document.createElement("div");
   body.className = "comment-body";
   body.textContent = c.comment;
@@ -200,10 +242,98 @@ function renderCommentBlock(c: Comment): HTMLDivElement {
   return block;
 }
 
+async function deleteComment(commentId: string): Promise<void> {
+  if (!sessionId) return;
+  try {
+    await invoke("delete_comment", { id: sessionId, commentId });
+  } catch (e) {
+    statusEl.textContent = `delete failed: ${e}`;
+    return;
+  }
+  await refresh();
+}
+
+/**
+ * Build the comment draft from the selected lines, mirroring the TUI's
+ * `build_draft`: the New side wins unless the selection is purely deletions,
+ * and the snippet/line range come from that side's lines only.
+ */
+async function saveComment(lines: DiffLine[], comment: string): Promise<void> {
+  const file = currentFile();
+  if (!sessionId || !file || !comment.trim()) return;
+  const side = lines.some((l) => l.new_lineno !== null) ? "new" : "old";
+  const collected = lines
+    .map((l) => ({ n: side === "new" ? l.new_lineno : l.old_lineno, content: l.content }))
+    .filter((x): x is { n: number; content: string } => x.n !== null);
+  if (!collected.length) return;
+  const nums = collected.map((x) => x.n);
+  try {
+    await invoke("create_comment", {
+      id: sessionId,
+      file: displayPath(file),
+      side,
+      lineRange: [Math.min(...nums), Math.max(...nums)],
+      snippet: collected.map((x) => x.content).join("\n"),
+      comment: comment.trim(),
+    });
+  } catch (e) {
+    statusEl.textContent = `comment failed: ${e}`;
+    return;
+  }
+  clearSelection();
+  await refresh();
+}
+
+function renderCommentEditor(lines: DiffLine[]): HTMLDivElement {
+  const box = document.createElement("div");
+  box.className = "review-comment editor";
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "Leave a comment for the agent… (Cmd/Ctrl+Enter to save, Esc to cancel)";
+  textarea.rows = 3;
+  textarea.value = draftText;
+  textarea.addEventListener("input", () => {
+    draftText = textarea.value;
+  });
+  textarea.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // keep Esc from closing the whole review view
+    if (e.key === "Escape") {
+      clearSelection();
+      renderDiff();
+    }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      void saveComment(lines, textarea.value);
+    }
+  });
+
+  const buttons = document.createElement("div");
+  buttons.className = "editor-buttons";
+  const cancel = document.createElement("button");
+  cancel.className = "row-action";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => {
+    clearSelection();
+    renderDiff();
+  });
+  const save = document.createElement("button");
+  save.className = "row-action";
+  save.textContent = "Comment";
+  save.addEventListener("click", () => void saveComment(lines, textarea.value));
+  buttons.append(cancel, save);
+
+  box.append(textarea, buttons);
+  setTimeout(() => {
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, 0);
+  return box;
+}
+
+// -------------------------------------------------------------------- diff
+
 function renderDiff(): void {
   diffEl.innerHTML = "";
   if (!snapshot) return;
-  const file = snapshot.diff.files.find((f) => displayPath(f) === selectedFile);
+  const file = currentFile();
   if (!file) {
     const empty = document.createElement("div");
     empty.className = "review-empty";
@@ -212,6 +342,12 @@ function renderDiff(): void {
     return;
   }
   const anchors = commentsByAnchor(displayPath(file));
+
+  const selStart = selection ? Math.min(selection.anchor, selection.head) : -1;
+  const selEnd = selection ? Math.max(selection.anchor, selection.head) : -1;
+  const flatLines: DiffLine[] = file.hunks.flatMap((h) => h.lines);
+  let idx = 0;
+  let editorAnchorRow: HTMLDivElement | null = null;
 
   for (const hunk of file.hunks) {
     const header = document.createElement("div");
@@ -222,8 +358,10 @@ function renderDiff(): void {
     diffEl.appendChild(header);
 
     for (const line of hunk.lines) {
+      const lineIdx = idx++;
       const row = document.createElement("div");
       row.className = `diff-line diff-${line.origin}`;
+      row.classList.toggle("selected", lineIdx >= selStart && lineIdx <= selEnd);
 
       const oldNo = document.createElement("span");
       oldNo.className = "lineno";
@@ -238,7 +376,18 @@ function renderDiff(): void {
       content.textContent = `${marker}${line.content}`;
 
       row.append(oldNo, newNo, content);
+      row.addEventListener("click", (e) => {
+        if (e.shiftKey && selection) {
+          selection.head = lineIdx;
+        } else if (selection?.anchor === lineIdx && selection.head === lineIdx) {
+          clearSelection(); // click the sole selected line again to deselect
+        } else {
+          selection = { anchor: lineIdx, head: lineIdx };
+        }
+        renderDiff();
+      });
       diffEl.appendChild(row);
+      if (lineIdx === selEnd) editorAnchorRow = row;
 
       // Comments anchor to the end of their range on their side. Old/new line
       // numbers are unique within a file, so each comment matches one line.
@@ -251,10 +400,63 @@ function renderDiff(): void {
       }
     }
   }
+
+  if (selection && editorAnchorRow) {
+    const selLines = flatLines.slice(selStart, selEnd + 1);
+    editorAnchorRow.after(renderCommentEditor(selLines));
+  }
+}
+
+// ------------------------------------------------------------------- apply
+
+function renderApply(): void {
+  if (!snapshot) {
+    applyEl.classList.add("hidden");
+    return;
+  }
+  const pending = snapshot.comments.filter((c) => c.status !== "applied").length;
+  applyEl.classList.toggle("hidden", pending === 0);
+  applyEl.disabled = applying;
+  applyEl.textContent = applying ? "Applying…" : `Apply (${pending})`;
+}
+
+function describeOutcome(o: ApplyOutcome): string {
+  switch (o.outcome) {
+    case "nothing":
+      return "Nothing to apply";
+    case "blocked":
+      return `Blocked: ${o.drifted.length} drifted comment(s) — review or delete them first`;
+    case "applied":
+      return `Sent ${o.count} comment(s) to the agent`;
+    case "deferred":
+      return `Agent not ready — brief written to ${o.path}; re-apply later`;
+  }
+}
+
+async function applyComments(): Promise<void> {
+  if (!sessionId || applying) return;
+  applying = true;
+  statusEl.textContent = "";
+  renderApply();
+  try {
+    const outcome = await invoke<ApplyOutcome>("apply_comments", { id: sessionId });
+    statusEl.textContent = describeOutcome(outcome);
+  } catch (e) {
+    statusEl.textContent = `apply failed: ${e}`;
+  }
+  applying = false;
+  await refresh();
 }
 
 document.querySelector("#review-close")!.addEventListener("click", closeReview);
 document.querySelector("#review-refresh")!.addEventListener("click", () => void refresh());
+applyEl.addEventListener("click", () => void applyComments());
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !reviewEl.classList.contains("hidden")) closeReview();
+  if (e.key !== "Escape" || reviewEl.classList.contains("hidden")) return;
+  if (selection) {
+    clearSelection();
+    renderDiff();
+  } else {
+    closeReview();
+  }
 });
