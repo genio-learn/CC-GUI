@@ -163,8 +163,12 @@ async fn get_session_detail(
     id: String,
     lines: Option<usize>,
 ) -> Result<Option<claude_commander::api::SessionDetail>, String> {
+    // The service resolves sessions by title or *display* id — the 8-char
+    // prefix (`SessionId::to_string`). A full 36-char uuid never matches, so
+    // validate it here and query with the display form.
+    let query = parse_session_id(&id)?.to_string();
     with_service(move |svc| async move {
-        svc.get_session_detail(&id, lines)
+        svc.get_session_detail(&query, lines)
             .await
             .map_err(|e| e.to_string())
     })
