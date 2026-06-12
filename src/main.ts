@@ -22,10 +22,32 @@ type ProjectGroup = {
   sessions: SessionRow[];
 };
 
+type SessionDetail = {
+  id: string;
+  title: string;
+  branch: string;
+  status: string;
+  program: string;
+  project_name: string;
+  pr_number: number | null;
+  pr_url: string | null;
+  pr_state: string;
+  pr_draft: boolean;
+  created_at: string;
+  agent_state: string;
+  diff_stat: string | null;
+  pane_content: string | null;
+};
+
 const sessionsEl = document.querySelector<HTMLDivElement>("#sessions")!;
 const tabsEl = document.querySelector<HTMLDivElement>("#tabs")!;
 const terminalsEl = document.querySelector<HTMLDivElement>("#terminals")!;
 const placeholderEl = document.querySelector<HTMLDivElement>("#placeholder")!;
+const detailEl = document.querySelector<HTMLElement>("#detail")!;
+const detailTitleEl = document.querySelector<HTMLSpanElement>("#detail-title")!;
+const detailMetaEl = document.querySelector<HTMLDListElement>("#detail-meta")!;
+const detailDiffstatEl = document.querySelector<HTMLDivElement>("#detail-diffstat")!;
+const detailPreviewEl = document.querySelector<HTMLDivElement>("#detail-preview")!;
 
 // ---------------------------------------------------------------- terminals
 
@@ -144,9 +166,138 @@ async function openTerminal(session: SessionRow): Promise<void> {
   activateTerminal(name);
 }
 
+function refitActive(): void {
+  if (!activeTerm) return;
+  const entry = terminals.get(activeTerm);
+  if (!entry) return;
+  entry.fit.fit();
+  void invoke("resize_pty", {
+    tmuxSession: activeTerm,
+    rows: entry.term.rows,
+    cols: entry.term.cols,
+  });
+}
+
 window.addEventListener("resize", () => {
-  if (activeTerm) terminals.get(activeTerm)?.fit.fit();
+  refitActive();
+  previewFit?.fit();
 });
+
+// ------------------------------------------------------------- detail panel
+
+let detailId: string | null = null;
+let detailTimer: ReturnType<typeof setInterval> | null = null;
+let previewTerm: Terminal | null = null;
+let previewFit: FitAddon | null = null;
+
+function metaRow(label: string, value: string): [HTMLElement, HTMLElement] {
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+  const dd = document.createElement("dd");
+  dd.textContent = value;
+  return [dt, dd];
+}
+
+function renderDetail(d: SessionDetail): void {
+  detailTitleEl.textContent = d.title;
+
+  detailMetaEl.innerHTML = "";
+  const status =
+    d.status.toLowerCase() === "running" ? `running · ${d.agent_state}` : d.status.toLowerCase();
+  const rows: [string, string][] = [
+    ["Project", d.project_name],
+    ["Branch", d.branch],
+    ["Status", status],
+    ["Program", d.program],
+    ["Created", new Date(d.created_at).toLocaleString()],
+  ];
+  if (d.pr_number != null) {
+    rows.push([
+      "PR",
+      `#${d.pr_number} (${d.pr_draft ? "draft" : d.pr_state.toLowerCase()})${d.pr_url ? ` — ${d.pr_url}` : ""}`,
+    ]);
+  }
+  for (const [label, value] of rows) {
+    detailMetaEl.append(...metaRow(label, value));
+  }
+
+  detailDiffstatEl.innerHTML = "";
+  if (d.diff_stat) {
+    // Colorize "+N" / "-N" tokens in the diffstat summary.
+    for (const token of d.diff_stat.split(/(\+\d+|-\d+)/)) {
+      const span = document.createElement("span");
+      if (/^\+\d+$/.test(token)) span.className = "added";
+      if (/^-\d+$/.test(token)) span.className = "removed";
+      span.textContent = token;
+      detailDiffstatEl.appendChild(span);
+    }
+  } else {
+    detailDiffstatEl.textContent = "No changes";
+  }
+
+  if (!previewTerm) {
+    previewTerm = new Terminal({
+      fontFamily: "Menlo, Monaco, monospace",
+      fontSize: 11,
+      disableStdin: true,
+      convertEol: true,
+      theme: { background: "#1e1e2e" },
+    });
+    previewFit = new FitAddon();
+    previewTerm.loadAddon(previewFit);
+    previewTerm.open(detailPreviewEl);
+  }
+  previewFit!.fit();
+  previewTerm.reset();
+  previewTerm.write(
+    d.pane_content ?? "\x1b[90m(no preview — session not running)\x1b[0m",
+  );
+}
+
+async function refreshDetail(): Promise<void> {
+  if (!detailId) return;
+  let d: SessionDetail | null = null;
+  try {
+    d = await invoke<SessionDetail | null>("get_session_detail", {
+      id: detailId,
+      lines: 200,
+    });
+  } catch {
+    return; // transient failure; next tick retries
+  }
+  if (!detailId) return; // closed while fetching
+  if (!d) {
+    closeDetail();
+    return;
+  }
+  renderDetail(d);
+}
+
+function closeDetail(): void {
+  detailId = null;
+  if (detailTimer) clearInterval(detailTimer);
+  detailTimer = null;
+  detailEl.classList.add("hidden");
+  refitActive();
+}
+
+function toggleDetail(s: SessionRow): void {
+  if (detailId === s.id) {
+    closeDetail();
+    return;
+  }
+  detailId = s.id;
+  detailEl.classList.remove("hidden");
+  detailTitleEl.textContent = s.title;
+  detailMetaEl.innerHTML = "";
+  detailDiffstatEl.textContent = "Loading…";
+  if (detailTimer) clearInterval(detailTimer);
+  detailTimer = setInterval(() => void refreshDetail(), 2000);
+  void refreshDetail();
+  refitActive();
+}
+
+document.querySelector("#detail-close")!.addEventListener("click", closeDetail);
 
 void listen<string>("pty-exit", (event) => {
   const entry = terminals.get(event.payload);
@@ -243,6 +394,7 @@ const rowRefs = new Map<string, RowRefs>(); // keyed by session id
 function buildActions(s: SessionRow): HTMLDivElement {
   const actions = document.createElement("div");
   actions.className = "row-actions";
+  actions.appendChild(actionButton("ⓘ", "Session details", () => toggleDetail(s)));
   if (s.status === "stopped") {
     actions.appendChild(
       actionButton("▶", "Restart session", () => void lifecycle("restart_session", s.id)),

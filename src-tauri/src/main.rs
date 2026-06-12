@@ -156,6 +156,21 @@ fn spawn_sessions_loop(app: AppHandle) {
     });
 }
 
+/// Detail for one session: full `SessionInfo` (flattened) + agent state,
+/// diff stat, and pane preview. `lines` caps the pane capture.
+#[tauri::command]
+async fn get_session_detail(
+    id: String,
+    lines: Option<usize>,
+) -> Result<Option<claude_commander::api::SessionDetail>, String> {
+    with_service(move |svc| async move {
+        svc.get_session_detail(&id, lines)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
 // -- Session lifecycle -------------------------------------------------------
 
 fn parse_session_id(id: &str) -> Result<SessionId, String> {
@@ -334,6 +349,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_groups,
+            get_session_detail,
             create_session,
             kill_session,
             restart_session,
