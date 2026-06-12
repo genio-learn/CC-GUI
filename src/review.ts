@@ -147,8 +147,22 @@ function renderFiles(): void {
   for (const c of snapshot.comments) {
     commentCounts.set(c.file, (commentCounts.get(c.file) ?? 0) + 1);
   }
+  // Diff files arrive path-sorted, so same-directory files are contiguous:
+  // emit a directory header whenever the dirname changes and show basenames.
+  let lastDir: string | null = null;
   for (const f of snapshot.diff.files) {
     const path = displayPath(f);
+    const slash = path.lastIndexOf("/");
+    const dir = slash === -1 ? "" : path.slice(0, slash);
+    if (dir !== lastDir) {
+      lastDir = dir;
+      const header = document.createElement("div");
+      header.className = "review-dir";
+      header.textContent = dir === "" ? "./" : `${dir}/`;
+      header.title = header.textContent;
+      filesEl.appendChild(header);
+    }
+
     const row = document.createElement("div");
     row.className = "review-file";
     row.classList.toggle("active", path === selectedFile);
@@ -159,7 +173,7 @@ function renderFiles(): void {
 
     const name = document.createElement("span");
     name.className = "file-path";
-    name.textContent = path;
+    name.textContent = path.slice(slash + 1);
     name.title = f.status === "renamed" ? `${f.old_path} → ${f.new_path}` : path;
 
     const counts = document.createElement("span");

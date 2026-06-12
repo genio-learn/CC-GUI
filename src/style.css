@@ -326,11 +326,23 @@ body {
   padding: 6px;
 }
 
+.review-dir {
+  padding: 8px 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6c7086;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* ellipsis on the left, keep the leaf directory visible */
+  text-align: left;
+}
+
 .review-file {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 8px;
+  padding: 4px 8px 4px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -372,8 +384,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  direction: rtl; /* ellipsis on the left, keep the filename visible */
-  text-align: left;
 }
 
 .file-counts {
