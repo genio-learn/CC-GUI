@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { makeResizable } from "./resize";
 
 // Mirrors claude-commander's ReviewSnapshot (api.rs / git/review_diff.rs /
 // comment/mod.rs) — all snake_case via serde.
@@ -146,6 +147,8 @@ const statusEl = document.querySelector<HTMLSpanElement>("#review-status")!;
 const applyEl = document.querySelector<HTMLButtonElement>("#review-apply")!;
 const filesEl = document.querySelector<HTMLDivElement>("#review-files")!;
 const diffEl = document.querySelector<HTMLDivElement>("#review-diff")!;
+
+makeResizable({ key: "cc-review-files-width", target: filesEl, edge: "right", min: 180, max: 640 });
 
 let sessionId: string | null = null;
 let snapshot: ReviewSnapshot | null = null;

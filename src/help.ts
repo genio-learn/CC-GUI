@@ -37,6 +37,7 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     "Global",
     [
       ["Cmd/Ctrl+K", "Fuzzy palette: jump to session or run a command"],
+      ["Cmd+W", "Close the active terminal tab (closes the window if none left)"],
       ["?", "This help"],
     ],
   ],
@@ -65,6 +66,27 @@ for (const [section, rows] of HELP_SECTIONS) {
   }
   box.appendChild(table);
 }
+// Keybindings section, filled in once the config's key table is fetched
+// (main.ts wires the supported actions through setHelpKeybindings).
+const keybindHeader = document.createElement("h3");
+keybindHeader.textContent = "Keyboard (claude-commander config)";
+const keybindTable = document.createElement("dl");
+keybindTable.className = "help-table";
+keybindHeader.style.display = "none";
+box.append(keybindHeader, keybindTable);
+
+export function setHelpKeybindings(rows: [string, string][]): void {
+  keybindTable.innerHTML = "";
+  keybindHeader.style.display = rows.length ? "" : "none";
+  for (const [keys, desc] of rows) {
+    const dt = document.createElement("dt");
+    dt.textContent = keys;
+    const dd = document.createElement("dd");
+    dd.textContent = desc;
+    keybindTable.append(dt, dd);
+  }
+}
+
 overlay.appendChild(box);
 document.body.appendChild(overlay);
 
@@ -76,12 +98,14 @@ overlay.addEventListener("click", (e) => {
   if (e.target === overlay) toggleHelp();
 });
 
+// Opening is bound through the config's show_help action (main.ts); these
+// only close an open overlay, so they can't double-fire with that binding.
 document.addEventListener("keydown", (e) => {
+  if (overlay.classList.contains("hidden")) return;
   const target = e.target as HTMLElement;
   const inInput =
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target.closest(".xterm") !== null;
-  if (e.key === "?" && !inInput) toggleHelp();
-  if (e.key === "Escape" && !overlay.classList.contains("hidden")) toggleHelp();
+  if ((e.key === "?" && !inInput) || e.key === "Escape") toggleHelp();
 });

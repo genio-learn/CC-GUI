@@ -11,13 +11,9 @@ pub async fn prepare_commander() -> Result<String, String> {
     with_service(move |svc| async move {
         let config = svc.read_config();
         let cmd = claude_commander::cli_args::cli_command();
-        claude_commander::commander::ensure_session(
-            &config,
-            &svc.session_manager().tmux,
-            &cmd,
-        )
-        .await
-        .map_err(|e| e.to_string())
+        claude_commander::commander::ensure_session(&config, &svc.session_manager().tmux, &cmd)
+            .await
+            .map_err(|e| e.to_string())
     })
     .await
 }

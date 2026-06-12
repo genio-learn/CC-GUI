@@ -88,10 +88,8 @@ pub async fn restart_session(id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn delete_session(id: String) -> Result<(), String> {
     let id = parse_session_id(&id)?;
-    with_service(
-        move |svc| async move { svc.delete_session(&id).await.map_err(|e| e.to_string()) },
-    )
-    .await
+    with_service(move |svc| async move { svc.delete_session(&id).await.map_err(|e| e.to_string()) })
+        .await
 }
 
 /// Rename a session (title only — branch and tmux session are untouched),

@@ -1,13 +1,17 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview } from "./review";
+import { toast, confirmDialog } from "./toast";
+import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
 import { registerPaletteProvider } from "./palette";
-import { toggleHelp } from "./help";
+import { toggleHelp, setHelpKeybindings } from "./help";
+import { initKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
 import { openSettings } from "./settings";
 
 type SessionRow = {
@@ -143,7 +147,7 @@ async function openShell(session: SessionRow): Promise<void> {
   try {
     name = await invoke<string>("prepare_shell", { id: session.id });
   } catch (e) {
-    alert(`shell failed: ${e}`);
+    toast(`shell failed: ${e}`, "error");
     return;
   }
   await attachTerminal(name, `${session.title} — shell`, null);
@@ -154,7 +158,7 @@ async function openProjectShell(group: ProjectGroup): Promise<void> {
   try {
     name = await invoke<string>("prepare_project_shell", { id: group.id });
   } catch (e) {
-    alert(`project shell failed: ${e}`);
+    toast(`project shell failed: ${e}`, "error");
     return;
   }
   await attachTerminal(name, `${group.name} — shell`, null);
@@ -249,6 +253,42 @@ function refitActive(): void {
 
 window.addEventListener("resize", () => {
   refitActive();
+});
+
+// Cmd+W closes the active terminal tab first; only when no tabs remain does it
+// close the window (the OS default). Capture phase so it beats xterm's own key
+// handling on the focused terminal. Cmd, not Ctrl: Ctrl+W is the terminal's
+// delete-word and must reach the shell.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key !== "w" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (activeTerm) {
+      closeTerminal(activeTerm);
+    } else {
+      void getCurrentWindow().close();
+    }
+  },
+  true,
+);
+
+makeResizable({
+  key: "cc-sidebar-width",
+  target: document.querySelector<HTMLElement>("#sidebar")!,
+  edge: "right",
+  min: 200,
+  max: 640,
+  onResize: refitActive,
+});
+makeResizable({
+  key: "cc-detail-width",
+  target: detailEl,
+  edge: "left",
+  min: 240,
+  max: 720,
+  onResize: refitActive,
 });
 
 // ------------------------------------------------------------- detail panel
@@ -435,12 +475,93 @@ let topInput: "add" | "scan" | null = null; // sidebar-top path input mode
 
 const SECTION_VIEW = (): boolean => sections !== null;
 
+// Collapsed sidebar groups ("proj:<id>" / "sect:<name>"), persisted.
+const collapsed = new Set<string>(
+  JSON.parse(localStorage.getItem("cc-collapsed") ?? "[]") as string[],
+);
+
+function toggleCollapsed(key: string): void {
+  if (collapsed.has(key)) collapsed.delete(key);
+  else collapsed.add(key);
+  localStorage.setItem("cc-collapsed", JSON.stringify([...collapsed]));
+  renderSidebar();
+}
+
+/** Chevron + collapse-toggling click handler for a group header. */
+function makeCollapsible(header: HTMLDivElement, name: HTMLSpanElement, key: string): boolean {
+  const isCollapsed = collapsed.has(key);
+  const chevron = document.createElement("span");
+  chevron.className = "chevron";
+  chevron.textContent = isCollapsed ? "▸ " : "▾ ";
+  name.prepend(chevron);
+  header.classList.add("collapsible");
+  header.addEventListener("click", () => toggleCollapsed(key));
+  return isCollapsed;
+}
+
 function findSession(id: string): SessionRow | undefined {
   for (const g of groups) {
     const s = g.sessions.find((s) => s.id === id);
     if (s) return s;
   }
   return undefined;
+}
+
+// ------------------------------------------------- keyboard selection model
+
+// Keyboard cursor for the sidebar (the TUI's tree cursor). Session ids of
+// visible rows, one array per rendered group, rebuilt on every full render.
+let selectedId: string | null = null;
+let visibleGroups: string[][] = [];
+
+function updateSelectionClasses(): void {
+  for (const [id, refs] of rowRefs) {
+    refs.row.classList.toggle("selected", id === selectedId);
+  }
+  if (selectedId) {
+    rowRefs.get(selectedId)?.row.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function selectRow(id: string | null): void {
+  selectedId = id;
+  updateSelectionClasses();
+}
+
+function moveSelection(delta: number): void {
+  const flat = visibleGroups.flat();
+  if (!flat.length) return;
+  const idx = selectedId ? flat.indexOf(selectedId) : -1;
+  const next = idx === -1 ? (delta > 0 ? 0 : flat.length - 1) : idx + delta;
+  selectRow(flat[Math.min(flat.length - 1, Math.max(0, next))]);
+}
+
+/** Jump to the first row of the next/previous group. */
+function moveGroup(dir: 1 | -1): void {
+  const nonEmpty = visibleGroups.filter((g) => g.length);
+  if (!nonEmpty.length) return;
+  const cur = nonEmpty.findIndex((g) => selectedId !== null && g.includes(selectedId));
+  const next = cur === -1 ? 0 : (cur + dir + nonEmpty.length) % nonEmpty.length;
+  selectRow(nonEmpty[next][0]);
+}
+
+/** The session keyboard actions operate on: cursor first, attached tab second. */
+function targetSession(): SessionRow | undefined {
+  if (selectedId) {
+    const s = findSession(selectedId);
+    if (s) return s;
+  }
+  if (activeTerm) {
+    for (const g of groups) {
+      const s = g.sessions.find((x) => x.tmux_session_name === activeTerm);
+      if (s) return s;
+    }
+  }
+  return undefined;
+}
+
+function groupOf(sessionId: string): ProjectGroup | undefined {
+  return groups.find((g) => g.sessions.some((s) => s.id === sessionId));
 }
 
 const AGENT_GLYPHS: Record<string, [string, string]> = {
@@ -504,6 +625,15 @@ function confirmButton(
   return btn;
 }
 
+/** Re-fetch the sidebar snapshot now instead of waiting for the 2s tick. */
+async function refreshNow(): Promise<void> {
+  try {
+    applySnapshot(await invoke<Snapshot>("get_groups"));
+  } catch {
+    // transient; the next push tick recovers
+  }
+}
+
 async function lifecycle(action: string, id: string): Promise<void> {
   await lifecycleArgs(action, { id });
 }
@@ -512,18 +642,72 @@ async function lifecycleArgs(action: string, args: Record<string, unknown>): Pro
   try {
     await invoke(action, args);
   } catch (e) {
-    alert(`${action} failed: ${e}`);
+    toast(`${action} failed: ${e}`, "error");
   }
+  await refreshNow();
 }
 
 /** Invoke a long-running command and surface its summary (or error). */
 async function invokeToast(action: string, args: Record<string, unknown>): Promise<void> {
   try {
     const msg = await invoke<string | null>(action, args);
-    if (msg) alert(msg);
+    if (msg) toast(msg);
   } catch (e) {
-    alert(`${action} failed: ${e}`);
+    toast(`${action} failed: ${e}`, "error");
   }
+  await refreshNow();
+}
+
+// Optimistic-update overlays: sessions deleted (or retitled) locally before
+// the backend confirms, applied over every incoming snapshot. A mask is held
+// until a snapshot *confirms* the change (session absent for a delete; new
+// title present for a rename) — NOT merely until the invoke resolves. The 2s
+// push loop can build a snapshot just before our mutation lands and deliver it
+// just after, so clearing on resolve alone would flash the stale row/title
+// back until the next tick. On invoke error the mask is force-cleared instead.
+const pendingDeletes = new Set<string>();
+const pendingTitles = new Map<string, string>();
+
+function applyPendingOverlays(snap: Snapshot): void {
+  if (!pendingDeletes.size && !pendingTitles.size) return;
+
+  // Reconcile against the raw (pre-mask) snapshot: drop masks the backend has
+  // caught up on, so they don't linger and suppress a later re-creation.
+  const present = new Map<string, string>();
+  for (const g of snap.groups) for (const s of g.sessions) present.set(s.id, s.title);
+  for (const id of [...pendingDeletes]) if (!present.has(id)) pendingDeletes.delete(id);
+  for (const [id, title] of [...pendingTitles]) {
+    if (present.get(id) === title) pendingTitles.delete(id);
+  }
+
+  for (const g of snap.groups) {
+    g.sessions = g.sessions.filter((s) => !pendingDeletes.has(s.id));
+    for (const s of g.sessions) {
+      const title = pendingTitles.get(s.id);
+      if (title) s.title = title;
+    }
+  }
+  if (snap.sections) {
+    for (const b of snap.sections) {
+      b.session_ids = b.session_ids.filter((id) => !pendingDeletes.has(id));
+    }
+  }
+}
+
+/** Optimistically remove the row, then delete in the background. */
+function deleteSession(s: SessionRow): void {
+  closeTerminal(s.tmux_session_name);
+  pendingDeletes.add(s.id);
+  for (const g of groups) g.sessions = g.sessions.filter((row) => row.id !== s.id);
+  if (sections) for (const b of sections) b.session_ids = b.session_ids.filter((id) => id !== s.id);
+  renderSidebar();
+  invoke("delete_session", { id: s.id })
+    .then(() => refreshNow()) // a fresh snapshot confirms absence and clears the mask
+    .catch((e) => {
+      pendingDeletes.delete(s.id); // failed: un-mask so the row returns
+      toast(`delete failed: ${e}`, "error");
+      void refreshNow();
+    });
 }
 
 type RowRefs = {
@@ -552,10 +736,7 @@ function buildActions(s: SessionRow): HTMLDivElement {
     );
   }
   actions.appendChild(
-    confirmButton("✕", "Delete session (removes worktree + branch)", () => {
-      closeTerminal(s.tmux_session_name);
-      void lifecycle("delete_session", s.id);
-    }),
+    confirmButton("✕", "Delete session (removes worktree + branch)", () => deleteSession(s)),
   );
   return actions;
 }
@@ -677,10 +858,12 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
     label: "Delete (worktree + branch)",
     danger: true,
     action: () => {
-      if (confirm(`Delete session "${s.title}"?\nThis removes the worktree and branch.`)) {
-        closeTerminal(s.tmux_session_name);
-        void lifecycle("delete_session", s.id);
-      }
+      void confirmDialog(
+        `Delete session "${s.title}"?\nThis removes the worktree and branch.`,
+        "Delete",
+      ).then((ok) => {
+        if (ok) deleteSession(s);
+      });
     },
   });
   return items;
@@ -701,9 +884,17 @@ function renderRenameInput(s: SessionRow): HTMLInputElement {
     if (e.key === "Enter" && input.value.trim()) {
       const title = input.value.trim();
       renamingId = null;
-      invoke("rename_session", { id: s.id, title }).catch((err) =>
-        alert(`rename failed: ${err}`),
-      );
+      // Optimistic: show the new title immediately; the mask clears once a
+      // snapshot carries the new title (see applyPendingOverlays).
+      pendingTitles.set(s.id, title);
+      s.title = title;
+      invoke("rename_session", { id: s.id, title })
+        .then(() => refreshNow())
+        .catch((err) => {
+          pendingTitles.delete(s.id); // failed: un-mask so the old title returns
+          toast(`rename failed: ${err}`, "error");
+          void refreshNow();
+        });
       renderSidebar();
     }
   });
@@ -732,7 +923,10 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
   }
 
   row.append(main, refs.actions);
-  row.addEventListener("click", () => void openTerminal(refs.session));
+  row.addEventListener("click", () => {
+    selectRow(refs.session.id);
+    void openTerminal(refs.session);
+  });
   row.addEventListener("contextmenu", (e) => showContextMenu(e, sessionMenuItems(refs)));
   updateRow(refs, s);
   return row;
@@ -745,6 +939,7 @@ function updateRow(refs: RowRefs, s: SessionRow): void {
   fillRowMain(refs.main, s);
   refs.row.classList.toggle("active", s.tmux_session_name === activeTerm);
   refs.row.classList.toggle("attached", terminals.has(s.tmux_session_name));
+  refs.row.classList.toggle("selected", s.id === selectedId);
   if (refs.status !== s.status) {
     const actions = buildActions(s);
     refs.row.replaceChild(actions, refs.actions);
@@ -767,9 +962,9 @@ function renderCreateInput(group: ProjectGroup): HTMLDivElement {
       const title = input.value.trim();
       newSessionProject = null;
       input.disabled = true;
-      invoke("create_session", { projectPath: group.repo_path, title }).catch((err) =>
-        alert(`create failed: ${err}`),
-      );
+      invoke("create_session", { projectPath: group.repo_path, title })
+        .catch((err) => toast(`create failed: ${err}`, "error"))
+        .finally(() => void refreshNow());
     }
   });
   wrap.appendChild(input);
@@ -799,15 +994,12 @@ function projectMenuItems(group: ProjectGroup): MenuItem[] {
       label: "Remove project (deletes all its sessions)",
       danger: true,
       action: () => {
-        if (
-          confirm(
-            `Remove project "${group.name}" and all ${group.sessions.length} session(s)?\nWorktrees and tmux sessions will be removed.`,
-          )
-        ) {
-          void invoke("remove_project", { id: group.id }).catch((e) =>
-            alert(`remove failed: ${e}`),
-          );
-        }
+        void confirmDialog(
+          `Remove project "${group.name}" and all ${group.sessions.length} session(s)?\nWorktrees and tmux sessions will be removed.`,
+          "Remove",
+        ).then((ok) => {
+          if (ok) void lifecycle("remove_project", group.id);
+        });
       },
     },
   ];
@@ -832,9 +1024,11 @@ function renderTopInput(mode: "add" | "scan"): HTMLDivElement {
         mode === "add"
           ? invoke("add_project", { path })
           : invoke<{ added: number; skipped: number }>("scan_directory", { path }).then((r) =>
-              alert(`Scan complete: ${r.added} added, ${r.skipped} already present`),
+              toast(`Scan complete: ${r.added} added, ${r.skipped} already present`),
             );
-      call.catch((err) => alert(`${mode === "add" ? "add project" : "scan"} failed: ${err}`));
+      call
+        .catch((err) => toast(`${mode === "add" ? "add project" : "scan"} failed: ${err}`, "error"))
+        .finally(() => void refreshNow());
       renderSidebar();
     }
   });
@@ -848,11 +1042,11 @@ async function deleteMergedSessions(): Promise<void> {
   try {
     merged = await invoke<[string, string][]>("merged_pr_sessions");
   } catch (e) {
-    alert(`failed to list merged sessions: ${e}`);
+    toast(`failed to list merged sessions: ${e}`, "error");
     return;
   }
   if (!merged.length) {
-    alert("No sessions with merged PRs");
+    toast("No sessions with merged PRs");
     return;
   }
   const preview = merged
@@ -860,14 +1054,18 @@ async function deleteMergedSessions(): Promise<void> {
     .map(([, branch]) => `  • ${branch}`)
     .join("\n");
   const more = merged.length > 8 ? `\n  … and ${merged.length - 8} more` : "";
-  if (
-    !confirm(
-      `Delete ${merged.length} session(s) with merged PRs?\n\n${preview}${more}\n\nThis removes their worktrees and branches.`,
-    )
-  )
-    return;
+  const ok = await confirmDialog(
+    `Delete ${merged.length} session(s) with merged PRs?\n\n${preview}${more}\n\nThis removes their worktrees and branches.`,
+    "Delete all",
+  );
+  if (!ok) return;
   for (const [id] of merged) {
-    await invoke("delete_session", { id }).catch((e) => alert(`delete failed: ${e}`));
+    const row = findSession(id);
+    if (row) {
+      deleteSession(row);
+    } else {
+      await invoke("delete_session", { id }).catch((e) => toast(`delete failed: ${e}`, "error"));
+    }
   }
 }
 
@@ -908,7 +1106,9 @@ const VIEW_LABELS: Record<string, string> = {
 function cycleViewMode(): void {
   const order = ["project", "sections", "section_stacks"];
   const next = order[(order.indexOf(viewMode) + 1) % order.length];
-  invoke("set_view_mode", { mode: next }).catch((e) => alert(`${e}`));
+  invoke("set_view_mode", { mode: next })
+    .then(() => refreshNow())
+    .catch((e) => toast(`${e}`, "error"));
 }
 
 /** Render section-grouped views: section headers with rows looked up by id. */
@@ -922,11 +1122,18 @@ function renderSections(buckets: SectionBucket[]): void {
     count.className = "meta";
     count.textContent = String(bucket.session_ids.length);
     header.append(name, count);
+    const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
     sessionsEl.appendChild(header);
+    if (isCollapsed) continue;
+    const rendered: string[] = [];
     for (const id of bucket.session_ids) {
       const s = findSession(id);
-      if (s) sessionsEl.appendChild(renderSessionRow(s));
+      if (s) {
+        sessionsEl.appendChild(renderSessionRow(s));
+        rendered.push(id);
+      }
     }
+    visibleGroups.push(rendered);
   }
 }
 
@@ -936,7 +1143,8 @@ function renderSidebar(): void {
       .map((g) => `${g.id}@${g.pull_blocked}:${g.sessions.map((s) => s.id).join(",")}`)
       .join("|") +
     `#${newSessionProject}#${renamingId}#${topInput}#${viewMode}` +
-    `#${sections?.map((b) => `${b.name}=${b.session_ids.join(",")}`).join("|") ?? ""}`;
+    `#${sections?.map((b) => `${b.name}=${b.session_ids.join(",")}`).join("|") ?? ""}` +
+    `#${[...collapsed].sort().join(",")}`;
 
   if (signature === sidebarSignature) {
     for (const group of groups) {
@@ -950,6 +1158,7 @@ function renderSidebar(): void {
 
   sidebarSignature = signature;
   rowRefs.clear();
+  visibleGroups = [];
   sessionsEl.innerHTML = "";
   if (topInput) {
     sessionsEl.appendChild(renderTopInput(topInput));
@@ -991,19 +1200,32 @@ function renderSidebar(): void {
     shell.className = "row-action";
     shell.textContent = "$";
     shell.title = "Project shell";
-    shell.addEventListener("click", () => void openProjectShell(group));
+    shell.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void openProjectShell(group);
+    });
     const add = document.createElement("button");
     add.className = "row-action";
     add.textContent = "+";
     add.title = "New session in this project";
-    add.addEventListener("click", () => {
+    add.addEventListener("click", (e) => {
+      e.stopPropagation();
       newSessionProject = newSessionProject === group.id ? null : group.id;
+      collapsed.delete(`proj:${group.id}`); // the create input must be visible
       renderSidebar();
     });
     buttons.append(shell, add);
     header.append(name, buttons);
+    const isCollapsed = makeCollapsible(header, name, `proj:${group.id}`);
+    if (isCollapsed) {
+      const count = document.createElement("span");
+      count.className = "meta";
+      count.textContent = String(group.sessions.length);
+      buttons.prepend(count);
+    }
     header.addEventListener("contextmenu", (e) => showContextMenu(e, projectMenuItems(group)));
     sessionsEl.appendChild(header);
+    if (isCollapsed) continue;
 
     if (newSessionProject === group.id) {
       sessionsEl.appendChild(renderCreateInput(group));
@@ -1011,6 +1233,7 @@ function renderSidebar(): void {
     for (const s of group.sessions) {
       sessionsEl.appendChild(renderSessionRow(s));
     }
+    visibleGroups.push(group.sessions.map((s) => s.id));
   }
 }
 
@@ -1040,7 +1263,7 @@ commanderChip.addEventListener("click", () => {
     try {
       name = await invoke<string>("prepare_commander");
     } catch (e) {
-      alert(`commander failed: ${e}`);
+      toast(`commander failed: ${e}`, "error");
       return;
     }
     await attachTerminal(name, "commander", null);
@@ -1048,6 +1271,7 @@ commanderChip.addEventListener("click", () => {
 });
 
 function applySnapshot(snap: Snapshot): void {
+  applyPendingOverlays(snap);
   groups = snap.groups;
   viewMode = snap.view_mode;
   sections = snap.sections;
@@ -1099,6 +1323,218 @@ registerPaletteProvider(() => [
   { label: "Settings", hint: "command", action: () => void openSettings() },
   { label: "Help", hint: "command", action: toggleHelp },
 ]);
+
+// ------------------------------------------------------------- keybindings
+
+/**
+ * GUI handlers for claude-commander's bindable actions, dispatched with the
+ * key table from the shared config (`[keybindings]` in config.toml). Actions
+ * with no GUI equivalent (checkout_branch, new_stacked_session, scrolling,
+ * quit, …) are simply not listed here.
+ */
+const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
+  navigate_up: { label: "Move cursor up", run: () => moveSelection(-1) },
+  navigate_down: { label: "Move cursor down", run: () => moveSelection(1) },
+  next_group: { label: "Jump to next group", run: () => moveGroup(1) },
+  previous_group: { label: "Jump to previous group", run: () => moveGroup(-1) },
+  navigate_first: {
+    label: "Jump to first session",
+    run: () => {
+      const flat = visibleGroups.flat();
+      if (flat.length) selectRow(flat[0]);
+    },
+  },
+  navigate_last: {
+    label: "Jump to last session",
+    run: () => {
+      const flat = visibleGroups.flat();
+      if (flat.length) selectRow(flat[flat.length - 1]);
+    },
+  },
+  select: {
+    label: "Attach cursor session",
+    run: () => {
+      const s = targetSession();
+      if (s) void openTerminal(s);
+    },
+  },
+  select_shell: {
+    label: "Open shell for cursor session",
+    run: () => {
+      const s = targetSession();
+      if (s) void openShell(s);
+    },
+  },
+  new_session: {
+    label: "New session in cursor project",
+    run: () => {
+      const s = targetSession();
+      const g = s ? groupOf(s.id) : groups[0];
+      if (!g) return;
+      newSessionProject = g.id;
+      collapsed.delete(`proj:${g.id}`);
+      renderSidebar();
+    },
+  },
+  new_project: {
+    label: "Add project",
+    run: () => {
+      topInput = "add";
+      renderSidebar();
+    },
+  },
+  scan_directory: {
+    label: "Scan directory for repos",
+    run: () => {
+      topInput = "scan";
+      renderSidebar();
+    },
+  },
+  rename_session: {
+    label: "Rename cursor session",
+    run: () => {
+      const s = targetSession();
+      if (!s) return;
+      renamingId = s.id;
+      renderSidebar();
+    },
+  },
+  delete_session: {
+    label: "Delete cursor session",
+    run: () => {
+      const s = targetSession();
+      if (!s) return;
+      void confirmDialog(
+        `Delete session "${s.title}"?\nThis removes the worktree and branch.`,
+        "Delete",
+      ).then((ok) => {
+        if (ok) deleteSession(s);
+      });
+    },
+  },
+  delete_merged_pr_sessions: {
+    label: "Delete merged-PR sessions",
+    run: () => void deleteMergedSessions(),
+  },
+  restart_session: {
+    label: "Restart cursor session (if stopped)",
+    run: () => {
+      const s = targetSession();
+      if (s?.status === "stopped") void lifecycle("restart_session", s.id);
+    },
+  },
+  remove_project: {
+    label: "Remove cursor project",
+    run: () => {
+      const s = targetSession();
+      const g = s ? groupOf(s.id) : undefined;
+      if (!g) return;
+      void confirmDialog(
+        `Remove project "${g.name}" and all ${g.sessions.length} session(s)?\nWorktrees and tmux sessions will be removed.`,
+        "Remove",
+      ).then((ok) => {
+        if (ok) void lifecycle("remove_project", g.id);
+      });
+    },
+  },
+  open_in_editor: {
+    label: "Open cursor session in editor",
+    run: () => {
+      const s = targetSession();
+      if (s) void lifecycle("open_in_editor", s.id);
+    },
+  },
+  open_pull_request: {
+    label: "Open cursor session's PR",
+    run: () => {
+      const s = targetSession();
+      if (s?.pr_url) void invoke("open_external", { url: s.pr_url });
+    },
+  },
+  open_commander: { label: "Attach commander session", run: () => commanderChip.click() },
+  open_review_diff: {
+    label: "Review diff of cursor session",
+    run: () => {
+      const s = targetSession();
+      if (s) void openReview(s.id, s.title);
+    },
+  },
+  cascade_merge_main: {
+    label: "Cascade-merge main into cursor stack",
+    run: () => {
+      const s = targetSession();
+      if (s) void invokeToast("cascade_merge", { id: s.id });
+    },
+  },
+  cascade_resume: { label: "Resume paused cascade", run: () => void invokeToast("cascade_resume", {}) },
+  cascade_abandon: { label: "Abandon paused cascade", run: () => void invokeToast("cascade_abandon", {}) },
+  push_stack: {
+    label: "Push cursor stack to origin",
+    run: () => {
+      const s = targetSession();
+      if (s) void invokeToast("push_stack", { id: s.id });
+    },
+  },
+  generate_summary: {
+    label: "Generate AI summary for cursor session",
+    run: () => {
+      const s = targetSession();
+      if (!s) return;
+      if (detailId !== s.id) toggleDetail(s);
+      void generateSummary();
+    },
+  },
+  toggle_section: {
+    label: "Collapse/expand cursor group",
+    run: () => {
+      const s = targetSession();
+      if (SECTION_VIEW() && sections) {
+        const b = s ? sections.find((b) => b.session_ids.includes(s.id)) : sections[0];
+        if (b) toggleCollapsed(`sect:${b.name}`);
+      } else {
+        const g = s ? groupOf(s.id) : groups[0];
+        if (g) toggleCollapsed(`proj:${g.id}`);
+      }
+    },
+  },
+  toggle_view_mode: { label: "Cycle view mode", run: cycleViewMode },
+  shrink_left_pane: { label: "Shrink sidebar", run: () => adjustPanelWidth("cc-sidebar-width", -24) },
+  grow_left_pane: { label: "Grow sidebar", run: () => adjustPanelWidth("cc-sidebar-width", 24) },
+  // toggle_pane (bare Tab in the TUI) is intentionally not mapped: the GUI has
+  // no two-pane focus model, and stealing Tab would break normal focus
+  // traversal across the chrome. Clicking a row already focuses its terminal.
+  show_help: { label: "Toggle help", run: toggleHelp },
+  show_settings: { label: "Open settings", run: () => void openSettings() },
+};
+
+void initKeybindings(
+  Object.fromEntries(Object.entries(KEY_ACTIONS).map(([action, a]) => [action, a.run])),
+).then((loaded) => {
+  if (!loaded) {
+    // Keep "?" working even when the keybinding table couldn't be fetched.
+    document.addEventListener("keydown", (e) => {
+      const t = e.target as HTMLElement;
+      const typing =
+        t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.closest(".xterm");
+      if (e.key === "?" && !typing && !keyOverlayOpen()) toggleHelp();
+    });
+    return;
+  }
+  setHelpKeybindings(
+    Object.entries(KEY_ACTIONS)
+      .map(
+        ([action, a]) => [loadedBindings[action]?.join(", ") ?? "", a.label] as [string, string],
+      )
+      .filter(([keys]) => keys.length > 0),
+  );
+});
+
+// Esc clears the keyboard cursor (overlays handle their own Esc).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && selectedId && !keyOverlayOpen() && !(e.target as HTMLElement).closest(".xterm")) {
+    selectRow(null);
+  }
+});
 
 void listen<Snapshot>("sessions-updated", (event) => applySnapshot(event.payload));
 

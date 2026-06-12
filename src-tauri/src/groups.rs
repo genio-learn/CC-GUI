@@ -48,6 +48,16 @@ pub struct ProjectGroup {
     pub sessions: Vec<SessionRow>,
 }
 
+/// Full uuid for a project id. `ProjectId`'s `Display` truncates to 8 chars
+/// (and unlike `SessionId` it has no `as_uuid` accessor), but the frontend
+/// must round-trip ids through `parse_project_id`, which needs the full uuid.
+fn project_uuid(id: &claude_commander::session::ProjectId) -> String {
+    serde_json::to_value(id)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| id.to_string())
+}
+
 /// Snapshot projects + sessions from the shared state store. Agent states are
 /// filled by the caller (the polling loop has the detector; the initial
 /// `get_groups` call reports "unknown" and lets the next tick correct it).
@@ -71,10 +81,8 @@ pub async fn build_groups(
 
     let mut groups: Vec<ProjectGroup> = Vec::with_capacity(projects.len());
     for p in projects {
-        let project_sessions: Vec<&claude_commander::session::WorktreeSession> = sessions
-            .iter()
-            .filter(|s| s.project_id == p.id)
-            .collect();
+        let project_sessions: Vec<&claude_commander::session::WorktreeSession> =
+            sessions.iter().filter(|s| s.project_id == p.id).collect();
         let mut rows = Vec::with_capacity(project_sessions.len());
         for (s, stacked_child) in session_display_order(&project_sessions) {
             let agent_state = match detect.as_deref_mut() {
@@ -109,7 +117,7 @@ pub async fn build_groups(
             });
         }
         groups.push(ProjectGroup {
-            id: p.id.to_string(),
+            id: project_uuid(&p.id),
             name: p.name.clone(),
             repo_path: p.repo_path.to_string_lossy().to_string(),
             pull_blocked: crate::polling::PULL_BLOCKED
@@ -149,7 +157,10 @@ fn session_display_order<'a>(
     let mut out = Vec::new();
     for root in roots {
         out.push((root, false));
-        let mut to_visit: Vec<_> = children_by_parent.get(&root.id).cloned().unwrap_or_default();
+        let mut to_visit: Vec<_> = children_by_parent
+            .get(&root.id)
+            .cloned()
+            .unwrap_or_default();
         to_visit.reverse();
         while let Some(next) = to_visit.pop() {
             out.push((next, true));

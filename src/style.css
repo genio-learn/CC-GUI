@@ -62,6 +62,15 @@ body {
   color: #89b4fa;
 }
 
+.project-header.collapsible {
+  cursor: pointer;
+}
+
+.chevron {
+  color: #6c7086;
+  font-size: 9px;
+}
+
 .view-bar {
   display: flex;
   align-items: center;
@@ -90,6 +99,11 @@ body {
 
 .session-row.active {
   background: #45475a;
+}
+
+.session-row.selected {
+  outline: 1px solid #89b4fa;
+  outline-offset: -1px;
 }
 
 .session-row.attached .title {
@@ -468,6 +482,122 @@ body {
 
 .settings-grid input[type="checkbox"] {
   justify-self: start;
+}
+
+/* --------------------------------------------------------- panel resizers */
+
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.panel-resizer.right {
+  right: -3px;
+}
+
+.panel-resizer.left {
+  left: -3px;
+}
+
+.panel-resizer:hover {
+  background: rgba(137, 180, 250, 0.35);
+}
+
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.resizing .panel-resizer {
+  background: rgba(137, 180, 250, 0.35);
+}
+
+/* ----------------------------------------------------- toasts + confirm */
+
+#toast-stack {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 380px;
+}
+
+.toast {
+  background: #181825;
+  border: 1px solid #45475a;
+  border-left: 3px solid #89b4fa;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  white-space: pre-wrap;
+  transition: opacity 0.3s;
+}
+
+.toast.error {
+  border-left-color: #f38ba8;
+  color: #f38ba8;
+}
+
+.toast.fade {
+  opacity: 0;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-box {
+  width: 380px;
+  background: #181825;
+  border: 1px solid #45475a;
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.confirm-text {
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin-bottom: 14px;
+}
+
+.confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-buttons button {
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #cdd6f4;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 12px;
+}
+
+.confirm-buttons button:hover {
+  border-color: #6c7086;
+}
+
+.confirm-buttons button.danger {
+  color: #f38ba8;
+  border-color: #f38ba8;
 }
 
 /* ------------------------------------------------------------ context menu */

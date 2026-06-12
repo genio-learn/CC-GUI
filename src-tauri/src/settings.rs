@@ -9,6 +9,15 @@ pub async fn get_config() -> Result<serde_json::Value, String> {
     serde_json::to_value(svc.read_config()).map_err(|e| e.to_string())
 }
 
+/// The keybinding table from the claude-commander config, as
+/// `{ action_name: ["k", "Ctrl-p", ...] }` (the same serialization as the
+/// `[keybindings]` TOML section). The frontend maps these onto GUI actions.
+#[tauri::command]
+pub async fn get_keybindings() -> Result<serde_json::Value, String> {
+    let svc = service().await?;
+    serde_json::to_value(svc.read_config().keybindings).map_err(|e| e.to_string())
+}
+
 /// Replace the full config with the given JSON (the frontend round-trips the
 /// object from `get_config`). Returns whether a restart is required for some
 /// changes to take effect.

@@ -1,0 +1,140 @@
+// Keybindings driven by the claude-commander config: the backend serves the
+// `[keybindings]` table ("Ctrl-"/"Alt-"/"Shift-" prefixes + key name, the
+// TUI's format) and we dispatch the actions the GUI supports.
+
+import { invoke } from "@tauri-apps/api/core";
+
+type ParsedBinding = {
+  ctrl: boolean;
+  alt: boolean;
+  /** null for single-char keys: the char itself encodes shift ("N", "?"). */
+  shift: boolean | null;
+  /** KeyboardEvent.key value to match. */
+  key: string;
+};
+
+/** Crossterm key names → KeyboardEvent.key values. */
+const NAMED_KEYS: Record<string, string> = {
+  enter: "Enter",
+  esc: "Escape",
+  tab: "Tab",
+  backtab: "Tab", // browser reports Shift+Tab as Tab+shiftKey
+  backspace: "Backspace",
+  space: " ",
+  up: "ArrowUp",
+  down: "ArrowDown",
+  left: "ArrowLeft",
+  right: "ArrowRight",
+  pageup: "PageUp",
+  pagedown: "PageDown",
+  home: "Home",
+  end: "End",
+  delete: "Delete",
+  insert: "Insert",
+};
+
+function parseBinding(s: string): ParsedBinding | null {
+  let rest = s.trim();
+  let ctrl = false;
+  let alt = false;
+  let shift = false;
+  for (;;) {
+    const lower = rest.toLowerCase();
+    if (lower.startsWith("ctrl-")) {
+      ctrl = true;
+      rest = rest.slice(5);
+    } else if (lower.startsWith("alt-")) {
+      alt = true;
+      rest = rest.slice(4);
+    } else if (lower.startsWith("shift-")) {
+      shift = true;
+      rest = rest.slice(6);
+    } else {
+      break;
+    }
+  }
+  const lower = rest.toLowerCase();
+  if (lower in NAMED_KEYS) {
+    return { ctrl, alt, shift: shift || lower === "backtab", key: NAMED_KEYS[lower] };
+  }
+  if (/^f\d{1,2}$/.test(lower)) {
+    return { ctrl, alt, shift, key: `F${lower.slice(1)}` };
+  }
+  if ([...rest].length === 1) {
+    // Single char: e.key already reflects shift ("N", "?"), so don't also
+    // require the modifier bit the TUI stores alongside it.
+    return { ctrl, alt, shift: null, key: rest };
+  }
+  return null;
+}
+
+function matches(b: ParsedBinding, e: KeyboardEvent): boolean {
+  if (e.metaKey || e.ctrlKey !== b.ctrl || e.altKey !== b.alt) return false;
+  if (b.shift !== null && e.shiftKey !== b.shift) return false;
+  return e.key === b.key;
+}
+
+/** Raw action → key-strings table, for the help overlay. */
+export let loadedBindings: Record<string, string[]> = {};
+
+/** True when the event target is somewhere that owns its own keyboard. */
+function isTyping(e: KeyboardEvent): boolean {
+  const t = e.target as HTMLElement | null;
+  if (!t) return false;
+  if (t.isContentEditable) return true;
+  const tag = t.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  // A button/link keeps focus after a click; without this, Enter (=select)
+  // would fire both the button's native activation and the keybinding, and a
+  // bare letter would trigger its action against the focused control.
+  if (tag === "BUTTON" || tag === "A" || t.closest("button")) return true;
+  return t.closest(".xterm") !== null;
+}
+
+export function overlayOpen(): boolean {
+  return (
+    document.querySelector("#palette:not(.hidden)") !== null ||
+    document.querySelector("#help-overlay:not(.hidden)") !== null ||
+    document.querySelector("#settings-overlay:not(.hidden)") !== null ||
+    document.querySelector("#review:not(.hidden)") !== null ||
+    document.querySelector(".confirm-overlay") !== null ||
+    document.querySelector(".context-menu") !== null
+  );
+}
+
+/**
+ * Fetch the config's keybindings and dispatch the actions in `actions`.
+ * Actions the GUI doesn't support are simply not registered. Returns whether
+ * the table loaded (callers may install fallbacks when it didn't).
+ */
+export async function initKeybindings(actions: Record<string, () => void>): Promise<boolean> {
+  let raw: Record<string, string[]>;
+  try {
+    raw = await invoke<Record<string, string[]>>("get_keybindings");
+  } catch {
+    return false; // no keybinds; everything stays mouse-reachable
+  }
+  loadedBindings = raw;
+
+  const table: { binding: ParsedBinding; handler: () => void }[] = [];
+  for (const [action, keys] of Object.entries(raw)) {
+    const handler = actions[action];
+    if (!handler) continue;
+    for (const k of keys) {
+      const binding = parseBinding(k);
+      if (binding) table.push({ binding, handler });
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (isTyping(e) || overlayOpen()) return;
+    for (const { binding, handler } of table) {
+      if (matches(binding, e)) {
+        e.preventDefault();
+        handler();
+        return;
+      }
+    }
+  });
+  return true;
+}

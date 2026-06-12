@@ -36,6 +36,7 @@ fn main() {
             sessions::restart_fresh,
             commander::prepare_commander,
             settings::get_config,
+            settings::get_keybindings,
             settings::save_config,
             cascade::cascade_merge,
             cascade::cascade_resume,

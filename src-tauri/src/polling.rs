@@ -54,7 +54,11 @@ fn spawn_pr_loop() {
 }
 
 async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
-    let sessions: Vec<(claude_commander::session::SessionId, String, std::path::PathBuf)> = {
+    let sessions: Vec<(
+        claude_commander::session::SessionId,
+        String,
+        std::path::PathBuf,
+    )> = {
         let state = svc.store().read().await;
         state
             .sessions
@@ -132,12 +136,7 @@ async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
             .sessions
             .values()
             .filter(|s| s.status == claude_commander::session::SessionStatus::Running)
-            .map(|s| {
-                (
-                    s.tmux_session_name.clone(),
-                    svc.status_bar_info(s, &state),
-                )
-            })
+            .map(|s| (s.tmux_session_name.clone(), svc.status_bar_info(s, &state)))
             .collect()
     };
     for (tmux_name, info) in &updates {
@@ -162,32 +161,21 @@ fn spawn_project_pull_loop() {
                     state
                         .projects
                         .values()
-                        .map(|p| {
-                            (
-                                p.id.to_string(),
-                                p.repo_path.clone(),
-                                p.main_branch.clone(),
-                            )
-                        })
+                        .map(|p| (p.id.to_string(), p.repo_path.clone(), p.main_branch.clone()))
                         .collect()
                 };
                 let due: Vec<_> = projects
                     .into_iter()
-                    .filter(|(id, _, _)| {
-                        last_pull
-                            .get(id)
-                            .is_none_or(|t| t.elapsed() >= interval)
-                    })
+                    .filter(|(id, _, _)| last_pull.get(id).is_none_or(|t| t.elapsed() >= interval))
                     .collect();
-                let outcomes: Vec<(String, PullOutcome)> = futures::stream::iter(
-                    due.into_iter().map(|(id, path, main)| async move {
+                let outcomes: Vec<(String, PullOutcome)> =
+                    futures::stream::iter(due.into_iter().map(|(id, path, main)| async move {
                         let outcome = run_project_pull(&path, &main).await;
                         (id, outcome)
-                    }),
-                )
-                .buffer_unordered(PULL_FANOUT_CONCURRENCY)
-                .collect()
-                .await;
+                    }))
+                    .buffer_unordered(PULL_FANOUT_CONCURRENCY)
+                    .collect()
+                    .await;
                 for (id, outcome) in outcomes {
                     last_pull.insert(id.clone(), std::time::Instant::now());
                     let mut blocked = PULL_BLOCKED.lock().unwrap();

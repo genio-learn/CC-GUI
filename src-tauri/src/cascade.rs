@@ -21,8 +21,7 @@ async fn detect_states(svc: &CommanderService) -> HashMap<SessionId, AgentState>
             .map(|s| (s.id, s.tmux_session_name.clone()))
             .collect()
     };
-    let mut detector =
-        AgentStateDetector::new(svc.session_manager().tmux.clone(), Duration::ZERO);
+    let mut detector = AgentStateDetector::new(svc.session_manager().tmux.clone(), Duration::ZERO);
     let mut map = HashMap::new();
     for (id, tmux_name) in sessions {
         map.insert(id, detector.detect(&tmux_name).await);
@@ -74,10 +73,8 @@ pub async fn cascade_resume() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn cascade_abandon() -> Result<(), String> {
-    with_service(move |svc| async move {
-        svc.cascade_abandon().await.map_err(|e| e.to_string())
-    })
-    .await
+    with_service(move |svc| async move { svc.cascade_abandon().await.map_err(|e| e.to_string()) })
+        .await
 }
 
 #[tauri::command]

@@ -3,6 +3,7 @@
 // round-trips the whole object through save_config (serde-validated).
 
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "./toast";
 
 const overlay = document.createElement("div");
 overlay.id = "settings-overlay";
@@ -61,7 +62,7 @@ function collect(): Record<string, ConfigValue> | null {
       case "number": {
         const n = Number(el.value);
         if (Number.isNaN(n)) {
-          alert(`${key}: not a number`);
+          toast(`${key}: not a number`, "error");
           return null;
         }
         out[key] = n;
@@ -77,7 +78,7 @@ function collect(): Record<string, ConfigValue> | null {
         try {
           out[key] = JSON.parse(el.value);
         } catch (e) {
-          alert(`${key}: invalid JSON — ${e}`);
+          toast(`${key}: invalid JSON — ${e}`, "error");
           return null;
         }
         break;
@@ -128,10 +129,10 @@ async function saveSettings(): Promise<void> {
     const restartRequired = await invoke<boolean>("save_config", { config });
     closeSettings();
     if (restartRequired) {
-      alert("Saved. Some changes take effect after restarting the app.");
+      toast("Saved. Some changes take effect after restarting the app.");
     }
   } catch (e) {
-    alert(`save failed: ${e}`);
+    toast(`save failed: ${e}`, "error");
   }
 }
 
@@ -139,7 +140,7 @@ export async function openSettings(): Promise<void> {
   try {
     current = await invoke<Record<string, ConfigValue>>("get_config");
   } catch (e) {
-    alert(`failed to load config: ${e}`);
+    toast(`failed to load config: ${e}`, "error");
     return;
   }
   render();
