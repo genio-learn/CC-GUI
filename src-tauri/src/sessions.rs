@@ -139,6 +139,29 @@ pub async fn prepare_attach(id: String) -> Result<(), String> {
             .get_attach_command(&id)
             .await
             .map(|_| ())
+            .map_err(|e| e.to_string())?;
+        // Attaching clears the unread flag, mirroring the TUI.
+        let _ = svc
+            .store()
+            .mutate(move |state| {
+                if let Some(s) = state.get_session_mut(&id) {
+                    s.unread = false;
+                }
+            })
+            .await;
+        Ok(())
+    })
+    .await
+}
+
+/// Restart a crashed session fresh by tmux name (used by the frontend's
+/// auto-restart-on-end path, mirroring the TUI's crash-loop handling).
+#[tauri::command]
+pub async fn restart_fresh(tmux_session: String) -> Result<(), String> {
+    with_service(move |svc| async move {
+        svc.session_manager()
+            .restart_session_fresh_by_tmux_name(&tmux_session)
+            .await
             .map_err(|e| e.to_string())
     })
     .await

@@ -18,3 +18,6 @@ uuid = "1"
 # Spike shortcut: path dependency on the local checkout. Switch to a pinned
 # git dependency (rev = "...") once the spike settles — see PLAN.md.
 claude-commander = { path = "../../claude-commander" }
+futures = "0.3.32"
+tracing = "0.1.44"
+chrono = "0.4.45"

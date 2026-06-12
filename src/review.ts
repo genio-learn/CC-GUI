@@ -55,6 +55,90 @@ type ApplyOutcome =
   | { outcome: "applied"; path: string; count: number }
   | { outcome: "deferred"; path: string; count: number };
 
+// ------------------------------------------------------- syntax highlighting
+
+type ThemedToken = { content: string; color?: string };
+
+const EXT_LANG: Record<string, string> = {
+  rs: "rust",
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  mjs: "javascript",
+  py: "python",
+  go: "go",
+  rb: "ruby",
+  java: "java",
+  kt: "kotlin",
+  swift: "swift",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  hpp: "cpp",
+  cs: "csharp",
+  css: "css",
+  scss: "scss",
+  html: "html",
+  json: "json",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  md: "markdown",
+  sh: "shellscript",
+  bash: "shellscript",
+  zsh: "shellscript",
+  sql: "sql",
+  xml: "xml",
+  vue: "vue",
+  svelte: "svelte",
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let highlighterPromise: Promise<any> | null = null;
+
+function getHighlighter() {
+  highlighterPromise ??= import("shiki").then((shiki) =>
+    shiki.createHighlighter({ themes: ["catppuccin-mocha"], langs: [] }),
+  );
+  return highlighterPromise;
+}
+
+/** Per-file token cache: hunk index → line index → tokens. Reset on refresh. */
+const tokenCache = new Map<string, ThemedToken[][][] | null>();
+
+/**
+ * Tokenize a file's hunks with shiki (language from the extension). Each hunk
+ * is highlighted as one block so multi-line constructs mostly survive; the
+ * missing cross-hunk context is an accepted approximation. Returns null when
+ * the language is unknown or shiki fails — callers fall back to plain text.
+ */
+async function prepareHighlights(file: FileDiff): Promise<void> {
+  const path = displayPath(file);
+  if (tokenCache.has(path)) return;
+  const ext = path.split(".").pop() ?? "";
+  const lang = EXT_LANG[ext];
+  if (!lang) {
+    tokenCache.set(path, null);
+    return;
+  }
+  try {
+    const hl = await getHighlighter();
+    await hl.loadLanguage(lang);
+    const hunks = file.hunks.map((hunk) => {
+      const code = hunk.lines.map((l) => l.content).join("\n");
+      const result = hl.codeToTokens(code, { lang, theme: "catppuccin-mocha" });
+      const tokens = result.tokens as ThemedToken[][];
+      // Token rows must map 1:1 onto hunk lines; on any drift (e.g. line-
+      // ending normalization) fall back to plain text rather than misalign.
+      return tokens.length === hunk.lines.length ? tokens : [];
+    });
+    tokenCache.set(path, hunks);
+  } catch {
+    tokenCache.set(path, null);
+  }
+}
+
 const reviewEl = document.querySelector<HTMLDivElement>("#review")!;
 const titleEl = document.querySelector<HTMLSpanElement>("#review-title")!;
 const baseEl = document.querySelector<HTMLSpanElement>("#review-base")!;
@@ -112,6 +196,7 @@ async function refresh(): Promise<void> {
   }
   if (sessionId !== id) return; // closed or switched while loading
   snapshot = snap;
+  tokenCache.clear();
   baseEl.textContent = `vs ${snap.base}`;
   if (!snap.diff.files.some((f) => displayPath(f) === selectedFile)) {
     selectedFile = snap.diff.files.length ? displayPath(snap.diff.files[0]) : null;
@@ -120,6 +205,18 @@ async function refresh(): Promise<void> {
   renderFiles();
   renderDiff();
   renderApply();
+  highlightCurrentFile();
+}
+
+/** Tokenize the selected file in the background, then re-render with color. */
+function highlightCurrentFile(): void {
+  const file = currentFile();
+  if (!file || tokenCache.has(displayPath(file))) return;
+  const path = displayPath(file);
+  void prepareHighlights(file).then(() => {
+    // Still looking at the same file once tokens are ready?
+    if (selectedFile === path && tokenCache.get(path)) renderDiff();
+  });
 }
 
 export function closeReview(): void {
@@ -199,6 +296,7 @@ function renderFiles(): void {
       clearSelection();
       renderFiles();
       renderDiff();
+      highlightCurrentFile();
     });
     filesEl.appendChild(row);
   }
@@ -360,10 +458,11 @@ function renderDiff(): void {
   const selStart = selection ? Math.min(selection.anchor, selection.head) : -1;
   const selEnd = selection ? Math.max(selection.anchor, selection.head) : -1;
   const flatLines: DiffLine[] = file.hunks.flatMap((h) => h.lines);
+  const fileTokens = tokenCache.get(displayPath(file)) ?? null;
   let idx = 0;
   let editorAnchorRow: HTMLDivElement | null = null;
 
-  for (const hunk of file.hunks) {
+  for (const [hunkIdx, hunk] of file.hunks.entries()) {
     const header = document.createElement("div");
     header.className = "hunk-header";
     header.textContent =
@@ -371,7 +470,7 @@ function renderDiff(): void {
       (hunk.header ? ` ${hunk.header}` : "");
     diffEl.appendChild(header);
 
-    for (const line of hunk.lines) {
+    for (const [lineInHunk, line] of hunk.lines.entries()) {
       const lineIdx = idx++;
       const row = document.createElement("div");
       row.className = `diff-line diff-${line.origin}`;
@@ -387,7 +486,21 @@ function renderDiff(): void {
       const marker = { context: " ", addition: "+", deletion: "-" }[line.origin];
       const content = document.createElement("span");
       content.className = "line-content";
-      content.textContent = `${marker}${line.content}`;
+      const tokens = fileTokens?.[hunkIdx]?.[lineInHunk];
+      if (tokens) {
+        // Syntax colors on token spans; the add/delete signal stays on the
+        // row background (plain diff colors remain the un-highlighted
+        // fallback via CSS).
+        content.textContent = marker;
+        for (const t of tokens) {
+          const span = document.createElement("span");
+          span.textContent = t.content;
+          if (t.color) span.style.color = t.color;
+          content.appendChild(span);
+        }
+      } else {
+        content.textContent = `${marker}${line.content}`;
+      }
 
       row.append(oldNo, newNo, content);
       row.addEventListener("click", (e) => {

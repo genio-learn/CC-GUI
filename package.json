@@ -12,7 +12,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0"
+    "@xterm/xterm": "^5.5.0",
+    "shiki": "^4.2.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

@@ -1,21 +1,28 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cascade;
+mod commander;
 mod groups;
+mod polling;
 mod projects;
 mod pty;
 mod review;
 mod service;
 mod sessions;
+mod settings;
 
 fn main() {
     tauri::Builder::default()
         .manage(pty::PtyState::default())
         .setup(|app| {
             groups::spawn_sessions_loop(app.handle().clone());
+            polling::spawn_polling_loops();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             groups::get_groups,
+            groups::set_view_mode,
+            groups::move_to_section,
             sessions::get_session_detail,
             sessions::generate_summary,
             sessions::create_session,
@@ -26,6 +33,14 @@ fn main() {
             sessions::merged_pr_sessions,
             sessions::prepare_attach,
             sessions::prepare_shell,
+            sessions::restart_fresh,
+            commander::prepare_commander,
+            settings::get_config,
+            settings::save_config,
+            cascade::cascade_merge,
+            cascade::cascade_resume,
+            cascade::cascade_abandon,
+            cascade::push_stack,
             projects::add_project,
             projects::scan_directory,
             projects::remove_project,
