@@ -24,25 +24,37 @@ jobs:
     name: Rust format
     runs-on: ubuntu-latest
     steps:
-      # CC-GUI depends on claude-commander via a local path
-      # (src-tauri/Cargo.toml: `../../claude-commander`), so the two repos must
-      # sit side by side for cargo to resolve the dependency graph.
       - uses: actions/checkout@v4
-        with:
-          path: CC-GUI
-      - uses: actions/checkout@v4
-        with:
-          repository: sizeak/claude-commander
-          path: claude-commander
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - name: Check formatting
-        working-directory: CC-GUI/src-tauri
+        working-directory: src-tauri
         run: cargo fmt --all -- --check
 
-  # NOTE: clippy + a full `cargo build`/Tauri bundle are intentionally not run
-  # yet. They require compiling the Tauri stack (webkit2gtk system deps) and a
-  # resolved claude-commander. Once the path dependency is pinned to a git rev
-  # (see src-tauri/Cargo.toml), add a `clippy` job that installs the Tauri
-  # Linux deps and runs `cargo clippy --all-targets -- -D warnings`.
+  clippy:
+    name: Rust clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev \
+            libayatana-appindicator3-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # tauri-build expects the frontend dist to exist when the crate compiles.
+      - run: npm ci
+      - run: npm run build
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Run clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings

@@ -23,31 +23,20 @@ It embeds `claude-commander` directly (as a library) and drives the same tmux-ba
 | **Node.js** | Builds the frontend | [nodejs.org](https://nodejs.org) (or nvm) |
 | **tmux** | `claude-commander` runs every session in a tmux session | `brew install tmux` |
 | **`claude` CLI** | The default program each session launches | [Claude Code](https://claude.com/claude-code) |
-| **`claude-commander` checkout** | Used as a local path dependency (see below) | clone as a sibling directory |
 
-### Repo layout
-
-`src-tauri/Cargo.toml` depends on `claude-commander` via a **local path** (`../../claude-commander`), so the two repos must sit side by side:
-
-```
-your-workspace/
-├── CC-GUI/              # this repo
-└── claude-commander/    # cloned alongside it
-```
-
-```sh
-git clone git@github.com:Ed-Barnes937/CC-GUI.git
-git clone git@github.com:sizeak/claude-commander.git
-```
+`claude-commander` itself is a pinned git dependency — Cargo fetches it automatically, so no separate checkout is required (unless you want to develop against a local copy; see [Setup](#setup)).
 
 ## Setup
 
 ```sh
+git clone git@github.com:Ed-Barnes937/CC-GUI.git
 cd CC-GUI
 npm install
 ```
 
-That's it — the Rust side is fetched and compiled on first build.
+That's it. `claude-commander` is a pinned git dependency, so Cargo fetches it on the first build — no separate checkout needed.
+
+> **Developing against a local `claude-commander`?** Copy `.cargo/config.toml.example` to `.cargo/config.toml` (gitignored) and place your checkout at `../claude-commander`. Cargo will then build against your local copy instead of the pinned release. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Running
 
@@ -72,13 +61,12 @@ Then launch **CC-GUI** from Finder / Spotlight / Launchpad like any other app. T
 | `npm run tauri dev` | Run the app in development with hot reload. |
 | `npm run app:build` | Build the bundles (`.app` + `.dmg`) under `src-tauri/target/release/bundle/`. |
 | `npm run app:install` | Build **and** (re)install into `/Applications`. Idempotent — use it for first install **and** every update. |
-| `npm run cc:pull` | Pull the latest `claude-commander` into the sibling checkout (fast-forward only). |
-| `npm run cc:update` | `cc:pull` **then** `app:install` — update to the newest `claude-commander` and reinstall in one step. |
+| `npm run typecheck` | Type-check the frontend (`tsc --noEmit`). |
 
 ## Updating
 
 - **GUI changes** → `npm run app:install`, then relaunch the app.
-- **Newer `claude-commander`** → `npm run cc:update` (pulls latest CC source, rebuilds, reinstalls). Because CC is a path dependency, Cargo recompiles it from source — no version bump needed.
+- **Newer `claude-commander`** → bump the `tag` in `src-tauri/Cargo.toml` to the desired release, run `cargo update -p claude-commander` (from `src-tauri/`), then `npm run app:install`. Pinning to a tag means you adopt new CC releases deliberately.
 
 After any reinstall, fully quit the running app (`Cmd+Q`) before relaunching so you pick up the new binary.
 

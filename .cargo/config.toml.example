@@ -1,0 +1,12 @@
+# Local development override.
+#
+# By default CC-GUI builds against a pinned claude-commander release (the `git`
+# + `tag` dependency in src-tauri/Cargo.toml). To develop against a local
+# checkout instead — so edits to claude-commander show up here immediately —
+# copy this file to `.cargo/config.toml` (which is gitignored) and put your
+# checkout at ../claude-commander (a sibling of this repo).
+#
+# Cargo then transparently substitutes the local crate for the git dependency,
+# with no Cargo.toml change. The local checkout's version must match the pinned
+# tag's version, or Cargo ignores the override with a warning.
+paths = ["../claude-commander"]

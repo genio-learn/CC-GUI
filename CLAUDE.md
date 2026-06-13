@@ -14,7 +14,7 @@ and exposes its functionality through a native window. See
 - `npm run typecheck` — `tsc --noEmit` (no-emit type check of the frontend)
 - `npm run build` — type-check + Vite build of the frontend
 - `npm run app:install` — build a release bundle and (re)install to `/Applications` (macOS)
-- `cargo fmt --all` / `cargo clippy` — run from `src-tauri/` (needs the sibling `claude-commander` checkout)
+- `cargo fmt --all` / `cargo clippy` — run from `src-tauri/`
 
 ## Architecture
 
@@ -76,10 +76,12 @@ in `src/help.ts` (the `?` overlay) and the keyboard table in `README.md`.
 - Branch names: lowercase with hyphens, no slashes (e.g. `fix-terminal-path`).
 - Commit signing is on (SSH/1Password) — don't disable it.
 
-## Known caveat: the path dependency
+## The claude-commander dependency
 
-`src-tauri/Cargo.toml` depends on `claude-commander` via a local path
-(`../../claude-commander`). This keeps the GUI live against local CC changes but
-is **not reproducible** without the sibling checkout and pins no version. The
-in-file comment flags switching to a pinned git dependency; revisit before any
-wider distribution.
+`src-tauri/Cargo.toml` pins `claude-commander` to a release **tag** via a git
+dependency, so `Cargo.lock` records an exact commit (reproducible) and no
+sibling checkout is needed. To build against a local checkout for live CC
+development, copy `.cargo/config.toml.example` to `.cargo/config.toml`
+(gitignored) with `paths = ["../claude-commander"]`. To adopt a newer CC
+release, bump the `tag` and run `cargo update -p claude-commander` — see
+[CONTRIBUTING.md](CONTRIBUTING.md).

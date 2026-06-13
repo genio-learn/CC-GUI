@@ -564,6 +564,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 [[package]]
 name = "claude-commander"
 version = "0.15.0"
+source = "git+https://github.com/sizeak/claude-commander?tag=v0.15.0#194bf549dc872fa80eec517cfb48b296ca0141a9"
 dependencies = [
  "ansi-to-tui",
  "anyhow",

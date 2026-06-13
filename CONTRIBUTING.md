@@ -8,17 +8,11 @@ what's expected on a pull request. Architecture and coding conventions live in
 
 CC-GUI is a [Tauri 2](https://tauri.app) app (Rust backend + TypeScript/Vite
 frontend) that depends on [`claude-commander`](https://github.com/sizeak/claude-commander)
-via a **local path** dependency, so the two repos must sit side by side:
-
-```
-your-workspace/
-├── CC-GUI/              # this repo
-└── claude-commander/    # cloned alongside it
-```
+as a **pinned git dependency** — Cargo fetches it on the first build, so no
+separate checkout is required.
 
 ```sh
 git clone git@github.com:Ed-Barnes937/CC-GUI.git
-git clone git@github.com:sizeak/claude-commander.git
 cd CC-GUI
 npm install
 ```
@@ -26,6 +20,21 @@ npm install
 You'll also need: the **Rust toolchain** ([rustup](https://rustup.rs)),
 **Node.js**, **tmux** (`brew install tmux`), and the **`claude` CLI**. See the
 [README](README.md#prerequisites) for the full prerequisite table.
+
+### Developing against a local claude-commander
+
+If you're changing `claude-commander` alongside CC-GUI and want those edits to
+build here immediately, copy the example override and place your checkout at
+`../claude-commander`:
+
+```sh
+cp .cargo/config.toml.example .cargo/config.toml   # gitignored
+git clone git@github.com:sizeak/claude-commander.git ../claude-commander
+```
+
+Cargo then substitutes your local crate for the pinned git dependency, with no
+`Cargo.toml` change. Your checkout's version must match the pinned tag's version
+or Cargo ignores the override.
 
 ## Dev loop
 
@@ -35,8 +44,7 @@ npm run typecheck      # tsc --noEmit
 npm run app:install    # build a release bundle and install to /Applications (macOS)
 ```
 
-Rust checks run from `src-tauri/` (they need the sibling `claude-commander`
-checkout to resolve the dependency graph):
+Rust checks run from `src-tauri/`:
 
 ```sh
 cd src-tauri
@@ -55,7 +63,8 @@ Before opening a PR, make sure:
   (the `?` overlay) and the keyboard table in `README.md`.
 - Changes to theming stay consistent with [`docs/theming.md`](docs/theming.md).
 
-CI runs the frontend type-check + build and a Rust format check on every PR.
+CI runs the frontend type-check + build, a Rust format check, and clippy
+(`-D warnings`) on every PR.
 
 ### Conventions
 
@@ -64,9 +73,15 @@ CI runs the frontend type-check + build and a Rust format check on every PR.
 - Match the style of the surrounding code; keep Tauri command handlers thin and
   push testable logic into library code (see [CLAUDE.md](CLAUDE.md)).
 
-## Known caveat: the path dependency
+## Updating the claude-commander dependency
 
-The `claude-commander` path dependency keeps the GUI live against local CC
-changes but isn't reproducible without the sibling checkout and pins no version.
-Switching it to a pinned git dependency is the planned follow-up before any
-wider distribution — see the comment in `src-tauri/Cargo.toml`.
+CC-GUI pins `claude-commander` to a release tag in `src-tauri/Cargo.toml`. To
+adopt a newer release, bump the `tag`, then refresh the lockfile:
+
+```sh
+cd src-tauri
+cargo update -p claude-commander
+```
+
+Commit the `Cargo.toml` + `Cargo.lock` change together so the pinned commit is
+recorded.

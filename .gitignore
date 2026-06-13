@@ -7,3 +7,6 @@ src-tauri/gen/
 
 # Local working plan (not published)
 docs/PLAN.md
+
+# Local dependency override (copy from .cargo/config.toml.example)
+.cargo/config.toml
