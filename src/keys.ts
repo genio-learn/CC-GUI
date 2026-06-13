@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-type ParsedBinding = {
+export type ParsedBinding = {
   ctrl: boolean;
   alt: boolean;
   /** null for single-char keys: the char itself encodes shift ("N", "?"). */
@@ -33,7 +33,7 @@ const NAMED_KEYS: Record<string, string> = {
   insert: "Insert",
 };
 
-function parseBinding(s: string): ParsedBinding | null {
+export function parseBinding(s: string): ParsedBinding | null {
   let rest = s.trim();
   let ctrl = false;
   let alt = false;
@@ -68,7 +68,7 @@ function parseBinding(s: string): ParsedBinding | null {
   return null;
 }
 
-function matches(b: ParsedBinding, e: KeyboardEvent): boolean {
+export function matches(b: ParsedBinding, e: KeyboardEvent): boolean {
   if (e.metaKey || e.ctrlKey !== b.ctrl || e.altKey !== b.alt) return false;
   if (b.shift !== null && e.shiftKey !== b.shift) return false;
   return e.key === b.key;

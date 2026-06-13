@@ -14,7 +14,7 @@ export function registerPaletteProvider(p: () => PaletteEntry[]): void {
   providers.push(p);
 }
 
-function score(query: string, text: string): number | null {
+export function score(query: string, text: string): number | null {
   const q = query.toLowerCase();
   const t = text.toLowerCase();
   let qi = 0;

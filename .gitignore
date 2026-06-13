@@ -5,6 +5,11 @@ src-tauri/gen/
 *.log
 .DS_Store
 
+# iwft (Playwright) artifacts
+.iwft/
+test-results/
+playwright-report/
+
 # Local working plan (not published)
 docs/PLAN.md
 
