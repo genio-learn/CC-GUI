@@ -1,8 +1,8 @@
 # Testing plan — CC-GUI
 
-Status: **in progress** — steps 1 (Vitest units), 2 (.iwft rig + ReviewPane POM), and 3 (all POMs) DONE & green. All 7 surfaces have POMs + scenarios: Review, Sidebar, Palette, ThemePicker, SettingsModal, Dialogs, Terminal.
-**Next action:** step 4 — wire both layers into CI (`npm test` + `npm run test-iwft`). Optional: `data-test` attribute rollout (POMs currently select existing ids/classes).
-Run: `npm test` (52 unit/spike) · `npm run test-iwft` (41 scenarios). Owner: GUI. Last updated: 2026-06-14.
+Status: ✅ **complete** — all 4 roadmap steps DONE & green. Vitest units + .iwft (7 surfaces) + CI workflow, all committed on the `tests` branch.
+**Optional follow-ups:** `data-test` attribute rollout (POMs currently select existing ids/classes); deeper terminal/PTY coverage.
+Run: `npm test` (52 unit/spike) · `npm run test-iwft` (41 scenarios). CI: `.github/workflows/tests.yml`. Owner: GUI. Last updated: 2026-06-14.
 
 ## Goal
 
@@ -266,8 +266,11 @@ top level), i.e. bundle it into a `page.addInitScript`. Not a capability risk.
      Cmd+W close; tab-close button; PTY-end auto-restart re-attaches a live tab).
      Sim captures the `attach` Channel and pushes bytes via `runCallback` (spike Q3);
      `emitPtyExit` drives the restart path. Kept shallow per the open-question lean.
-4. **CI** (next). Wire both layers into the pipeline: `npm test` then `npm run test-iwft`
-   (the latter needs the chromium browser + esbuild globalSetup).
+4. ✅ **DONE — CI.** `.github/workflows/tests.yml`: push-to-main + PR; `npm ci` →
+   Vitest units (fast gate) → `npx playwright install --with-deps chromium` →
+   `npm run test-iwft` against the Vite dev server. Frontend-only (no Rust toolchain);
+   uploads the Playwright report on failure. Config is already CI-aware
+   (`forbidOnly`/`retries`/`reuseExistingServer` gated on `process.env.CI`).
 
 ## Open questions
 

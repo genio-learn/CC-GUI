@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Frontend test layers only (Vitest units + .iwft). Both run on Node alone —
+# the .iwft layer boots the Vite frontend with the Tauri backend simulated, so
+# no Rust/Tauri toolchain is needed here.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fast gate: pure-logic unit tests fail in seconds before the heavier layer.
+      - name: Unit tests (Vitest)
+        run: npm test
+
+      # The .iwft layer drives a real browser; only chromium is used (see config).
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Isolated whole-frontend tests (.iwft)
+        run: npm run test-iwft
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
