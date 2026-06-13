@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "app:build": "tauri build",
+    "app:install": "tauri build && rm -rf /Applications/CC-GUI.app && cp -R src-tauri/target/release/bundle/macos/CC-GUI.app /Applications/ && echo 'Installed to /Applications/CC-GUI.app'",
+    "cc:pull": "git -C ../claude-commander pull --ff-only",
+    "cc:update": "npm run cc:pull && npm run app:install"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
