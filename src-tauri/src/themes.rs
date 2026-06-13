@@ -72,7 +72,11 @@ pub fn save_custom_theme(
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
         .collect();
-    let stem = if stem.is_empty() { "custom-theme" } else { &stem };
+    let stem = if stem.is_empty() {
+        "custom-theme"
+    } else {
+        &stem
+    };
     let path = dir.join(format!("{stem}.json"));
     let json = serde_json::to_string_pretty(&theme).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| format!("failed to write {}: {e}", path.display()))?;

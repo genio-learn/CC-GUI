@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  frontend:
+    name: Frontend (typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  rustfmt:
+    name: Rust format
+    runs-on: ubuntu-latest
+    steps:
+      # CC-GUI depends on claude-commander via a local path
+      # (src-tauri/Cargo.toml: `../../claude-commander`), so the two repos must
+      # sit side by side for cargo to resolve the dependency graph.
+      - uses: actions/checkout@v4
+        with:
+          path: CC-GUI
+      - uses: actions/checkout@v4
+        with:
+          repository: sizeak/claude-commander
+          path: claude-commander
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        working-directory: CC-GUI/src-tauri
+        run: cargo fmt --all -- --check
+
+  # NOTE: clippy + a full `cargo build`/Tauri bundle are intentionally not run
+  # yet. They require compiling the Tauri stack (webkit2gtk system deps) and a
+  # resolved claude-commander. Once the path dependency is pinned to a git rev
+  # (see src-tauri/Cargo.toml), add a `clippy` job that installs the Tauri
+  # Linux deps and runs `cargo clippy --all-targets -- -D warnings`.
