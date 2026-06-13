@@ -1,0 +1,251 @@
+// Page-side backend fake. esbuild bundles this to an IIFE that an addInitScript
+// runs before the app boots (see globalSetup + launchApp). It installs the real
+// Tauri mockIPC (proven in src/tauri-mock.spike.test.ts) and answers the command
+// surface from seeded, mutable in-memory state — a fake, not a mock: tests assert
+// on resulting state, not on which calls fired.
+
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
+import { confirmDialog, promptDialog } from "../../../toast";
+import type { Comment, ReviewSnapshot } from "../../../review/model";
+import type { Seed, SessionRow, Snapshot } from "./types.testHelper";
+
+type CreateCommentArgs = {
+  id: string;
+  file: string;
+  side: "old" | "new";
+  lineRange: [number, number];
+  snippet: string;
+  comment: string;
+};
+
+class TauriSimulator {
+  private snapshot: Snapshot;
+  private reviews: Record<string, ReviewSnapshot>;
+  private comments: Record<string, Comment[]>; // by session id
+  private config: Record<string, unknown>;
+  private keybindings: Record<string, string[]>;
+  private customThemes: unknown[];
+  private savedConfig: Record<string, unknown> | null = null;
+  // Per-tmux-session PTY byte channels captured from attach(), keyed by name.
+  private ptyChannels: Record<string, { channel: { id: number }; index: number }> = {};
+  private nextComment = 1;
+  private nextSession = 1;
+
+  constructor(seed: Seed) {
+    this.snapshot = seed.snapshot;
+    this.reviews = seed.reviews;
+    this.config = seed.config ?? {};
+    this.keybindings = seed.keybindings ?? {};
+    this.customThemes = seed.customThemes ?? [];
+    this.comments = {};
+    for (const [id, review] of Object.entries(seed.reviews)) {
+      this.comments[id] = [...review.comments];
+    }
+    this.handle = this.handle.bind(this);
+  }
+
+  /** The config last persisted via save_config — what a settings test asserts. */
+  getSavedConfig(): Record<string, unknown> | null {
+    return this.savedConfig;
+  }
+
+  // ----- assertion getters (called from tests via page.evaluate) -----
+  getComments(sessionId: string): Comment[] {
+    return this.comments[sessionId] ?? [];
+  }
+
+  /** Flattened live sessions across all groups — the state a sidebar test asserts. */
+  getSessions(): SessionRow[] {
+    return this.snapshot.groups.flatMap((g) => g.sessions);
+  }
+
+  getViewMode(): string {
+    return this.snapshot.view_mode;
+  }
+
+  // ----- event push (the backend's role; available for sidebar scenarios) -----
+  async pushSnapshot(snapshot: Snapshot): Promise<void> {
+    this.snapshot = snapshot;
+    await emit("sessions-updated", snapshot);
+  }
+
+  // ----- PTY byte stream (the backend writing to a terminal's Channel) -----
+  /** Push UTF-8 bytes to a session's attached terminal, as the backend's PTY would.
+   *  mockIPC keeps args un-serialized, so the captured onData is the real Channel;
+   *  runCallback drives its onmessage (proven in tauri-mock.spike.test.ts Q3). */
+  pushPtyBytes(name: string, bytes: number[]): void {
+    const entry = this.ptyChannels[name];
+    if (!entry) return;
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__: { runCallback: (id: number, msg: unknown) => void };
+    }).__TAURI_INTERNALS__;
+    internals.runCallback(entry.channel.id, { index: entry.index++, message: bytes });
+  }
+
+  /** Signal a PTY ended (or detached), as the backend's pty-exit event would. */
+  async emitPtyExit(name: string, ended: boolean): Promise<void> {
+    await emit("pty-exit", { session: name, ended });
+  }
+
+  // ----- the invoke surface -----
+  handle(cmd: string, args: Record<string, unknown>): unknown {
+    switch (cmd) {
+      case "get_groups":
+        return this.snapshot;
+      case "set_view_mode":
+        this.snapshot.view_mode = args.mode as string;
+        return null;
+      case "create_session":
+        return this.createSession(args.projectPath as string, args.title as string);
+      case "rename_session":
+        return this.renameSession(args.id as string, args.title as string);
+      case "delete_session":
+        return this.deleteSession(args.id as string);
+      case "merged_pr_sessions":
+        return this.mergedPrSessions();
+      // ----- PTY lifecycle (terminal tabs) -----
+      case "prepare_attach":
+        return null;
+      case "prepare_shell":
+        return `cc-${args.id as string}-sh`;
+      case "prepare_project_shell":
+        return `cc-${args.id as string}-proj-sh`;
+      case "attach":
+        this.ptyChannels[args.tmuxSession as string] = {
+          channel: args.onData as { id: number },
+          index: 0,
+        };
+        return null;
+      case "restart_fresh":
+      case "resize_pty":
+      case "write_pty":
+      case "detach":
+        return null;
+      case "list_custom_themes":
+        return this.customThemes;
+      case "get_keybindings":
+        return this.keybindings;
+      case "get_config":
+        return this.config;
+      case "save_config":
+        this.savedConfig = args.config as Record<string, unknown>;
+        return false; // restartRequired
+      case "open_review":
+        return this.openReview(args.id as string);
+      case "create_comment":
+        return this.createComment(args as unknown as CreateCommentArgs);
+      case "delete_comment":
+        return this.deleteComment(args.id as string, args.commentId as string);
+      case "apply_comments":
+        return this.applyComments(args.id as string);
+      default:
+        // Unhandled commands resolve to null rather than throwing, so an
+        // unstubbed call surfaces as a UI no-op, not a crashed boot.
+        console.warn(`[iwft] unhandled command: ${cmd}`);
+        return null;
+    }
+  }
+
+  // ----- sidebar mutations (frontend reads them back via refreshNow→get_groups) -----
+  private createSession(projectPath: string, title: string): null {
+    const group = this.snapshot.groups.find((g) => g.repo_path === projectPath);
+    if (!group) return null;
+    const id = `new-sess-${this.nextSession++}`;
+    group.sessions.push({
+      id,
+      title,
+      branch: `cc/${id}`,
+      status: "running",
+      program: "claude",
+      agent_state: "idle",
+      tmux_session_name: `cc-${id}`,
+      pr_number: null,
+      pr_url: null,
+      pr_state: null,
+      pr_draft: false,
+      pr_labels: [],
+      review_decision: null,
+      has_pending_comments: false,
+      unread: false,
+      stacked_child: false,
+      project_name: group.name,
+      current_section: null,
+    });
+    return null;
+  }
+
+  private renameSession(id: string, title: string): null {
+    for (const g of this.snapshot.groups) {
+      const s = g.sessions.find((row) => row.id === id);
+      if (s) s.title = title;
+    }
+    return null;
+  }
+
+  private deleteSession(id: string): null {
+    for (const g of this.snapshot.groups) {
+      g.sessions = g.sessions.filter((row) => row.id !== id);
+    }
+    return null;
+  }
+
+  /** [id, label] pairs for sessions whose PR has merged — the merged-PR sweep source. */
+  private mergedPrSessions(): [string, string][] {
+    return this.getSessions()
+      .filter((s) => s.pr_state === "merged")
+      .map((s) => [s.id, s.title]);
+  }
+
+  private openReview(id: string): ReviewSnapshot {
+    const review = this.reviews[id];
+    return { base: review.base, diff: review.diff, comments: this.comments[id] ?? [] };
+  }
+
+  private createComment(a: CreateCommentArgs): null {
+    const list = this.comments[a.id] ?? (this.comments[a.id] = []);
+    list.push({
+      id: `c${this.nextComment++}`,
+      file: a.file,
+      side: a.side,
+      line_range: a.lineRange,
+      snippet: a.snippet,
+      comment: a.comment,
+      status: "staged",
+      created_at: "2026-06-13T00:00:00Z",
+    });
+    return null;
+  }
+
+  private deleteComment(sessionId: string, commentId: string): null {
+    const list = this.comments[sessionId] ?? [];
+    this.comments[sessionId] = list.filter((c) => c.id !== commentId);
+    return null;
+  }
+
+  private applyComments(sessionId: string): unknown {
+    const list = this.comments[sessionId] ?? [];
+    const pending = list.filter((c) => c.status !== "applied");
+    if (!pending.length) return { outcome: "nothing" };
+    for (const c of pending) c.status = "applied";
+    return { outcome: "applied", path: "/repos/acme/.brief.md", count: pending.length };
+  }
+}
+
+declare global {
+  interface Window {
+    __CC_IWFT_SEED__: Seed;
+    __CC_SIM__: TauriSimulator;
+    /** The app's real confirm/prompt dialogs, exposed for the Dialogs POM to
+     *  drive directly (they're pure DOM + Promise, no trigger flow needed). */
+    __CC_DIALOGS__: { confirmDialog: typeof confirmDialog; promptDialog: typeof promptDialog };
+  }
+}
+
+const sim = new TauriSimulator(window.__CC_IWFT_SEED__);
+window.__CC_SIM__ = sim;
+window.__CC_DIALOGS__ = { confirmDialog, promptDialog };
+// metadata for getCurrentWindow() (main.ts wires onThemeChanged at module load);
+// mockIPC handles invoke + the event plugin.
+mockWindows("main");
+mockIPC(sim.handle, { shouldMockEvents: true });

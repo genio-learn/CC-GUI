@@ -1,61 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import { makeResizable } from "./resize";
 import { currentTheme, onThemeChange, type Theme } from "./theme";
-
-// Mirrors claude-commander's ReviewSnapshot (api.rs / git/review_diff.rs /
-// comment/mod.rs) — all snake_case via serde.
-
-type LineOrigin = "context" | "addition" | "deletion";
-
-type DiffLine = {
-  origin: LineOrigin;
-  old_lineno: number | null;
-  new_lineno: number | null;
-  content: string;
-};
-
-type Hunk = {
-  old_start: number;
-  old_lines: number;
-  new_start: number;
-  new_lines: number;
-  header: string;
-  lines: DiffLine[];
-};
-
-type FileStatus = "added" | "deleted" | "modified" | "renamed";
-
-type FileDiff = {
-  old_path: string;
-  new_path: string;
-  status: FileStatus;
-  added: number;
-  removed: number;
-  hunks: Hunk[];
-};
-
-type Comment = {
-  id: string;
-  file: string;
-  side: "old" | "new";
-  line_range: [number, number];
-  snippet: string;
-  comment: string;
-  status: "staged" | "drifted" | "applied";
-  created_at: string;
-};
-
-type ReviewSnapshot = {
-  base: string;
-  diff: { files: FileDiff[] };
-  comments: Comment[];
-};
-
-type ApplyOutcome =
-  | { outcome: "nothing" }
-  | { outcome: "blocked"; drifted: string[] }
-  | { outcome: "applied"; path: string; count: number }
-  | { outcome: "deferred"; path: string; count: number };
+import {
+  buildDraft,
+  commentsByAnchor,
+  describeOutcome,
+  displayPath,
+  STATUS_LETTER,
+  type ApplyOutcome,
+  type Comment,
+  type DiffLine,
+  type FileDiff,
+  type ReviewSnapshot,
+} from "./review/model";
 
 // ------------------------------------------------------- syntax highlighting
 
@@ -184,17 +141,6 @@ let selectedFile: string | null = null;
 let selection: { anchor: number; head: number } | null = null;
 let draftText = ""; // survives re-renders while extending the selection
 let applying = false;
-
-function displayPath(f: FileDiff): string {
-  return f.status === "deleted" ? f.old_path : f.new_path;
-}
-
-const STATUS_LETTER: Record<FileStatus, string> = {
-  added: "A",
-  deleted: "D",
-  modified: "M",
-  renamed: "R",
-};
 
 export async function openReview(id: string, title: string): Promise<void> {
   sessionId = id;
@@ -349,20 +295,6 @@ function renderFiles(): void {
 
 // ---------------------------------------------------------------- comments
 
-/** Comments anchored to a line: keyed by `${side}:${end-of-range lineno}`. */
-function commentsByAnchor(path: string): Map<string, Comment[]> {
-  const map = new Map<string, Comment[]>();
-  if (!snapshot) return map;
-  for (const c of snapshot.comments) {
-    if (c.file !== path) continue;
-    const key = `${c.side}:${c.line_range[1]}`;
-    const list = map.get(key) ?? [];
-    list.push(c);
-    map.set(key, list);
-  }
-  return map;
-}
-
 function renderCommentBlock(c: Comment): HTMLDivElement {
   const block = document.createElement("div");
   block.className = "review-comment";
@@ -412,19 +344,15 @@ async function deleteComment(commentId: string): Promise<void> {
 async function saveComment(lines: DiffLine[], comment: string): Promise<void> {
   const file = currentFile();
   if (!sessionId || !file || !comment.trim()) return;
-  const side = lines.some((l) => l.new_lineno !== null) ? "new" : "old";
-  const collected = lines
-    .map((l) => ({ n: side === "new" ? l.new_lineno : l.old_lineno, content: l.content }))
-    .filter((x): x is { n: number; content: string } => x.n !== null);
-  if (!collected.length) return;
-  const nums = collected.map((x) => x.n);
+  const draft = buildDraft(lines);
+  if (!draft) return;
   try {
     await invoke("create_comment", {
       id: sessionId,
       file: displayPath(file),
-      side,
-      lineRange: [Math.min(...nums), Math.max(...nums)],
-      snippet: collected.map((x) => x.content).join("\n"),
+      side: draft.side,
+      lineRange: draft.lineRange,
+      snippet: draft.snippet,
       comment: comment.trim(),
     });
   } catch (e) {
@@ -492,7 +420,7 @@ function renderDiff(): void {
     diffEl.appendChild(empty);
     return;
   }
-  const anchors = commentsByAnchor(displayPath(file));
+  const anchors = commentsByAnchor(snapshot.comments, displayPath(file));
 
   const selStart = selection ? Math.min(selection.anchor, selection.head) : -1;
   const selEnd = selection ? Math.max(selection.anchor, selection.head) : -1;
@@ -584,19 +512,6 @@ function renderApply(): void {
   applyEl.classList.toggle("hidden", pending === 0);
   applyEl.disabled = applying;
   applyEl.textContent = applying ? "Applying…" : `Apply (${pending})`;
-}
-
-function describeOutcome(o: ApplyOutcome): string {
-  switch (o.outcome) {
-    case "nothing":
-      return "Nothing to apply";
-    case "blocked":
-      return `Blocked: ${o.drifted.length} drifted comment(s) — review or delete them first`;
-    case "applied":
-      return `Sent ${o.count} comment(s) to the agent`;
-    case "deferred":
-      return `Agent not ready — brief written to ${o.path}; re-apply later`;
-  }
 }
 
 async function applyComments(): Promise<void> {
