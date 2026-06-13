@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { makeResizable } from "./resize";
+import { currentTheme, onThemeChange } from "./theme";
 
 // Mirrors claude-commander's ReviewSnapshot (api.rs / git/review_diff.rs /
 // comment/mod.rs) — all snake_case via serde.
@@ -100,7 +101,10 @@ let highlighterPromise: Promise<any> | null = null;
 
 function getHighlighter() {
   highlighterPromise ??= import("shiki").then((shiki) =>
-    shiki.createHighlighter({ themes: ["catppuccin-mocha"], langs: [] }),
+    shiki.createHighlighter({
+      themes: ["catppuccin-mocha", "catppuccin-latte"],
+      langs: [],
+    }),
   );
   return highlighterPromise;
 }
@@ -128,7 +132,7 @@ async function prepareHighlights(file: FileDiff): Promise<void> {
     await hl.loadLanguage(lang);
     const hunks = file.hunks.map((hunk) => {
       const code = hunk.lines.map((l) => l.content).join("\n");
-      const result = hl.codeToTokens(code, { lang, theme: "catppuccin-mocha" });
+      const result = hl.codeToTokens(code, { lang, theme: currentTheme().shiki });
       const tokens = result.tokens as ThemedToken[][];
       // Token rows must map 1:1 onto hunk lines; on any drift (e.g. line-
       // ending normalization) fall back to plain text rather than misalign.
@@ -221,6 +225,17 @@ function highlightCurrentFile(): void {
     if (selectedFile === path && tokenCache.get(path)) renderDiff();
   });
 }
+
+// Re-highlight on theme change. Token colors are baked into the rendered spans
+// (span.style.color), so clearing the cache is not enough — we must re-tokenize
+// the open file with the new theme and rebuild the DOM. Mirrors refresh()'s
+// render-then-highlight sequence.
+onThemeChange(() => {
+  if (!sessionId) return; // review not open
+  tokenCache.clear();
+  renderDiff();
+  highlightCurrentFile();
+});
 
 export function closeReview(): void {
   sessionId = null;

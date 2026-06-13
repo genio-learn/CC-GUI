@@ -13,6 +13,12 @@ import { registerPaletteProvider } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
 import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
 import { openSettings } from "./settings";
+import { initTheme, setMode, currentTheme, onThemeChange, followSystem } from "./theme";
+
+// Apply the GUI theme (CSS custom properties) before any dynamic content renders,
+// then follow the OS appearance via the native Tauri theme event when in System mode.
+initTheme();
+void getCurrentWindow().onThemeChanged(() => followSystem());
 
 type SessionRow = {
   id: string;
@@ -93,6 +99,14 @@ type TermEntry = {
 
 const terminals = new Map<string, TermEntry>(); // keyed by tmux session name
 let activeTerm: string | null = null;
+
+// Re-theme every live terminal when the GUI theme changes. The DOM renderer
+// repaints automatically on an options.theme assignment.
+onThemeChange((theme) => {
+  for (const entry of terminals.values()) {
+    entry.term.options.theme = theme.terminal;
+  }
+});
 
 function activateTerminal(name: string): void {
   activeTerm = name;
@@ -188,7 +202,7 @@ async function attachTerminal(
   const term = new Terminal({
     fontFamily: "Menlo, Monaco, monospace",
     fontSize: 13,
-    theme: { background: "#1e1e2e" },
+    theme: currentTheme().terminal,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -1322,6 +1336,9 @@ registerPaletteProvider(() => [
   },
   { label: "Settings", hint: "command", action: () => void openSettings() },
   { label: "Help", hint: "command", action: toggleHelp },
+  { label: "Theme: System", hint: "follow OS appearance", action: () => setMode("system") },
+  { label: "Theme: Light", hint: "force light", action: () => setMode("light") },
+  { label: "Theme: Dark", hint: "force dark", action: () => setMode("dark") },
 ]);
 
 // ------------------------------------------------------------- keybindings
