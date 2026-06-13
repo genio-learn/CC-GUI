@@ -10,6 +10,7 @@ mod review;
 mod service;
 mod sessions;
 mod settings;
+mod themes;
 
 fn main() {
     tauri::Builder::default()
@@ -38,6 +39,9 @@ fn main() {
             settings::get_config,
             settings::get_keybindings,
             settings::save_config,
+            themes::list_custom_themes,
+            themes::save_custom_theme,
+            themes::open_themes_dir,
             cascade::cascade_merge,
             cascade::cascade_resume,
             cascade::cascade_abandon,

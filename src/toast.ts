@@ -70,3 +70,54 @@ export function confirmDialog(message: string, confirmLabel = "Confirm"): Promis
     ok.focus();
   });
 }
+
+/**
+ * In-app replacement for window.prompt. Resolves the trimmed input on Save/Enter,
+ * or null on Cancel/Esc/backdrop click or empty input.
+ */
+export function promptDialog(
+  message: string,
+  placeholder = "",
+  confirmLabel = "Save",
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    const box = document.createElement("div");
+    box.className = "confirm-box";
+    const text = document.createElement("div");
+    text.className = "confirm-text";
+    text.textContent = message;
+    const input = document.createElement("input");
+    input.className = "rename-input";
+    input.placeholder = placeholder;
+    const buttons = document.createElement("div");
+    buttons.className = "confirm-buttons";
+    const cancel = document.createElement("button");
+    cancel.textContent = "Cancel";
+    const ok = document.createElement("button");
+    ok.textContent = confirmLabel;
+    buttons.append(cancel, ok);
+    box.append(text, input, buttons);
+    overlay.appendChild(box);
+
+    const done = (result: string | null) => {
+      overlay.remove();
+      resolve(result);
+    };
+    const submit = () => done(input.value.trim() || null);
+    cancel.addEventListener("click", () => done(null));
+    ok.addEventListener("click", submit);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) done(null);
+    });
+    box.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") done(null);
+      if (e.key === "Enter") submit();
+    });
+
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 0);
+  });
+}

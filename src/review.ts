@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { makeResizable } from "./resize";
-import { currentTheme, onThemeChange } from "./theme";
+import { currentTheme, onThemeChange, type Theme } from "./theme";
 
 // Mirrors claude-commander's ReviewSnapshot (api.rs / git/review_diff.rs /
 // comment/mod.rs) — all snake_case via serde.
@@ -100,13 +100,33 @@ const EXT_LANG: Record<string, string> = {
 let highlighterPromise: Promise<any> | null = null;
 
 function getHighlighter() {
+  // Themes load on demand (ensureShikiTheme) rather than up front: built-ins are
+  // bundled ids, custom themes supply a full TextMate object at runtime, so the
+  // set isn't known when the highlighter is created.
   highlighterPromise ??= import("shiki").then((shiki) =>
-    shiki.createHighlighter({
-      themes: ["catppuccin-mocha", "catppuccin-latte"],
-      langs: [],
-    }),
+    shiki.createHighlighter({ themes: [], langs: [] }),
   );
   return highlighterPromise;
+}
+
+// Shiki theme names already registered in the highlighter, so we never double-load.
+const loadedThemes = new Set<string>();
+
+/**
+ * Ensure the given theme's Shiki theme is loaded, and return the name to pass to
+ * codeToTokens. A built-in's `shiki` is a bundled id (loaded by string); a custom
+ * theme's is a full TextMate object whose `name` validateTheme forced to the theme
+ * id. Keyed by that name so repeated renders reuse the already-loaded theme.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function ensureShikiTheme(hl: any, theme: Theme): Promise<string> {
+  const shiki = theme.shiki;
+  const name = typeof shiki === "string" ? shiki : (shiki.name ?? theme.id);
+  if (!loadedThemes.has(name)) {
+    await hl.loadTheme(shiki);
+    loadedThemes.add(name);
+  }
+  return name;
 }
 
 /** Per-file token cache: hunk index → line index → tokens. Reset on refresh. */
@@ -130,9 +150,10 @@ async function prepareHighlights(file: FileDiff): Promise<void> {
   try {
     const hl = await getHighlighter();
     await hl.loadLanguage(lang);
+    const themeName = await ensureShikiTheme(hl, currentTheme());
     const hunks = file.hunks.map((hunk) => {
       const code = hunk.lines.map((l) => l.content).join("\n");
-      const result = hl.codeToTokens(code, { lang, theme: currentTheme().shiki });
+      const result = hl.codeToTokens(code, { lang, theme: themeName });
       const tokens = result.tokens as ThemedToken[][];
       // Token rows must map 1:1 onto hunk lines; on any drift (e.g. line-
       // ending normalization) fall back to plain text rather than misalign.

@@ -6,19 +6,90 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview } from "./review";
-import { toast, confirmDialog } from "./toast";
+import { toast, confirmDialog, promptDialog } from "./toast";
 import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
 import { registerPaletteProvider } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
 import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
 import { openSettings } from "./settings";
-import { initTheme, setMode, currentTheme, onThemeChange, followSystem } from "./theme";
+import {
+  initTheme,
+  setMode,
+  currentTheme,
+  onThemeChange,
+  followSystem,
+  resolveTheme,
+  applyTheme,
+  registerCustomThemes,
+  validateTheme,
+  type Theme,
+} from "./theme";
+import { openThemeModal } from "./themeModal";
 
 // Apply the GUI theme (CSS custom properties) before any dynamic content renders,
 // then follow the OS appearance via the native Tauri theme event when in System mode.
 initTheme();
 void getCurrentWindow().onThemeChanged(() => followSystem());
+
+// Load user-authored themes from disk, register the valid ones, and re-apply if a
+// custom theme now occupies the active light/dark slot. Runs after initTheme() so
+// a built-in (or the cached vars from the no-flash boot script) is already on
+// screen — this upgrades to the custom theme without blocking first paint.
+async function loadCustomThemes(announce = false): Promise<void> {
+  let files: { file: string; content: unknown }[];
+  try {
+    files = await invoke("list_custom_themes");
+  } catch (e) {
+    toast(`Failed to load custom themes: ${e}`, "error");
+    return;
+  }
+  const valid: Theme[] = [];
+  const errors: string[] = [];
+  for (const { file, content } of files) {
+    const result = validateTheme(content);
+    if ("theme" in result) valid.push(result.theme);
+    else errors.push(`${file}: ${result.error}`);
+  }
+  registerCustomThemes(valid);
+  const next = resolveTheme();
+  if (next.id !== currentTheme().id) applyTheme(next);
+  if (errors.length) {
+    toast(`Skipped ${errors.length} invalid theme file(s) — ${errors.join("; ")}`, "error");
+  }
+  // announce only on an explicit reload — the boot call stays silent.
+  if (announce) toast(`Loaded ${valid.length} custom theme(s)`);
+}
+void loadCustomThemes();
+
+// Write the active theme out as an editable starting template, then register it
+// and reveal the folder. The id/label are fresh so the file never collides with
+// its source (a built-in's id would be rejected on reload).
+async function exportThemeTemplate(): Promise<void> {
+  const name = await promptDialog(
+    "Name for the new theme (saved as a .json in the themes folder):",
+    "my-theme",
+  );
+  if (!name) return;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom-theme";
+  const t = currentTheme();
+  const template = {
+    id: slug,
+    label: name,
+    appearance: t.appearance,
+    cssVars: t.cssVars,
+    terminal: t.terminal,
+    shiki: t.shiki,
+  };
+  try {
+    const path = await invoke<string>("save_custom_theme", { name: slug, theme: template });
+    await loadCustomThemes(); // register it now so it's pickable immediately
+    toast(`Saved ${path} — edit it, then pick it from the palette`);
+    void invoke("open_themes_dir").catch(() => {});
+  } catch (e) {
+    toast(`Export failed: ${e}`, "error");
+  }
+}
 
 type SessionRow = {
   id: string;
@@ -1336,9 +1407,27 @@ registerPaletteProvider(() => [
   },
   { label: "Settings", hint: "command", action: () => void openSettings() },
   { label: "Help", hint: "command", action: toggleHelp },
-  { label: "Theme: System", hint: "follow OS appearance", action: () => setMode("system") },
-  { label: "Theme: Light", hint: "force light", action: () => setMode("light") },
-  { label: "Theme: Dark", hint: "force dark", action: () => setMode("dark") },
+]);
+
+// Theme commands: the two slot pickers (open a modal listing that appearance's
+// themes, with live preview), the mode toggles, and custom-theme management.
+registerPaletteProvider(() => [
+  { label: "Theme: Set dark theme…", hint: "command", action: () => openThemeModal("dark") },
+  { label: "Theme: Set light theme…", hint: "command", action: () => openThemeModal("light") },
+  { label: "Theme: Dark mode", hint: "force dark", action: () => setMode("dark") },
+  { label: "Theme: Light mode", hint: "force light", action: () => setMode("light") },
+  { label: "Theme: Follow system", hint: "follow OS appearance", action: () => setMode("system") },
+  { label: "Theme: Reload custom themes", hint: "command", action: () => void loadCustomThemes(true) },
+  {
+    label: "Theme: Export current theme as template…",
+    hint: "command",
+    action: () => void exportThemeTemplate(),
+  },
+  {
+    label: "Theme: Open themes folder…",
+    hint: "command",
+    action: () => void invoke("open_themes_dir").catch((e) => toast(`${e}`, "error")),
+  },
 ]);
 
 // ------------------------------------------------------------- keybindings

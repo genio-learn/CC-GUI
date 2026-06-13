@@ -17,10 +17,17 @@ function themeBoot(): Plugin {
   const css =
     block('html[data-appearance="dark"]', byAppearance("dark")) +
     block('html[data-appearance="light"]', byAppearance("light"));
+  // Set the appearance, then replay the active theme's cached cssVars (written by
+  // applyTheme) as inline styles. The cache is the only way a *custom* theme —
+  // unknown at build time, so absent from the injected blocks above — paints
+  // correctly before first paint. No cache (first run) falls back to those blocks.
   const script =
     "try{var m=localStorage.getItem('cc-theme-mode')||'system';" +
     "var d=m==='dark'||(m==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);" +
-    "document.documentElement.dataset.appearance=d?'dark':'light';}catch(e){}";
+    "var a=d?'dark':'light';var r=document.documentElement;r.dataset.appearance=a;" +
+    "var v=localStorage.getItem('cc-theme-vars-'+a);" +
+    "if(v){var o=JSON.parse(v);for(var k in o)r.style.setProperty('--'+k,o[k]);}" +
+    "}catch(e){}";
   return {
     name: "theme-boot",
     transformIndexHtml: () => [
