@@ -12,7 +12,33 @@ mod sessions;
 mod settings;
 mod themes;
 
+/// When launched from Finder, a macOS app inherits launchd's minimal PATH
+/// (`/usr/bin:/bin:/usr/sbin:/sbin`) — missing Homebrew, nvm, etc. — so tools
+/// like `tmux` that the embedded claude-commander spawns by bare name fail with
+/// ENOENT. Re-derive PATH from the user's login shell so every child process
+/// (tmux, git, the terminal shells) sees what the terminal sees.
+#[cfg(target_os = "macos")]
+fn inherit_login_path() {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let Ok(out) = std::process::Command::new(&shell)
+        .args(["-ilc", "printf '__P__%s__P__' \"$PATH\""])
+        .output()
+    else {
+        return;
+    };
+    let s = String::from_utf8_lossy(&out.stdout);
+    let mut parts = s.split("__P__");
+    if let (Some(_), Some(path)) = (parts.next(), parts.next()) {
+        if !path.is_empty() {
+            std::env::set_var("PATH", path);
+        }
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "macos")]
+    inherit_login_path();
+
     tauri::Builder::default()
         .manage(pty::PtyState::default())
         .setup(|app| {
