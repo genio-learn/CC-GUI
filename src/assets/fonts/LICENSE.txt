@@ -1,0 +1,14 @@
+MesloLGS NF
+===========
+
+The bundled MesloLGSNF-Regular.woff2 and MesloLGSNF-Bold.woff2 are the
+MesloLGS NF fonts, a Nerd Fonts patched variant of Meslo LG (itself derived
+from Apple's Menlo). They are bundled so the embedded terminal can render the
+Claude Code status line's icon glyphs regardless of which fonts the user has
+installed.
+
+Source:  https://github.com/romkatv/powerlevel10k#meslo-nerd-font-patched-for-powerlevel10k
+License: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+
+Meslo LG is copyright (c) André Berg. Nerd Fonts glyphs are copyright (c)
+Ryan L McIntyre and contributors. Distributed under the Apache License 2.0.

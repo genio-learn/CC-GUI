@@ -32,6 +32,13 @@ import { openThemeModal } from "./themeModal";
 initTheme();
 void getCurrentWindow().onThemeChanged(() => followSystem());
 
+// Warm the bundled terminal font (both weights) before any xterm is created, so
+// it measures glyph dimensions against MesloLGS NF rather than the fallback.
+void Promise.all([
+  document.fonts.load('13px "MesloLGS NF"'),
+  document.fonts.load('bold 13px "MesloLGS NF"'),
+]);
+
 // Load user-authored themes from disk, register the valid ones, and re-apply if a
 // custom theme now occupies the active light/dark slot. Runs after initTheme() so
 // a built-in (or the cached vars from the no-flash boot script) is already on
@@ -271,12 +278,20 @@ async function attachTerminal(
   terminalsEl.appendChild(container);
 
   const term = new Terminal({
-    fontFamily: "Menlo, Monaco, monospace",
+    fontFamily: '"MesloLGS NF", Menlo, Monaco, monospace',
     fontSize: 13,
     theme: currentTheme().terminal,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  // xterm measures glyph dimensions at open(), so the bundled font must be
+  // loaded first — otherwise it sizes cells against the fallback and icon
+  // glyphs never render. The boot-time preload usually wins this race, but
+  // await here to be certain before the first paint.
+  await Promise.all([
+    document.fonts.load('13px "MesloLGS NF"'),
+    document.fonts.load('bold 13px "MesloLGS NF"'),
+  ]).catch(() => {});
   term.open(container);
 
   term.onData((data) => {

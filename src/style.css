@@ -1,3 +1,20 @@
+/* Bundled terminal font: MesloLGS NF (Apache-2.0) — ships icon glyphs so the
+   Claude Code status line renders correctly regardless of installed fonts. */
+@font-face {
+  font-family: "MesloLGS NF";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/MesloLGSNF-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "MesloLGS NF";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/MesloLGSNF-Bold.woff2") format("woff2");
+}
+
 :root {
   /* Backgrounds */
   --bg-base: #1e1e2e;
