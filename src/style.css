@@ -1,14 +1,19 @@
 /* Bundled terminal font: MesloLGS NF (Apache-2.0) — ships icon glyphs so the
-   Claude Code status line renders correctly regardless of installed fonts. */
+   Claude Code status line renders correctly regardless of installed fonts.
+   Registered under a *distinct* family name ("…Embedded") on purpose: a
+   @font-face shadows a same-named installed font, so reusing "MesloLGS NF"
+   here would mask the user's real installed copy and, if the bundled load
+   ever failed, drop straight to Menlo (no glyphs). With a unique name the
+   terminal stack can fall back to the installed "MesloLGS NF" instead. */
 @font-face {
-  font-family: "MesloLGS NF";
+  font-family: "MesloLGS NF Embedded";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
   src: url("./assets/fonts/MesloLGSNF-Regular.woff2") format("woff2");
 }
 @font-face {
-  font-family: "MesloLGS NF";
+  font-family: "MesloLGS NF Embedded";
   font-style: normal;
   font-weight: 700;
   font-display: swap;

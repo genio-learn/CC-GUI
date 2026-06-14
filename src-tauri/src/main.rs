@@ -35,9 +35,40 @@ fn inherit_login_path() {
     }
 }
 
+/// macOS sets the locale (`LANG`/`LC_*`) per Terminal session, not in shell rc
+/// files, so a Finder-launched app inherits an empty locale. CLIs the embedded
+/// claude-commander spawns (the `claude` status line) then assume a non-UTF-8
+/// terminal and emit ASCII placeholders (`__`) instead of their Nerd Font icon
+/// glyphs. Default `LANG` to the system region's UTF-8 variant when nothing is
+/// set, so child processes emit (and the bundled font renders) real glyphs.
+#[cfg(target_os = "macos")]
+fn ensure_utf8_locale() {
+    let is_set = |k| std::env::var_os(k).is_some_and(|v| !v.is_empty());
+    if is_set("LC_ALL") || is_set("LC_CTYPE") || is_set("LANG") {
+        return;
+    }
+    // AppleLocale is the macOS system region (e.g. "en_GB"); it can carry extra
+    // subtags ("en_GB@currency=GBP") and use either separator, so normalise to a
+    // bare `lang_REGION` POSIX name and fall back to en_US when unreadable.
+    let region = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleLocale"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok());
+    let base = region
+        .as_deref()
+        .map(|s| s.trim().split('@').next().unwrap_or("").replace('-', "_"))
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or_else(|| "en_US".to_string());
+    std::env::set_var("LANG", format!("{base}.UTF-8"));
+}
+
 fn main() {
     #[cfg(target_os = "macos")]
-    inherit_login_path();
+    {
+        inherit_login_path();
+        ensure_utf8_locale();
+    }
 
     tauri::Builder::default()
         .manage(pty::PtyState::default())

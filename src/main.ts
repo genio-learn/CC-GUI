@@ -35,8 +35,8 @@ void getCurrentWindow().onThemeChanged(() => followSystem());
 // Warm the bundled terminal font (both weights) before any xterm is created, so
 // it measures glyph dimensions against MesloLGS NF rather than the fallback.
 void Promise.all([
-  document.fonts.load('13px "MesloLGS NF"'),
-  document.fonts.load('bold 13px "MesloLGS NF"'),
+  document.fonts.load('13px "MesloLGS NF Embedded"'),
+  document.fonts.load('bold 13px "MesloLGS NF Embedded"'),
 ]);
 
 // Load user-authored themes from disk, register the valid ones, and re-apply if a
@@ -278,7 +278,7 @@ async function attachTerminal(
   terminalsEl.appendChild(container);
 
   const term = new Terminal({
-    fontFamily: '"MesloLGS NF", Menlo, Monaco, monospace',
+    fontFamily: '"MesloLGS NF Embedded", "MesloLGS NF", Menlo, Monaco, monospace',
     fontSize: 13,
     theme: currentTheme().terminal,
   });
@@ -289,8 +289,8 @@ async function attachTerminal(
   // glyphs never render. The boot-time preload usually wins this race, but
   // await here to be certain before the first paint.
   await Promise.all([
-    document.fonts.load('13px "MesloLGS NF"'),
-    document.fonts.load('bold 13px "MesloLGS NF"'),
+    document.fonts.load('13px "MesloLGS NF Embedded"'),
+    document.fonts.load('bold 13px "MesloLGS NF Embedded"'),
   ]).catch(() => {});
   term.open(container);
 

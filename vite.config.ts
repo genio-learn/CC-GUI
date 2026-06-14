@@ -45,4 +45,14 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
   },
+  build: {
+    // Inline the bundled terminal font as a data: URI. macOS WKWebView silently
+    // refuses to apply @font-face web fonts served over Tauri's custom asset
+    // protocol in packaged builds, so an emitted .woff2 file loads in `tauri dev`
+    // (plain HTTP) but never in the installed app. A data: URI sidesteps the
+    // protocol entirely. Only the font is inlined; everything else keeps Vite's
+    // default 4 KB threshold.
+    assetsInlineLimit: (filePath) =>
+      filePath.includes("MesloLGSNF") ? true : undefined,
+  },
 });
