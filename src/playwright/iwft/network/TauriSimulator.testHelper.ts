@@ -1,8 +1,8 @@
 // Page-side backend fake. esbuild bundles this to an IIFE that an addInitScript
 // runs before the app boots (see globalSetup + launchApp). It installs the real
-// Tauri mockIPC (proven in src/tauri-mock.spike.test.ts) and answers the command
-// surface from seeded, mutable in-memory state — a fake, not a mock: tests assert
-// on resulting state, not on which calls fired.
+// Tauri mockIPC and answers the command surface from seeded, mutable in-memory
+// state — a fake, not a mock: tests assert on resulting state, not on which
+// calls fired.
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
@@ -73,7 +73,7 @@ class TauriSimulator {
   // ----- PTY byte stream (the backend writing to a terminal's Channel) -----
   /** Push UTF-8 bytes to a session's attached terminal, as the backend's PTY would.
    *  mockIPC keeps args un-serialized, so the captured onData is the real Channel;
-   *  runCallback drives its onmessage (proven in tauri-mock.spike.test.ts Q3). */
+   *  runCallback drives its onmessage. */
   pushPtyBytes(name: string, bytes: number[]): void {
     const entry = this.ptyChannels[name];
     if (!entry) return;
