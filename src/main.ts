@@ -1,9 +1,11 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { writeText, readText } from "@tauri-apps/plugin-clipboard-manager";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview } from "./review";
@@ -339,13 +341,29 @@ async function attachTerminal(
   ]).catch(() => {});
   term.open(container);
 
-  // Copy-on-select, like Claude Code / iTerm: finishing a selection copies it
-  // to the clipboard and clears the highlight (no Cmd+C needed). mouseup on the
-  // container bubbles after xterm's own handlers, so the selection is final.
+  // Honor OSC 52: programs like Claude's TUI manage their own mouse selection
+  // and copy by emitting an OSC 52 clipboard sequence (this is what makes a
+  // plain drag-to-copy work inside Claude, no Cmd+C). xterm ignores OSC 52
+  // unless this addon is loaded; route it through the Tauri clipboard plugin
+  // so the write lands on the native pasteboard from the WKWebView.
+  term.loadAddon(
+    new ClipboardAddon(undefined, {
+      readText: () => readText(),
+      writeText: (_sel, text) => writeText(text),
+    }),
+  );
+
+  // Copy-on-select for plain shells (no app mouse mode): finishing a drag
+  // selection copies it to the clipboard and clears the highlight. mouseup on
+  // the container bubbles after xterm's own handlers, so the selection is
+  // final. In an app that grabs the mouse (Claude), xterm makes no selection
+  // and this no-ops — OSC 52 above handles that case instead.
   container.addEventListener("mouseup", () => {
     const sel = term.getSelection();
     if (!sel) return;
-    void navigator.clipboard.writeText(sel);
+    void writeText(sel).catch((e) =>
+      console.error("clipboard write failed", e),
+    );
     term.clearSelection();
   });
 
