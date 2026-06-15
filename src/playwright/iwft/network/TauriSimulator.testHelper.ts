@@ -31,6 +31,7 @@ class TauriSimulator {
   private ptyChannels: Record<string, { channel: { id: number }; index: number }> = {};
   private nextComment = 1;
   private nextSession = 1;
+  private openedUrls: string[] = [];
 
   constructor(seed: Seed) {
     this.snapshot = seed.snapshot;
@@ -62,6 +63,11 @@ class TauriSimulator {
 
   getViewMode(): string {
     return this.snapshot.view_mode;
+  }
+
+  /** URLs the frontend asked the platform opener to launch (open_external). */
+  getOpenedUrls(): string[] {
+    return this.openedUrls;
   }
 
   // ----- event push (the backend's role; available for sidebar scenarios) -----
@@ -121,6 +127,9 @@ class TauriSimulator {
       case "resize_pty":
       case "write_pty":
       case "detach":
+        return null;
+      case "open_external":
+        this.openedUrls.push(args.url as string);
         return null;
       case "list_custom_themes":
         return this.customThemes;

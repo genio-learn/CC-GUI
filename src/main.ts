@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview } from "./review";
@@ -223,6 +224,42 @@ function closeTerminal(name: string): void {
   renderSidebar();
 }
 
+// --------------------------------------------------- tab drag-to-reorder
+// HTML5 drag-and-drop reorders the tab strip live; on drop we rebuild the
+// `terminals` Map to match the DOM so index/cycle navigation follows the
+// visible order. The dragging tab is the only mutable element, so a single
+// dragover listener on the strip handles every tab.
+let draggingTab: HTMLDivElement | null = null;
+
+/** The tab to insert the dragged tab before, given the pointer's x. */
+function tabAfterX(x: number): HTMLDivElement | null {
+  const tabs = [...tabsEl.querySelectorAll<HTMLDivElement>(".tab:not(.dragging)")];
+  for (const tab of tabs) {
+    const box = tab.getBoundingClientRect();
+    if (x < box.left + box.width / 2) return tab;
+  }
+  return null;
+}
+
+/** Rebuild the Map's iteration order from the current tab DOM order. */
+function syncTermOrderFromDom(): void {
+  const order = [...tabsEl.querySelectorAll<HTMLDivElement>(".tab")]
+    .map((t) => t.dataset.term)
+    .filter((n): n is string => !!n && terminals.has(n));
+  if (order.length !== terminals.size) return;
+  const entries = order.map((n) => [n, terminals.get(n)!] as const);
+  terminals.clear();
+  for (const [n, e] of entries) terminals.set(n, e);
+}
+
+tabsEl.addEventListener("dragover", (e) => {
+  if (!draggingTab) return;
+  e.preventDefault();
+  const after = tabAfterX(e.clientX);
+  if (after) tabsEl.insertBefore(draggingTab, after);
+  else tabsEl.appendChild(draggingTab);
+});
+
 async function openTerminal(session: SessionRow): Promise<void> {
   // A deliberate attach resets the crash-loop guard for this session.
   consecutiveEnds.delete(session.tmux_session_name);
@@ -284,6 +321,14 @@ async function attachTerminal(
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  // Cmd+Click opens links. xterm underlines URLs on hover; the handler only
+  // fires the platform opener when Cmd is held, so a plain click still places
+  // the cursor / starts a selection like a native terminal.
+  term.loadAddon(
+    new WebLinksAddon((e, uri) => {
+      if (e.metaKey) void invoke("open_external", { url: uri });
+    }),
+  );
   // xterm measures glyph dimensions at open(), so the bundled font must be
   // loaded first — otherwise it sizes cells against the fallback and icon
   // glyphs never render. The boot-time preload usually wins this race, but
@@ -293,6 +338,16 @@ async function attachTerminal(
     document.fonts.load('bold 13px "MesloLGS NF Embedded"'),
   ]).catch(() => {});
   term.open(container);
+
+  // Copy-on-select, like Claude Code / iTerm: finishing a selection copies it
+  // to the clipboard and clears the highlight (no Cmd+C needed). mouseup on the
+  // container bubbles after xterm's own handlers, so the selection is final.
+  container.addEventListener("mouseup", () => {
+    const sel = term.getSelection();
+    if (!sel) return;
+    void navigator.clipboard.writeText(sel);
+    term.clearSelection();
+  });
 
   term.onData((data) => {
     void invoke("write_pty", { tmuxSession: name, data });
@@ -329,6 +384,18 @@ async function attachTerminal(
 
   const tab = document.createElement("div");
   tab.className = "tab";
+  tab.draggable = true;
+  tab.dataset.term = name;
+  tab.addEventListener("dragstart", (e) => {
+    draggingTab = tab;
+    tab.classList.add("dragging");
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  });
+  tab.addEventListener("dragend", () => {
+    tab.classList.remove("dragging");
+    draggingTab = null;
+    syncTermOrderFromDom();
+  });
   const label = document.createElement("span");
   label.textContent = title;
   const close = document.createElement("button");
