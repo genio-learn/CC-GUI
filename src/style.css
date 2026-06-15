@@ -816,6 +816,10 @@ body.resizing .panel-resizer {
   font-style: italic;
 }
 
+.tab.dragging {
+  opacity: 0.5;
+}
+
 .tab-close {
   background: none;
   border: none;
@@ -839,6 +843,10 @@ body.resizing .panel-resizer {
   position: absolute;
   inset: 4px;
   display: none;
+  /* xterm's DOM renderer measures the cell a hair narrower than the glyph's
+     true advance, so a full-width line can paint a couple px past the screen
+     edge. The bleed is sub-cell, so trimming width won't drop it — clip it. */
+  overflow: hidden;
 }
 
 .term-container.active {

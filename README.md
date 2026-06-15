@@ -102,6 +102,9 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Terminal: cursor to line start / end | `Cmd+←` / `Cmd+→` |
 | Terminal: delete to line start | `Cmd+Backspace` |
 | Terminal: newline without submitting | `Shift+Enter` |
+| Terminal: copy selection (auto-clears highlight) | select text |
+| Terminal: open a link | `Cmd+Click` |
+| Reorder terminal tabs | drag a tab |
 | Attach / recreate a session | click its row |
 | Full session menu (shell, review, rename, editor, PR, lifecycle) | right-click row |
 | New session in a project | `+` on the project |

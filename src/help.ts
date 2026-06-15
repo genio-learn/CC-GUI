@@ -50,6 +50,9 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
       ["Cmd+←/→", "Cursor to line start / end"],
       ["Cmd+Backspace", "Delete to line start"],
       ["Shift+Enter", "Insert a newline without submitting"],
+      ["Select text", "Copies to clipboard and clears the highlight"],
+      ["Cmd+Click link", "Open the URL in your browser"],
+      ["Drag tab", "Reorder the open terminal tabs"],
     ],
   ],
 ];
