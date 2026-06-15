@@ -1,0 +1,24 @@
+# Fast pre-commit checks. Scoped to staged file types so a docs-only or
+# Rust-only commit skips the irrelevant check. Clippy stays in CI — it
+# recompiles the crate and is too slow to run on every commit.
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+# Rust formatting — only when .rs files are staged. Matches CI's invocation.
+if echo "$staged" | grep -q '\.rs$'; then
+  echo "pre-commit: cargo fmt --check"
+  if ! (cd src-tauri && cargo fmt --all -- --check); then
+    echo "✗ Rust not formatted. Run: (cd src-tauri && cargo fmt --all)" >&2
+    exit 1
+  fi
+fi
+
+# Frontend types — only when .ts files are staged. tsc checks the whole
+# project (a staged change can break types elsewhere), which is intended.
+if echo "$staged" | grep -q '\.ts$'; then
+  echo "pre-commit: npm run typecheck"
+  if ! npm run typecheck --silent; then
+    echo "✗ Type errors above. Fix them before committing." >&2
+    exit 1
+  fi
+fi

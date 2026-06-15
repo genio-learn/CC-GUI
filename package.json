@@ -14,7 +14,8 @@
     "tauri": "tauri",
     "release": "bash scripts/release.sh",
     "app:build": "tauri build",
-    "app:install": "tauri build && rm -rf /Applications/CC-GUI.app && cp -R src-tauri/target/release/bundle/macos/CC-GUI.app /Applications/ && echo 'Installed to /Applications/CC-GUI.app'"
+    "app:install": "tauri build && rm -rf /Applications/CC-GUI.app && cp -R src-tauri/target/release/bundle/macos/CC-GUI.app /Applications/ && echo 'Installed to /Applications/CC-GUI.app'",
+    "prepare": "husky"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tauri-apps/cli": "^2",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",

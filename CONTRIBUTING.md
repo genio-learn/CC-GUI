@@ -52,6 +52,11 @@ cargo fmt --all
 cargo clippy --all-targets -- -D warnings
 ```
 
+A Husky **pre-commit hook** (installed automatically by `npm install` via the
+`prepare` script) runs the fast checks on staged files: `cargo fmt --check`
+when `.rs` files change and `npm run typecheck` when `.ts` files change. Clippy
+stays in CI. Bypass with `git commit --no-verify` when needed.
+
 ## Pull requests
 
 Before opening a PR, make sure:
