@@ -79,6 +79,12 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Command palette (jump to session / run command) | `Cmd/Ctrl+K` |
 | Help overlay | `?` |
 | Close active terminal tab | `Cmd+W` |
+| Jump to terminal tab by number | `Cmd+1`–`Cmd+9` |
+| Previous / next terminal tab | `Cmd+Opt+←` / `Cmd+Opt+→` |
+| Previous / next session (attaches it) | `Cmd+Opt+↑` / `Cmd+Opt+↓` |
+| Terminal: cursor to line start / end | `Cmd+←` / `Cmd+→` |
+| Terminal: delete to line start | `Cmd+Backspace` |
+| Terminal: newline without submitting | `Shift+Enter` |
 | Attach / recreate a session | click its row |
 | Full session menu (shell, review, rename, editor, PR, lifecycle) | right-click row |
 | New session in a project | `+` on the project |

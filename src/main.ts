@@ -303,7 +303,17 @@ async function attachTerminal(
   // untouched, so we translate them ourselves. Bare Cmd only — combos with
   // other modifiers (e.g. Cmd+W) must fall through to their own handlers.
   term.attachCustomKeyEventHandler((e) => {
-    if (e.type !== "keydown" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+    if (e.type !== "keydown") return true;
+    // Shift+Enter: insert a newline instead of submitting. xterm.js sends a
+    // plain CR (\r) for Enter regardless of Shift, which submits. Send LF (\n,
+    // i.e. Ctrl+J) instead — the TUI's "insert newline" byte; in a plain shell
+    // readline treats it the same as Enter, so it does no harm there.
+    if (e.key === "Enter" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      void invoke("write_pty", { tmuxSession: name, data: "\n" });
+      return false;
+    }
+    if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
       return true;
     }
     const byte =
@@ -386,6 +396,64 @@ window.addEventListener(
     } else {
       void getCurrentWindow().close();
     }
+  },
+  true,
+);
+
+/** Activate the open terminal tab at `index` (0-based), if it exists. */
+function activateTabByIndex(index: number): void {
+  const name = [...terminals.keys()][index];
+  if (name) activateTerminal(name);
+}
+
+/** Cycle the active terminal tab by `delta` (wraps around). */
+function cycleTab(delta: number): void {
+  const names = [...terminals.keys()];
+  if (!names.length) return;
+  const cur = activeTerm ? names.indexOf(activeTerm) : -1;
+  activateTerminal(names[(cur + delta + names.length) % names.length]);
+}
+
+/** Move the sidebar cursor by `delta` and attach the newly selected session. */
+function cycleSession(delta: number): void {
+  // Seed the cursor from the active terminal so the first press moves relative
+  // to what's on screen, not from the top of the list.
+  if (!selectedId) {
+    const cur = targetSession();
+    if (cur) selectRow(cur.id);
+  }
+  moveSelection(delta);
+  const s = selectedId ? findSession(selectedId) : undefined;
+  if (s) void openTerminal(s);
+}
+
+// iTerm-style tab / session navigation. These are app actions (they never reach
+// the shell), so — like Cmd+W — they're handled here rather than as terminal
+// bytes. Capture phase to beat xterm's key handling on the focused terminal.
+// Cmd+1..9 selects a tab; Cmd+Opt+Left/Right cycles tabs; Cmd+Opt+Up/Down walks
+// the sidebar sessions. Bare Cmd+Left/Right stays the terminal's line-start/end.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.metaKey || e.ctrlKey || keyOverlayOpen()) return;
+    if (!e.altKey && !e.shiftKey && /^[1-9]$/.test(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      activateTabByIndex(Number(e.key) - 1);
+      return;
+    }
+    if (!e.altKey || e.shiftKey) return;
+    const move: Record<string, () => void> = {
+      ArrowLeft: () => cycleTab(-1),
+      ArrowRight: () => cycleTab(1),
+      ArrowUp: () => cycleSession(-1),
+      ArrowDown: () => cycleSession(1),
+    };
+    const fn = move[e.key];
+    if (!fn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
   },
   true,
 );
