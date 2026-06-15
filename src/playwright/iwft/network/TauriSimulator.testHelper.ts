@@ -131,6 +131,13 @@ class TauriSimulator {
       case "open_external":
         this.openedUrls.push(args.url as string);
         return null;
+      // ----- clipboard-manager plugin (copy-on-select + Claude's OSC 52) -----
+      // The native backend writes to the system pasteboard; here the page's own
+      // clipboard stands in for it (tests grant clipboard permissions).
+      case "plugin:clipboard-manager|write_text":
+        return navigator.clipboard.writeText(args.text as string);
+      case "plugin:clipboard-manager|read_text":
+        return navigator.clipboard.readText();
       case "list_custom_themes":
         return this.customThemes;
       case "get_keybindings":

@@ -71,6 +71,7 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(pty::PtyState::default())
         .setup(|app| {
             groups::spawn_sessions_loop(app.handle().clone());
