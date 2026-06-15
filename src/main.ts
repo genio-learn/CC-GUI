@@ -297,6 +297,22 @@ async function attachTerminal(
   term.onData((data) => {
     void invoke("write_pty", { tmuxSession: name, data });
   });
+
+  // macOS line-editing shortcuts. Native terminals (Terminal.app, iTerm2) map
+  // these Cmd combos to readline control bytes; xterm.js passes Cmd through
+  // untouched, so we translate them ourselves. Bare Cmd only — combos with
+  // other modifiers (e.g. Cmd+W) must fall through to their own handlers.
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== "keydown" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+      return true;
+    }
+    const byte =
+      e.key === "Backspace" ? "\x15" : e.key === "ArrowLeft" ? "\x01" : e.key === "ArrowRight" ? "\x05" : null;
+    if (byte === null) return true;
+    e.preventDefault();
+    void invoke("write_pty", { tmuxSession: name, data: byte });
+    return false;
+  });
   term.onResize(({ rows, cols }) => {
     void invoke("resize_pty", { tmuxSession: name, rows, cols });
   });
