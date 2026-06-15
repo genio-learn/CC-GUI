@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
+    "release": "bash scripts/release.sh",
     "app:build": "tauri build",
     "app:install": "tauri build && rm -rf /Applications/CC-GUI.app && cp -R src-tauri/target/release/bundle/macos/CC-GUI.app /Applications/ && echo 'Installed to /Applications/CC-GUI.app'"
   },
