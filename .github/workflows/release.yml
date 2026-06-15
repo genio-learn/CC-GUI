@@ -59,11 +59,20 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "CC-GUI ${{ github.ref_name }}"
           releaseBody: |
-            Download the asset for your platform below.
+            Download the asset for your platform below. `aarch64` = Apple Silicon
+            (macOS); `amd64` = x86_64 (Linux).
 
-            **macOS (.dmg, Apple Silicon, unsigned):** on first launch, right-click
-            the app and choose **Open** (or run `xattr -cr /Applications/CC-GUI.app`)
-            to get past Gatekeeper.
+            **macOS (.dmg, Apple Silicon):** the app is unsigned, so macOS
+            quarantines it and may report it as "damaged" — it isn't. Drag
+            CC-GUI.app into /Applications, then clear the quarantine flag:
+
+            ```
+            xattr -cr /Applications/CC-GUI.app
+            ```
+
+            Then open it normally.
+
+            **Linux:** run the portable `.AppImage` (any distro) or install the `.deb`.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

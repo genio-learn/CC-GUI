@@ -15,6 +15,23 @@ It embeds `claude-commander` directly (as a library) and drives the same tmux-ba
 - **Command palette** (`Cmd/Ctrl+K`) — fuzzy-jump to a session or run any command.
 - **Config hot-reload** — picks up `claude-commander` config changes for multi-instance sync.
 
+## Download
+
+Grab the latest build from [Releases](https://github.com/Ed-Barnes937/CC-GUI/releases):
+
+- **macOS (Apple Silicon)** — `CC-GUI_<version>_aarch64.dmg` (`aarch64` = ARM64 = Apple Silicon)
+- **Linux** — `CC-GUI_<version>_amd64.AppImage` (portable, runs on any distro) or `CC-GUI_<version>_amd64.deb`
+
+The macOS app is **unsigned** (no Apple Developer certificate), so macOS quarantines it on download and reports it as *"damaged and can't be opened."* It isn't — that message just means "unsigned and quarantined." Drag `CC-GUI.app` into `/Applications`, then clear the quarantine flag:
+
+```sh
+xattr -cr /Applications/CC-GUI.app
+```
+
+Then open it normally. (If the `.dmg` won't even mount, clear it first: `xattr -c ~/Downloads/CC-GUI_*_aarch64.dmg`.)
+
+To build from source instead, follow the rest of this guide.
+
 ## Prerequisites
 
 | Requirement | Why | Install |
