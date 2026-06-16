@@ -32,6 +32,9 @@ class TauriSimulator {
   private nextComment = 1;
   private nextSession = 1;
   private openedUrls: string[] = [];
+  // Section moves the frontend actually dispatched (a no-op drop short-circuits
+  // before invoke, so this stays empty — how a negative test tells them apart).
+  private sectionMoves: { id: string; section: string | null }[] = [];
 
   constructor(seed: Seed) {
     this.snapshot = seed.snapshot;
@@ -59,6 +62,18 @@ class TauriSimulator {
   /** Flattened live sessions across all groups — the state a sidebar test asserts. */
   getSessions(): SessionRow[] {
     return this.snapshot.groups.flatMap((g) => g.sessions);
+  }
+
+  /** Current section buckets (null in project view) — what a move-to-section
+   *  test asserts placement against. */
+  getSectionBuckets(): { name: string; session_ids: string[] }[] | null {
+    return this.snapshot.sections;
+  }
+
+  /** Section moves the frontend dispatched, in order — for asserting a no-op
+   *  drop fired nothing. */
+  getSectionMoves(): { id: string; section: string | null }[] {
+    return this.sectionMoves;
   }
 
   getViewMode(): string {
@@ -108,6 +123,8 @@ class TauriSimulator {
         return this.renameSession(args.id as string, args.title as string);
       case "delete_session":
         return this.deleteSession(args.id as string);
+      case "move_to_section":
+        return this.moveToSection(args.id as string, (args.section as string | null) ?? null);
       case "merged_pr_sessions":
         return this.mergedPrSessions();
       // ----- PTY lifecycle (terminal tabs) -----
@@ -204,6 +221,42 @@ class TauriSimulator {
       g.sessions = g.sessions.filter((row) => row.id !== id);
     }
     return null;
+  }
+
+  /** Pin (or, with section=null, unpin) a session's section, then re-bucket.
+   *  Mirrors the backend move_to_section: only the section assignment changes,
+   *  never the owning project/group. */
+  private moveToSection(id: string, section: string | null): null {
+    this.sectionMoves.push({ id, section });
+    for (const g of this.snapshot.groups) {
+      const s = g.sessions.find((row) => row.id === id);
+      if (s) s.current_section = section;
+    }
+    if (this.snapshot.sections !== null) this.rebuildSections();
+    return null;
+  }
+
+  /** Re-derive the section buckets from each session's current_section,
+   *  mirroring the library's build_sections: bucket 0 is the reserved
+   *  "In Progress" catch-all, followed by each configured section in
+   *  section_names order (empties included). A session whose current_section is
+   *  null or names an unknown section falls into In Progress. Predicates are not
+   *  modeled (the fake tracks manual pins only); insertion order stands in for
+   *  the backend's entered_section_at ordering. */
+  private rebuildSections(): void {
+    const names = this.snapshot.section_names;
+    const buckets: { name: string; session_ids: string[] }[] = [
+      { name: "In Progress", session_ids: [] },
+      ...names.map((name) => ({ name, session_ids: [] as string[] })),
+    ];
+    for (const s of this.getSessions()) {
+      const i =
+        s.current_section && names.includes(s.current_section)
+          ? names.indexOf(s.current_section) + 1
+          : 0;
+      buckets[i].session_ids.push(s.id);
+    }
+    this.snapshot.sections = buckets;
   }
 
   /** [id, label] pairs for sessions whose PR has merged — the merged-PR sweep source. */

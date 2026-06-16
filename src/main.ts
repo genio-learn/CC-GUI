@@ -233,6 +233,11 @@ function closeTerminal(name: string): void {
 // dragover listener on the strip handles every tab.
 let draggingTab: HTMLDivElement | null = null;
 
+// Session rows drag onto section headers to move a session between sections
+// (section view only — headers exist solely in renderSections). The dragged
+// session's id is module state; section-header drop handlers read it.
+let draggingSessionId: string | null = null;
+
 /** The tab to insert the dragged tab before, given the pointer's x. */
 function tabAfterX(x: number): HTMLDivElement | null {
   const tabs = [...tabsEl.querySelectorAll<HTMLDivElement>(".tab:not(.dragging)")];
@@ -1197,8 +1202,29 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
     void openTerminal(refs.session);
   });
   row.addEventListener("contextmenu", (e) => showContextMenu(e, sessionMenuItems(refs)));
+  // Draggable onto a section header (section view only). Not set in rename mode:
+  // that branch returns above, and draggable=true suppresses input text selection.
+  row.draggable = true;
+  row.dataset.id = s.id;
+  row.addEventListener("dragstart", (e) => {
+    draggingSessionId = refs.session.id;
+    row.classList.add("dragging");
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  });
+  row.addEventListener("dragend", () => {
+    draggingSessionId = null;
+    row.classList.remove("dragging");
+    clearDropTargets();
+  });
   updateRow(refs, s);
   return row;
+}
+
+/** Drop the section-header highlight from any header still showing it. */
+function clearDropTargets(): void {
+  for (const el of sessionsEl.querySelectorAll(".project-header.drop-target")) {
+    el.classList.remove("drop-target");
+  }
 }
 
 /** Refresh a row's dynamic bits without rebuilding it (preserves hover/confirm state). */
@@ -1382,7 +1408,7 @@ function cycleViewMode(): void {
 
 /** Render section-grouped views: section headers with rows looked up by id. */
 function renderSections(buckets: SectionBucket[]): void {
-  for (const bucket of buckets) {
+  buckets.forEach((bucket, bucketIndex) => {
     const header = document.createElement("div");
     header.className = "project-header";
     const name = document.createElement("span");
@@ -1392,8 +1418,9 @@ function renderSections(buckets: SectionBucket[]): void {
     count.textContent = String(bucket.session_ids.length);
     header.append(name, count);
     const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
+    makeSectionDropTarget(header, bucket, bucketIndex);
     sessionsEl.appendChild(header);
-    if (isCollapsed) continue;
+    if (isCollapsed) return;
     const rendered: string[] = [];
     for (const id of bucket.session_ids) {
       const s = findSession(id);
@@ -1403,7 +1430,37 @@ function renderSections(buckets: SectionBucket[]): void {
       }
     }
     visibleGroups.push(rendered);
-  }
+  });
+}
+
+/** Wire a section header as a drop target for a dragged session row. Dropping
+ *  pins the session to this section (or clears the pin on the index-0
+ *  "In Progress" catch-all). Only headers call preventDefault on dragover, so
+ *  drops can't land anywhere else. */
+function makeSectionDropTarget(
+  header: HTMLDivElement,
+  bucket: SectionBucket,
+  bucketIndex: number,
+): void {
+  header.addEventListener("dragover", (e) => {
+    if (!draggingSessionId) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    header.classList.add("drop-target");
+  });
+  header.addEventListener("dragleave", () => header.classList.remove("drop-target"));
+  header.addEventListener("drop", (e) => {
+    if (!draggingSessionId) return;
+    e.preventDefault();
+    header.classList.remove("drop-target");
+    const id = draggingSessionId;
+    // buckets[0] is always the reserved "In Progress" catch-all; dropping there
+    // clears the pin (section: null), which the backend re-runs predicates on.
+    const target = bucketIndex === 0 ? null : bucket.name;
+    const current = findSession(id)?.current_section ?? null;
+    if (current === target) return; // no-op drop
+    void lifecycleArgs("move_to_section", { id, section: target });
+  });
 }
 
 function renderSidebar(): void {
@@ -1428,6 +1485,9 @@ function renderSidebar(): void {
   sidebarSignature = signature;
   rowRefs.clear();
   visibleGroups = [];
+  // A rebuild (e.g. a poll refresh mid-drag) discards the dragged row's node, so
+  // dragend may never fire — drop the stale id rather than leave it dangling.
+  draggingSessionId = null;
   sessionsEl.innerHTML = "";
   if (topInput) {
     sessionsEl.appendChild(renderTopInput(topInput));

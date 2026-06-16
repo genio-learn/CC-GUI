@@ -110,6 +110,7 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | New session in a project | `+` on the project |
 | Project shell | `$` on the project |
 | Cycle sidebar view (project / sections / stacks) | `⇄` |
+| Move a session to a section | drag its row onto a section header (drop on *In Progress* to unpin) |
 | Save a review comment | `Cmd/Ctrl+Enter` |
 
 ## Platform notes
