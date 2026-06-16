@@ -45,11 +45,14 @@ fi
 
 echo "Releasing v$new (from v$current)"
 
-# Bump the three manifests; let cargo rewrite Cargo.lock from the new manifest.
+# Bump the three manifests; let each lockfile rewrite from the new manifest
+# (cargo metadata for Cargo.lock, npm --package-lock-only for package-lock.json)
+# so neither drifts and `npm ci` in CI stays happy.
 replace_in package.json              "s/\"version\": \"$current\"/\"version\": \"$new\"/"
 replace_in src-tauri/tauri.conf.json "s/\"version\": \"$current\"/\"version\": \"$new\"/"
 replace_in src-tauri/Cargo.toml      "s/^version = \"$current\"/version = \"$new\"/"
 cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 >/dev/null
+npm install --package-lock-only --silent
 
 npm run typecheck   # cheap sanity gate before we tag
 
