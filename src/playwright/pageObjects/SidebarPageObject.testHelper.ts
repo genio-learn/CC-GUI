@@ -101,6 +101,44 @@ export class SidebarPageObject extends AppPageObject {
     });
   }
 
+  // ----- drag a session row onto a section header -----
+  /** A section header by its bucket name (section view only). */
+  sectionHeader(name: string): Locator {
+    return this.sessions
+      .locator(".project-header")
+      .filter({ has: this.page.locator("span", { hasText: name }) });
+  }
+
+  /** Dispatch the HTML5 DnD sequence the handlers listen for — dragstart on the
+   *  row, dragover+drop on the target section header, dragend on the row.
+   *  Playwright can't fire trusted native DnD from mouse moves, and the synthetic
+   *  DragEvents carry no dataTransfer (which the guarded handlers must tolerate). */
+  dragSessionToSection(title: string, sectionName: string): Promise<void> {
+    return this.step(`dragSessionToSection: ${title} → ${sectionName}`, () =>
+      this.page.evaluate(
+        ({ title, sectionName }) => {
+          const rows = [...document.querySelectorAll<HTMLElement>("#sessions .session-row")];
+          const row = rows.find((r) => r.querySelector(".title")?.textContent?.trim() === title);
+          const headers = [
+            ...document.querySelectorAll<HTMLElement>("#sessions .project-header"),
+          ];
+          // The name span is prefixed with a collapse chevron ("▾ " / "▸ ").
+          const headerName = (h: HTMLElement) =>
+            h.querySelector("span")?.textContent?.replace(/^[▾▸]\s*/, "").trim();
+          const header = headers.find((h) => headerName(h) === sectionName);
+          if (!row || !header) {
+            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
+          }
+          row.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
+          header.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
+          header.dispatchEvent(new DragEvent("drop", { bubbles: true }));
+          row.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+        },
+        { title, sectionName },
+      ),
+    );
+  }
+
   // ----- context menu -----
   private async openRowMenu(title: string): Promise<void> {
     await this.row(title).click({ button: "right" });
@@ -159,6 +197,49 @@ export class SidebarPageObject extends AppPageObject {
       () =>
         (window as unknown as { __CC_SIM__: { getViewMode(): string } })
           .__CC_SIM__.getViewMode(),
+    );
+  }
+
+  /** The fake's section buckets — assert a session's placement after a move. */
+  storedSectionBuckets(): Promise<{ name: string; session_ids: string[] }[] | null> {
+    return this.page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __CC_SIM__: { getSectionBuckets(): { name: string; session_ids: string[] }[] | null };
+          }
+        ).__CC_SIM__.getSectionBuckets(),
+    );
+  }
+
+  /** The section header a row currently renders under in the DOM (the nearest
+   *  preceding header), or null if not found — proves the post-move re-render. */
+  renderedSectionOf(title: string): Promise<string | null> {
+    return this.page.evaluate((title) => {
+      let section: string | null = null;
+      for (const el of document.querySelectorAll<HTMLElement>("#sessions > *")) {
+        if (el.classList.contains("project-header")) {
+          section = el.querySelector("span")?.textContent?.replace(/^[▾▸]\s*/, "").trim() ?? null;
+        } else if (
+          el.classList.contains("session-row") &&
+          el.querySelector(".title")?.textContent?.trim() === title
+        ) {
+          return section;
+        }
+      }
+      return null;
+    }, title);
+  }
+
+  /** Section moves the frontend dispatched — empty after a no-op drop. */
+  storedSectionMoves(): Promise<{ id: string; section: string | null }[]> {
+    return this.page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __CC_SIM__: { getSectionMoves(): { id: string; section: string | null }[] };
+          }
+        ).__CC_SIM__.getSectionMoves(),
     );
   }
 }

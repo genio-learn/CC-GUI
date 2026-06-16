@@ -18,6 +18,7 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     [
       ["⋯ menu", "Add project, scan directory, delete merged-PR sessions"],
       ["⇄", "Cycle view: project / sections / section stacks"],
+      ["Drag row → section", "Move a session to a section (drop on In Progress to unpin)"],
       ["● (yellow)", "Unread: agent finished while you were away"],
       ["🗨", "Session has pending review comments"],
       ["⇣!", "Auto-pull of project main is blocked (hover for reason)"],
