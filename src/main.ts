@@ -227,10 +227,11 @@ function closeTerminal(name: string): void {
 }
 
 // --------------------------------------------------- tab drag-to-reorder
-// HTML5 drag-and-drop reorders the tab strip live; on drop we rebuild the
+// HTML5 drag-and-drop reorders the tab strip. `dragover` shows an insertion
+// marker at the drop point; `drop` performs the move and rebuilds the
 // `terminals` Map to match the DOM so index/cycle navigation follows the
-// visible order. The dragging tab is the only mutable element, so a single
-// dragover listener on the strip handles every tab.
+// visible order. Committing on `drop` (not `dragend`) means an Esc-cancelled
+// drag leaves the order untouched.
 let draggingTab: HTMLDivElement | null = null;
 
 // Session rows drag onto section headers to move a session between sections
@@ -238,14 +239,31 @@ let draggingTab: HTMLDivElement | null = null;
 // session's id is module state; section-header drop handlers read it.
 let draggingSessionId: string | null = null;
 
-/** The tab to insert the dragged tab before, given the pointer's x. */
-function tabAfterX(x: number): HTMLDivElement | null {
+/** The tab to insert the dragged tab before, given the pointer's x (null = end). */
+function tabBeforeX(x: number): HTMLDivElement | null {
   const tabs = [...tabsEl.querySelectorAll<HTMLDivElement>(".tab:not(.dragging)")];
   for (const tab of tabs) {
     const box = tab.getBoundingClientRect();
     if (x < box.left + box.width / 2) return tab;
   }
   return null;
+}
+
+/** Show the insertion marker before `target` (or after the last tab when null). */
+function showDropMarker(target: HTMLDivElement | null): void {
+  clearDropMarker();
+  if (target) {
+    target.classList.add("drop-before");
+  } else {
+    const tabs = tabsEl.querySelectorAll<HTMLDivElement>(".tab:not(.dragging)");
+    tabs[tabs.length - 1]?.classList.add("drop-after");
+  }
+}
+
+function clearDropMarker(): void {
+  for (const t of tabsEl.querySelectorAll(".drop-before, .drop-after")) {
+    t.classList.remove("drop-before", "drop-after");
+  }
 }
 
 /** Rebuild the Map's iteration order from the current tab DOM order. */
@@ -261,10 +279,19 @@ function syncTermOrderFromDom(): void {
 
 tabsEl.addEventListener("dragover", (e) => {
   if (!draggingTab) return;
+  e.preventDefault(); // mark the strip a valid drop target
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  showDropMarker(tabBeforeX(e.clientX));
+});
+
+tabsEl.addEventListener("drop", (e) => {
+  if (!draggingTab) return;
   e.preventDefault();
-  const after = tabAfterX(e.clientX);
-  if (after) tabsEl.insertBefore(draggingTab, after);
+  const before = tabBeforeX(e.clientX);
+  if (before) tabsEl.insertBefore(draggingTab, before);
   else tabsEl.appendChild(draggingTab);
+  clearDropMarker();
+  syncTermOrderFromDom();
 });
 
 async function openTerminal(session: SessionRow): Promise<void> {
@@ -412,12 +439,18 @@ async function attachTerminal(
   tab.addEventListener("dragstart", (e) => {
     draggingTab = tab;
     tab.classList.add("dragging");
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      // Some webviews won't fire dragover/drop unless drag data is set.
+      e.dataTransfer.setData("text/plain", name);
+    }
   });
   tab.addEventListener("dragend", () => {
+    // Cleanup only — the reorder is committed in the `drop` handler, so an
+    // Esc-cancelled drag (drop never fires) leaves the order unchanged.
     tab.classList.remove("dragging");
     draggingTab = null;
-    syncTermOrderFromDom();
+    clearDropMarker();
   });
   const label = document.createElement("span");
   label.textContent = title;
