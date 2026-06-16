@@ -128,17 +128,16 @@ test.describe("tab reorder", () => {
 
     // Drag tab 0 (alpha) past the last tab. Playwright can't fire trusted native
     // HTML5 DnD from mouse moves, so dispatch the sequence the handlers listen
-    // for: dragstart marks the dragged tab, dragover on #tabs reorders by
-    // clientX, dragend commits the Map order.
+    // for: dragstart marks the dragged tab, dragover on #tabs positions the drop
+    // marker by clientX, drop commits the Map order, dragend cleans up.
     await page.evaluate(() => {
       const tabs = document.querySelectorAll<HTMLElement>("#tabs .tab");
+      const strip = document.querySelector("#tabs")!;
       const last = tabs[2].getBoundingClientRect();
+      const at = { bubbles: true, clientX: last.right - 2, clientY: last.top + 2 };
       tabs[0].dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-      document
-        .querySelector("#tabs")!
-        .dispatchEvent(
-          new DragEvent("dragover", { bubbles: true, clientX: last.right - 2, clientY: last.top + 2 }),
-        );
+      strip.dispatchEvent(new DragEvent("dragover", at));
+      strip.dispatchEvent(new DragEvent("drop", at));
       tabs[0].dispatchEvent(new DragEvent("dragend", { bubbles: true }));
     });
     await expect(page.locator("#tabs .tab span")).toHaveText(["beta", "gamma", "alpha"]);

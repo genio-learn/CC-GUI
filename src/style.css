@@ -820,6 +820,15 @@ body.resizing .panel-resizer {
   opacity: 0.5;
 }
 
+/* Insertion marker showing where a dragged tab will land. */
+.tab.drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tab.drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
 .tab-close {
   background: none;
   border: none;
