@@ -104,6 +104,75 @@ test.describe("glyphs and badges", () => {
   });
 });
 
+test.describe("drag a session to a section", () => {
+  test.use({
+    seed: {
+      snapshot: makeSnapshot({
+        view_mode: "sections",
+        section_names: ["Review", "Done"],
+        sections: [
+          { name: "In Progress", session_ids: ["sess-1"] },
+          { name: "Review", session_ids: ["sess-2"] },
+          { name: "Done", session_ids: [] },
+        ],
+        groups: [
+          {
+            id: "proj-1",
+            name: "acme",
+            repo_path: "/repos/acme",
+            pull_blocked: null,
+            sessions: [
+              makeSession({ title: "fix login bug", current_section: null }),
+              makeSession({ id: "sess-2", title: "ship feature", current_section: "Review" }),
+            ],
+          },
+        ],
+      }),
+      reviews: {},
+    },
+  });
+
+  test("dropping on a named section pins the session there", async ({ sidebar }) => {
+    await sidebar.dragSessionToSection("fix login bug", "Done");
+
+    // The frontend re-rendered from the rebuilt snapshot: the row now sits under
+    // "Done", and the fake's buckets agree.
+    await expect(async () => {
+      expect(await sidebar.renderedSectionOf("fix login bug")).toBe("Done");
+    }).toPass();
+    const buckets = await sidebar.storedSectionBuckets();
+    expect(buckets?.find((b) => b.name === "Done")?.session_ids).toEqual(["sess-1"]);
+    expect(buckets?.find((b) => b.name === "In Progress")?.session_ids).toEqual([]);
+    expect(await sidebar.storedSectionMoves()).toEqual([{ id: "sess-1", section: "Done" }]);
+  });
+
+  test("dropping on the current section is a no-op (no move dispatched)", async ({ sidebar }) => {
+    await sidebar.dragSessionToSection("ship feature", "Review");
+
+    // Give any erroneous invoke a chance to land before asserting nothing fired.
+    await sidebar.dragSessionToSection("fix login bug", "Done");
+    await expect(async () => {
+      expect(await sidebar.renderedSectionOf("fix login bug")).toBe("Done");
+    }).toPass();
+
+    const moves = await sidebar.storedSectionMoves();
+    expect(moves).not.toContainEqual({ id: "sess-2", section: "Review" });
+    expect(moves).toEqual([{ id: "sess-1", section: "Done" }]);
+  });
+
+  test("dropping on In Progress clears the pin (section: null)", async ({ sidebar }) => {
+    await sidebar.dragSessionToSection("ship feature", "In Progress");
+
+    await expect(async () => {
+      expect(await sidebar.renderedSectionOf("ship feature")).toBe("In Progress");
+    }).toPass();
+    const buckets = await sidebar.storedSectionBuckets();
+    expect(buckets?.find((b) => b.name === "In Progress")?.session_ids).toContain("sess-2");
+    expect(buckets?.find((b) => b.name === "Review")?.session_ids).toEqual([]);
+    expect(await sidebar.storedSectionMoves()).toEqual([{ id: "sess-2", section: null }]);
+  });
+});
+
 test.describe("delete merged-PR sessions", () => {
   test.use({
     seed: {

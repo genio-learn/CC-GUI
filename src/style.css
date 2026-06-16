@@ -151,6 +151,17 @@ body {
   background: var(--border);
 }
 
+.session-row.dragging {
+  opacity: 0.5;
+}
+
+/* Section header highlighted while a session row is dragged over it. */
+.project-header.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--border);
+}
+
 .session-row.active {
   background: var(--border-strong);
 }
