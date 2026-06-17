@@ -4,6 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "./toast";
+import { noTextAssist } from "./dom";
 
 const overlay = document.createElement("div");
 overlay.id = "settings-overlay";
@@ -35,7 +36,7 @@ function fieldInput(key: string, value: ConfigValue): HTMLElement {
     return input;
   }
   if (value === null || typeof value === "string") {
-    const input = document.createElement("input");
+    const input = noTextAssist(document.createElement("input"));
     input.type = "text";
     input.value = value ?? "";
     input.placeholder = value === null ? "(unset)" : "";
@@ -43,7 +44,7 @@ function fieldInput(key: string, value: ConfigValue): HTMLElement {
     input.dataset.kind = value === null ? "nullable" : "string";
     return input;
   }
-  const area = document.createElement("textarea");
+  const area = noTextAssist(document.createElement("textarea"));
   area.value = JSON.stringify(value, null, 2);
   area.rows = Math.min(8, Math.max(2, JSON.stringify(value, null, 2).split("\n").length));
   area.dataset.key = key;

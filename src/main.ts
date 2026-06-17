@@ -16,6 +16,7 @@ import { registerPaletteProvider } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
 import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
 import { openSettings } from "./settings";
+import { noTextAssist } from "./dom";
 import {
   initTheme,
   setMode,
@@ -174,6 +175,7 @@ type TermEntry = {
   fit: FitAddon;
   container: HTMLDivElement;
   tab: HTMLDivElement;
+  glyph: HTMLSpanElement;
   title: string;
   dead: boolean;
 };
@@ -452,7 +454,11 @@ async function attachTerminal(
     draggingTab = null;
     clearDropMarker();
   });
+  const glyph = document.createElement("span");
+  glyph.className = "tab-glyph";
+  glyph.hidden = true; // shown once a matching session status is known
   const label = document.createElement("span");
+  label.className = "tab-label";
   label.textContent = title;
   const close = document.createElement("button");
   close.className = "tab-close";
@@ -461,7 +467,7 @@ async function attachTerminal(
     e.stopPropagation();
     closeTerminal(name);
   });
-  tab.append(label, close);
+  tab.append(glyph, label, close);
   tab.addEventListener("click", () => activateTerminal(name));
   tabsEl.appendChild(tab);
 
@@ -470,10 +476,12 @@ async function attachTerminal(
     fit,
     container,
     tab,
+    glyph,
     title,
     dead: false,
   };
   terminals.set(name, entry);
+  updateTabGlyphs();
 
   const onData = new Channel<number[]>();
   onData.onmessage = (chunk) => term.write(new Uint8Array(chunk));
@@ -877,22 +885,54 @@ const AGENT_GLYPHS: Record<string, [string, string]> = {
   idle: ["●", "agent-idle"],
 };
 
+const STATUS_GLYPH_CLASSES = [
+  "agent-working",
+  "agent-waiting",
+  "agent-idle",
+  "agent-unknown",
+  "status-stopped",
+  "status-transient",
+];
+
+/** Set `el`'s glyph/colour/tooltip from a session's status. Shared by the
+ *  sidebar rows and the terminal tabs so they stay in lockstep. */
+function applyStatusGlyph(el: HTMLSpanElement, s: SessionRow): void {
+  el.classList.remove(...STATUS_GLYPH_CLASSES);
+  let cls: string;
+  if (s.status === "running") {
+    const [glyph, c] = AGENT_GLYPHS[s.agent_state] ?? ["●", "agent-unknown"];
+    el.textContent = glyph;
+    cls = c;
+  } else if (s.status === "stopped") {
+    el.textContent = "○";
+    cls = "status-stopped";
+  } else {
+    el.textContent = "⧖"; // creating / merging / pushing
+    cls = "status-transient";
+  }
+  el.classList.add(cls);
+  el.title = s.status === "running" ? s.agent_state : s.status;
+}
+
 function statusGlyph(s: SessionRow): HTMLSpanElement {
   const el = document.createElement("span");
   el.className = "glyph";
-  if (s.status === "running") {
-    const [glyph, cls] = AGENT_GLYPHS[s.agent_state] ?? ["●", "agent-unknown"];
-    el.textContent = glyph;
-    el.classList.add(cls);
-  } else if (s.status === "stopped") {
-    el.textContent = "○";
-    el.classList.add("status-stopped");
-  } else {
-    el.textContent = "⧖"; // creating / merging / pushing
-    el.classList.add("status-transient");
-  }
-  el.title = s.status === "running" ? s.agent_state : s.status;
+  applyStatusGlyph(el, s);
   return el;
+}
+
+/** Mirror each open tab's status glyph from the latest session snapshot. Tabs
+ *  with no matching session (e.g. commander) keep their glyph hidden. */
+function updateTabGlyphs(): void {
+  for (const [name, entry] of terminals) {
+    const s = groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === name);
+    if (s) {
+      entry.glyph.hidden = false;
+      applyStatusGlyph(entry.glyph, s);
+    } else {
+      entry.glyph.hidden = true;
+    }
+  }
 }
 
 function actionButton(
@@ -1065,16 +1105,38 @@ function prBadge(s: SessionRow): HTMLSpanElement | null {
   return badge;
 }
 
+/** True when the branch is just a slug of the title (the common case), so it
+ *  carries no information worth its own column. */
+function branchMatchesTitle(title: string, branch: string): boolean {
+  const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug(title) === slug(branch);
+}
+
 /** Rebuild the inner content of a row's main span (cheap; no input state). */
 function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   main.innerHTML = "";
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = s.title;
-  const branch = document.createElement("span");
-  branch.className = "meta";
-  branch.textContent = SECTION_VIEW() ? `${s.project_name} · ${s.branch}` : s.branch;
-  main.append(statusGlyph(s), title, branch);
+  title.title = `Branch: ${s.branch}`;
+  main.append(statusGlyph(s), title);
+  // Only surface the branch when it has diverged from the title; otherwise the
+  // two columns just repeat each other. (Always available via the hover title
+  // above and the detail panel.) In section view we still show the project.
+  const showBranch = !branchMatchesTitle(s.title, s.branch);
+  const meta = SECTION_VIEW()
+    ? showBranch
+      ? `${s.project_name} · ${s.branch}`
+      : s.project_name
+    : showBranch
+      ? s.branch
+      : "";
+  if (meta) {
+    const branch = document.createElement("span");
+    branch.className = "meta";
+    branch.textContent = meta;
+    main.append(branch);
+  }
   const badge = prBadge(s);
   if (badge) main.appendChild(badge);
   if (s.has_pending_comments) {
@@ -1178,7 +1240,7 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
 
 /** Inline rename input shown in place of the row's title. */
 function renderRenameInput(s: SessionRow): HTMLInputElement {
-  const input = document.createElement("input");
+  const input = noTextAssist(document.createElement("input"));
   input.className = "rename-input";
   input.value = s.title;
   input.addEventListener("click", (e) => e.stopPropagation());
@@ -1279,7 +1341,7 @@ function updateRow(refs: RowRefs, s: SessionRow): void {
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = "create-input";
-  const input = document.createElement("input");
+  const input = noTextAssist(document.createElement("input"));
   input.placeholder = "new session title…";
   input.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -1337,7 +1399,7 @@ function projectMenuItems(group: ProjectGroup): MenuItem[] {
 function renderTopInput(mode: "add" | "scan"): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = "create-input";
-  const input = document.createElement("input");
+  const input = noTextAssist(document.createElement("input"));
   input.placeholder = mode === "add" ? "path to git repo…" : "directory to scan for repos…";
   input.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -1639,6 +1701,7 @@ function applySnapshot(snap: Snapshot): void {
   sections = snap.sections;
   sectionNames = snap.section_names;
   renderSidebar();
+  updateTabGlyphs();
   renderCommander(snap.commander);
 }
 

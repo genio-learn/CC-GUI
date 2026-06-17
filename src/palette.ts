@@ -2,6 +2,8 @@
 // commands run their action. Subsequence match with a simple score:
 // earlier + contiguous matches rank higher.
 
+import { noTextAssist } from "./dom";
+
 export type PaletteEntry = {
   label: string;
   hint: string;
@@ -37,7 +39,7 @@ overlay.id = "palette";
 overlay.classList.add("hidden");
 const box = document.createElement("div");
 box.className = "palette-box";
-const input = document.createElement("input");
+const input = noTextAssist(document.createElement("input"));
 input.placeholder = "Jump to session or run a command…";
 const list = document.createElement("div");
 list.className = "palette-list";

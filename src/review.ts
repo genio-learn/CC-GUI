@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { noTextAssist } from "./dom";
 import { makeResizable } from "./resize";
 import { currentTheme, onThemeChange, type Theme } from "./theme";
 import {
@@ -366,7 +367,7 @@ async function saveComment(lines: DiffLine[], comment: string): Promise<void> {
 function renderCommentEditor(lines: DiffLine[]): HTMLDivElement {
   const box = document.createElement("div");
   box.className = "review-comment editor";
-  const textarea = document.createElement("textarea");
+  const textarea = noTextAssist(document.createElement("textarea"));
   textarea.placeholder = "Leave a comment for the agent… (Cmd/Ctrl+Enter to save, Esc to cancel)";
   textarea.rows = 3;
   textarea.value = draftText;

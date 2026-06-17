@@ -840,6 +840,12 @@ body.resizing .panel-resizer {
   box-shadow: inset -2px 0 0 var(--accent);
 }
 
+.tab-glyph {
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .tab-close {
   background: none;
   border: none;
