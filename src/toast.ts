@@ -2,6 +2,8 @@
 // neither window.alert (silent no-op) nor window.confirm (always false), so
 // native JS dialogs must never be used — route everything through here.
 
+import { noTextAssist } from "./dom";
+
 let stack: HTMLDivElement | null = null;
 
 function toastStack(): HTMLDivElement {
@@ -88,7 +90,7 @@ export function promptDialog(
     const text = document.createElement("div");
     text.className = "confirm-text";
     text.textContent = message;
-    const input = document.createElement("input");
+    const input = noTextAssist(document.createElement("input"));
     input.className = "rename-input";
     input.placeholder = placeholder;
     const buttons = document.createElement("div");
