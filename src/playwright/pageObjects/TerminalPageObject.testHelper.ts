@@ -27,7 +27,7 @@ export class TerminalPageObject extends AppPageObject {
   }
 
   tabLabels(): Locator {
-    return this.tabs.locator("span");
+    return this.tabs.locator(".tab-label");
   }
 
   placeholderVisible(): Promise<boolean> {

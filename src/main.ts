@@ -458,6 +458,7 @@ async function attachTerminal(
   glyph.className = "tab-glyph";
   glyph.hidden = true; // shown once a matching session status is known
   const label = document.createElement("span");
+  label.className = "tab-label";
   label.textContent = title;
   const close = document.createElement("button");
   close.className = "tab-close";

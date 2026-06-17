@@ -124,7 +124,7 @@ test.describe("tab reorder", () => {
     await attach("alpha", 1);
     await attach("beta", 2);
     await attach("gamma", 3);
-    await expect(page.locator("#tabs .tab span")).toHaveText(["alpha", "beta", "gamma"]);
+    await expect(page.locator("#tabs .tab .tab-label")).toHaveText(["alpha", "beta", "gamma"]);
 
     // Drag tab 0 (alpha) past the last tab. Playwright can't fire trusted native
     // HTML5 DnD from mouse moves, so dispatch the sequence the handlers listen
@@ -140,10 +140,10 @@ test.describe("tab reorder", () => {
       strip.dispatchEvent(new DragEvent("drop", at));
       tabs[0].dispatchEvent(new DragEvent("dragend", { bubbles: true }));
     });
-    await expect(page.locator("#tabs .tab span")).toHaveText(["beta", "gamma", "alpha"]);
+    await expect(page.locator("#tabs .tab .tab-label")).toHaveText(["beta", "gamma", "alpha"]);
 
     // Index navigation follows the new order: Cmd+1 activates the first tab.
     await page.keyboard.press("Meta+1");
-    await expect(page.locator("#tabs .tab.active span")).toHaveText("beta");
+    await expect(page.locator("#tabs .tab.active .tab-label")).toHaveText("beta");
   });
 });
