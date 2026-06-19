@@ -95,6 +95,22 @@ pub async fn read_review_image(
 }
 
 fn image_data_url(worktree: &Path, base: &str, path: &str, side: &str) -> Result<String, String> {
+    // `path`/`base` come from the trusted diff snapshot, but this is a public
+    // Tauri command: reject anything that could be read by git as an option or
+    // escape the worktree (absolute path or `..` segment).
+    if base.is_empty() || base.starts_with('-') {
+        return Err(format!("invalid base ref {base:?}"));
+    }
+    let rel = Path::new(path);
+    if path.is_empty()
+        || path.starts_with('-')
+        || rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!("invalid image path {path:?}"));
+    }
     let raw = match side {
         "new" => {
             std::fs::read(worktree.join(path)).map_err(|e| format!("read working image: {e}"))?

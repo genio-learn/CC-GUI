@@ -543,16 +543,20 @@ async function renderImageDiff(file: FileDiff): Promise<void> {
 
   const needOld = file.status !== "added";
   const needNew = file.status !== "deleted";
+  // A rename moves the blob, so each side lives at its own path; for every
+  // other status old_path === new_path.
+  const oldPath = file.old_path;
+  const newPath = file.new_path;
   const someUncached =
-    (needOld && !imageCache.has(`${path} old`)) ||
-    (needNew && !imageCache.has(`${path} new`));
+    (needOld && !imageCache.has(`${oldPath} old`)) ||
+    (needNew && !imageCache.has(`${newPath} new`));
   if (someUncached) diffEl.innerHTML = '<div class="review-empty">Loading image…</div>';
 
   let oldUrl: string | null = null;
   let newUrl: string | null = null;
   try {
-    if (needOld) oldUrl = await loadImage(id, base, path, "old");
-    if (needNew) newUrl = await loadImage(id, base, path, "new");
+    if (needOld) oldUrl = await loadImage(id, base, oldPath, "old");
+    if (needNew) newUrl = await loadImage(id, base, newPath, "new");
   } catch (e) {
     if (sessionId !== id || selectedFile !== path) return;
     diffEl.innerHTML = "";
