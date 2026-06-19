@@ -63,6 +63,26 @@ export function displayPath(f: FileDiff): string {
   return f.status === "deleted" ? f.old_path : f.new_path;
 }
 
+/** Extensions rendered as an image comparison rather than a text diff. Mirrors
+ *  the backend's `mime_for` in review.rs. */
+const IMAGE_EXTS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "ico",
+  "avif",
+]);
+
+/** Whether a file should be shown as an image diff (by extension). */
+export function isImagePath(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTS.has(ext);
+}
+
 export const STATUS_LETTER: Record<FileStatus, string> = {
   added: "A",
   deleted: "D",

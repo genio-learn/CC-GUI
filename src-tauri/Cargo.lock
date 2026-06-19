@@ -476,6 +476,7 @@ dependencies = [
 name = "cc-gui"
 version = "0.3.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "claude-commander",
  "futures",
