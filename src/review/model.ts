@@ -25,6 +25,20 @@ export type Hunk = {
 
 export type FileStatus = "added" | "deleted" | "modified" | "renamed";
 
+/** A binary file's render kind. Internally tagged on `kind` by serde, so an
+ *  image carries its MIME alongside the discriminant. */
+export type BinaryKind = { kind: "image"; mime: string } | { kind: "other" };
+
+/** Metadata for a binary file's diff. Bytes are lazy-loaded via
+ *  `read_review_image`; `old_*`/`new_*` are null on the missing side. */
+export type BinaryInfo = {
+  kind: BinaryKind;
+  old_oid: string | null;
+  new_oid: string | null;
+  old_size: number | null;
+  new_size: number | null;
+};
+
 export type FileDiff = {
   old_path: string;
   new_path: string;
@@ -32,6 +46,8 @@ export type FileDiff = {
   added: number;
   removed: number;
   hunks: Hunk[];
+  /** Present when the file is binary (no textual hunks); null for text. */
+  binary: BinaryInfo | null;
 };
 
 export type Comment = {
@@ -63,24 +79,11 @@ export function displayPath(f: FileDiff): string {
   return f.status === "deleted" ? f.old_path : f.new_path;
 }
 
-/** Extensions rendered as an image comparison rather than a text diff. Mirrors
- *  the backend's `mime_for` in review.rs. */
-const IMAGE_EXTS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "svg",
-  "bmp",
-  "ico",
-  "avif",
-]);
-
-/** Whether a file should be shown as an image diff (by extension). */
-export function isImagePath(path: string): boolean {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return IMAGE_EXTS.has(ext);
+/** The MIME of a file shown as an image diff, or null if it isn't a renderable
+ *  image. Driven by the snapshot's binary metadata, so it covers both LFS and
+ *  directly-committed images. */
+export function imageMime(f: FileDiff): string | null {
+  return f.binary?.kind.kind === "image" ? f.binary.kind.mime : null;
 }
 
 export const STATUS_LETTER: Record<FileStatus, string> = {

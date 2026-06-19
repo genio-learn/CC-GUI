@@ -7,7 +7,7 @@ import {
   commentsByAnchor,
   describeOutcome,
   displayPath,
-  isImagePath,
+  imageMime,
   STATUS_LETTER,
   type ApplyOutcome,
   type Comment,
@@ -427,8 +427,9 @@ function renderDiff(): void {
     diffEl.appendChild(empty);
     return;
   }
-  if (isImagePath(displayPath(file))) {
-    void renderImageDiff(file);
+  const mime = imageMime(file);
+  if (mime) {
+    void renderImageDiff(file, mime);
     return;
   }
   const anchors = commentsByAnchor(snapshot.comments, displayPath(file));
@@ -517,14 +518,15 @@ function renderDiff(): void {
 /** Fetch one side of an image as a data URL, memoized for this snapshot. */
 async function loadImage(
   id: string,
-  base: string,
   path: string,
   side: "old" | "new",
+  mime: string,
 ): Promise<string> {
   const key = `${path} ${side}`;
   const cached = imageCache.get(key);
   if (cached) return cached;
-  const url = await invoke<string>("read_review_image", { id, base, path, side });
+  const b64 = await invoke<string>("read_review_image", { id, path, side });
+  const url = `data:${mime};base64,${b64}`;
   imageCache.set(key, url);
   return url;
 }
@@ -535,9 +537,8 @@ async function loadImage(
  * files a juxtapose slider. Async because it reads the bytes from the backend;
  * guards against the file/session changing while loading.
  */
-async function renderImageDiff(file: FileDiff): Promise<void> {
+async function renderImageDiff(file: FileDiff, mime: string): Promise<void> {
   const id = sessionId;
-  const base = snapshot?.base ?? "";
   const path = displayPath(file);
   if (!id) return;
 
@@ -555,8 +556,8 @@ async function renderImageDiff(file: FileDiff): Promise<void> {
   let oldUrl: string | null = null;
   let newUrl: string | null = null;
   try {
-    if (needOld) oldUrl = await loadImage(id, base, oldPath, "old");
-    if (needNew) newUrl = await loadImage(id, base, newPath, "new");
+    if (needOld) oldUrl = await loadImage(id, oldPath, "old", mime);
+    if (needNew) newUrl = await loadImage(id, newPath, "new", mime);
   } catch (e) {
     if (sessionId !== id || selectedFile !== path) return;
     diffEl.innerHTML = "";
