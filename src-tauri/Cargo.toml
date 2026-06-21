@@ -17,13 +17,10 @@ portable-pty = "0.9"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 uuid = "1"
 
-# TEMP: pinned to the unreleased image-diff branch (claude-commander PR #147,
-# stacked on #146) for the binary/image review API — `fetch_diff_blob`,
-# `DiffSide`, and `FileDiff.binary`. TODO: re-pin to the next release tag once
-# claude-commander ships this. Do NOT merge to main while pinned to a branch rev.
-# To develop against a local checkout instead, add a gitignored
-# `.cargo/config.toml` with `paths = ["../claude-commander"]` — see CONTRIBUTING.md.
-claude-commander = { git = "https://github.com/sizeak/claude-commander", rev = "9668138784ae8c661f85f80c41dca90662678939" }
+# Pinned to a published claude-commander release for reproducible builds. To
+# develop against a local checkout instead, add a gitignored `.cargo/config.toml`
+# with `paths = ["../claude-commander"]` — see CONTRIBUTING.md.
+claude-commander = { git = "https://github.com/sizeak/claude-commander", tag = "v0.17.0" }
 futures = "0.3.32"
 tracing = "0.1.44"
 chrono = "0.4.45"

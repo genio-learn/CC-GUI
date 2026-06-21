@@ -768,8 +768,8 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-commander"
-version = "0.16.0"
-source = "git+https://github.com/sizeak/claude-commander?rev=9668138784ae8c661f85f80c41dca90662678939#9668138784ae8c661f85f80c41dca90662678939"
+version = "0.17.0"
+source = "git+https://github.com/sizeak/claude-commander?tag=v0.17.0#34ebb647247295be127923d076198f6fec3d130e"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
@@ -6194,7 +6194,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
