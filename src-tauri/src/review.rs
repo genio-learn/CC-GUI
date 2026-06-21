@@ -1,6 +1,7 @@
 //! Review diff + comment commands.
 
-use claude_commander::api::NewComment;
+use base64::Engine;
+use claude_commander::api::{DiffSide, NewComment};
 use claude_commander::comment::{ApplyOutcome, CommentSide};
 
 use crate::service::{parse_session_id, with_service};
@@ -56,6 +57,30 @@ pub async fn delete_comment(id: String, comment_id: String) -> Result<(), String
         svc.delete_comment(&id, comment_id)
             .await
             .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Read one side of a binary file in the review diff and return its bytes
+/// base64-encoded. The frontend wraps this in a `data:<mime>;base64,…` URL
+/// using the MIME from the snapshot's `binary` metadata.
+///
+/// `side` is "old" (the review base) or "new" (the working tree). The service
+/// resolves the worktree/base and smudges any git-LFS pointer to real bytes.
+#[tauri::command]
+pub async fn read_review_image(id: String, path: String, side: String) -> Result<String, String> {
+    let sid = parse_session_id(&id)?;
+    let side = match side.as_str() {
+        "old" => DiffSide::Old,
+        "new" => DiffSide::New,
+        other => return Err(format!("invalid image side {other:?}")),
+    };
+    with_service(move |svc| async move {
+        let bytes = svc
+            .fetch_diff_blob(&sid, side, &path)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
     })
     .await
 }

@@ -111,6 +111,7 @@ fn main() {
             projects::open_in_editor,
             projects::open_external,
             review::open_review,
+            review::read_review_image,
             review::create_comment,
             review::delete_comment,
             review::apply_comments,

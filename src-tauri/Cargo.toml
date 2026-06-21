@@ -12,6 +12,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-clipboard-manager = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
 portable-pty = "0.9"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 uuid = "1"
@@ -19,7 +20,7 @@ uuid = "1"
 # Pinned to a published claude-commander release for reproducible builds. To
 # develop against a local checkout instead, add a gitignored `.cargo/config.toml`
 # with `paths = ["../claude-commander"]` — see CONTRIBUTING.md.
-claude-commander = { git = "https://github.com/sizeak/claude-commander", tag = "v0.16.0" }
+claude-commander = { git = "https://github.com/sizeak/claude-commander", tag = "v0.17.0" }
 futures = "0.3.32"
 tracing = "0.1.44"
 chrono = "0.4.45"
