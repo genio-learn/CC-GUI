@@ -202,9 +202,13 @@ class TauriSimulator {
       has_pending_comments: false,
       unread: false,
       stacked_child: false,
+      project_id: group.id,
       project_name: group.name,
       current_section: null,
     });
+    // A new session is bucketed by the backend; mirror that so it shows up in
+    // section views (catch-all "In Progress", since current_section is null).
+    if (this.snapshot.sections !== null) this.rebuildSections();
     return null;
   }
 

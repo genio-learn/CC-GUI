@@ -33,6 +33,9 @@ pub struct SessionRow {
     pub unread: bool,
     /// Rendered one indent level under its stack parent.
     pub stacked_child: bool,
+    /// Full uuid of the owning project (matches `ProjectGroup.id`); lets section
+    /// views group their sessions under project sub-headers.
+    pub project_id: String,
     pub project_name: String,
     /// Cached current section (None = the implicit "In Progress").
     pub current_section: Option<String>,
@@ -112,6 +115,7 @@ pub async fn build_groups(
                 has_pending_comments: pending_comments.contains(&s.id),
                 unread: s.unread,
                 stacked_child,
+                project_id: project_uuid(&p.id),
                 project_name: p.name.clone(),
                 current_section: s.current_section.clone(),
             });

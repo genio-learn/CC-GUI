@@ -120,6 +120,19 @@ body {
   cursor: pointer;
 }
 
+/* Project sub-header inside a section bucket: indented under the section,
+   lighter than a top-level project header. */
+.project-subheader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 2px 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+}
+
 .chevron {
   color: var(--text-dim);
   font-size: 9px;
@@ -257,6 +270,25 @@ body {
 .row-action.confirm {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+/* Full-width "new session" action shown above the list in section views. */
+.new-session-btn {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 2px 8px 6px;
+  padding: 6px 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.new-session-btn:hover {
+  background: var(--border);
+  border-color: var(--accent);
 }
 
 .create-input {

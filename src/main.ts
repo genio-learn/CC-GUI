@@ -119,6 +119,7 @@ type SessionRow = {
   has_pending_comments: boolean;
   unread: boolean;
   stacked_child: boolean;
+  project_id: string;
   project_name: string;
   current_section: string | null;
 };
@@ -784,11 +785,19 @@ let groups: ProjectGroup[] = [];
 let viewMode = "project";
 let sections: SectionBucket[] | null = null;
 let sectionNames: string[] = [];
-let newSessionProject: string | null = null; // project id with open create-input
+// Key of the project header with an open create-input. In project view this is
+// the bare project id; in section view it's scoped to the section (see
+// `sectionCreateKey`) so the same project across sections opens independently.
+let newSessionProject: string | null = null;
 let renamingId: string | null = null; // session id being renamed inline
 let topInput: "add" | "scan" | null = null; // sidebar-top path input mode
 
 const SECTION_VIEW = (): boolean => sections !== null;
+
+/** Create-input key for a project sub-header inside a section. The `sect:`
+ *  prefix can't collide with a bare project uuid (project-view key). */
+const sectionCreateKey = (section: string, projectId: string): string =>
+  `sect:${section} ${projectId}`;
 
 // Collapsed sidebar groups ("proj:<id>" / "sect:<name>"), persisted.
 const collapsed = new Set<string>(
@@ -1122,15 +1131,10 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   main.append(statusGlyph(s), title);
   // Only surface the branch when it has diverged from the title; otherwise the
   // two columns just repeat each other. (Always available via the hover title
-  // above and the detail panel.) In section view we still show the project.
+  // above and the detail panel.) The project is shown by its header/sub-header,
+  // so the row never needs to repeat it.
   const showBranch = !branchMatchesTitle(s.title, s.branch);
-  const meta = SECTION_VIEW()
-    ? showBranch
-      ? `${s.project_name} · ${s.branch}`
-      : s.project_name
-    : showBranch
-      ? s.branch
-      : "";
+  const meta = showBranch ? s.branch : "";
   if (meta) {
     const branch = document.createElement("span");
     branch.className = "meta";
@@ -1369,12 +1373,12 @@ let sidebarSignature = "";
  * open create-input) changes; otherwise patch rows in place. A periodic full
  * rebuild would wipe the create-input text and confirm-button state every tick.
  */
-function projectMenuItems(group: ProjectGroup): MenuItem[] {
+function projectMenuItems(group: ProjectGroup, createKey: string = group.id): MenuItem[] {
   return [
     {
       label: "New session…",
       action: () => {
-        newSessionProject = group.id;
+        newSessionProject = createKey;
         renderSidebar();
       },
     },
@@ -1487,6 +1491,27 @@ function sidebarMenuItems(): MenuItem[] {
   ];
 }
 
+/** Project list for the sidebar "New session…" picker. Sourced from `groups`,
+ *  so it includes projects with no sessions — the one path to create a session
+ *  for them in section views, where sessionless projects have no sub-header. */
+function projectPickerItems(): MenuItem[] {
+  if (!groups.length) {
+    return [{ label: "No projects — add one first", action: () => {} }];
+  }
+  return groups.map((g) => ({
+    label: g.name,
+    action: () => void createSessionInProject(g),
+  }));
+}
+
+async function createSessionInProject(group: ProjectGroup): Promise<void> {
+  const title = await promptDialog(`New session in ${group.name}`, "session title…", "Create");
+  if (!title) return;
+  invoke("create_session", { projectPath: group.repo_path, title })
+    .catch((err) => toast(`create failed: ${err}`, "error"))
+    .finally(() => void refreshNow());
+}
+
 const VIEW_LABELS: Record<string, string> = {
   project: "Project",
   sections: "Sections",
@@ -1503,6 +1528,7 @@ function cycleViewMode(): void {
 
 /** Render section-grouped views: section headers with rows looked up by id. */
 function renderSections(buckets: SectionBucket[]): void {
+  const projById = new Map(groups.map((g) => [g.id, g]));
   buckets.forEach((bucket, bucketIndex) => {
     const header = document.createElement("div");
     header.className = "project-header";
@@ -1516,16 +1542,65 @@ function renderSections(buckets: SectionBucket[]): void {
     makeSectionDropTarget(header, bucket, bucketIndex);
     sessionsEl.appendChild(header);
     if (isCollapsed) return;
-    const rendered: string[] = [];
+
+    // Cluster the section's sessions by project, preserving first-seen project
+    // order and within-project order — a stack never spans projects, so its
+    // root and indented children stay contiguous.
+    const order: string[] = [];
+    const byProject = new Map<string, SessionRow[]>();
     for (const id of bucket.session_ids) {
       const s = findSession(id);
-      if (s) {
-        sessionsEl.appendChild(renderSessionRow(s));
-        rendered.push(id);
+      if (!s) continue;
+      let rows = byProject.get(s.project_id);
+      if (!rows) {
+        rows = [];
+        byProject.set(s.project_id, rows);
+        order.push(s.project_id);
       }
+      rows.push(s);
     }
-    visibleGroups.push(rendered);
+
+    for (const pid of order) {
+      const rows = byProject.get(pid)!;
+      const group = projById.get(pid);
+      if (group) {
+        sessionsEl.appendChild(renderProjectSubheader(group, bucket.name));
+        if (newSessionProject === sectionCreateKey(bucket.name, group.id)) {
+          sessionsEl.appendChild(renderCreateInput(group));
+        }
+      }
+      for (const s of rows) sessionsEl.appendChild(renderSessionRow(s));
+      visibleGroups.push(rows.map((s) => s.id));
+    }
   });
+}
+
+/** A project sub-header shown inside a section bucket: names the project and
+ *  carries the same new-session affordances as the real project header. Not a
+ *  drop target — only section headers accept dropped sessions. */
+function renderProjectSubheader(group: ProjectGroup, sectionName: string): HTMLDivElement {
+  const key = sectionCreateKey(sectionName, group.id);
+  const header = document.createElement("div");
+  header.className = "project-subheader";
+  const name = document.createElement("span");
+  name.textContent = group.name;
+  const add = document.createElement("button");
+  add.className = "row-action";
+  add.textContent = "+";
+  add.title = "New session in this project";
+  add.addEventListener("click", (e) => {
+    e.stopPropagation();
+    newSessionProject = newSessionProject === key ? null : key;
+    renderSidebar();
+  });
+  const buttons = document.createElement("span");
+  buttons.className = "header-buttons";
+  buttons.append(add);
+  header.append(name, buttons);
+  header.addEventListener("contextmenu", (e) =>
+    showContextMenu(e, projectMenuItems(group, key)),
+  );
+  return header;
 }
 
 /** Wire a section header as a drop target for a dragged session row. Dropping
@@ -1602,6 +1677,14 @@ function renderSidebar(): void {
   sessionsEl.appendChild(viewBar);
 
   if (sections) {
+    // Section views group by section, so an empty project has no sub-header to
+    // hang a "+" on. This full-width button is the universal create path there:
+    // pick any project (incl. sessionless ones), then enter a title.
+    const newBtn = document.createElement("button");
+    newBtn.className = "new-session-btn";
+    newBtn.textContent = "+ New session";
+    newBtn.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
+    sessionsEl.appendChild(newBtn);
     renderSections(sections);
     return;
   }
@@ -1817,6 +1900,17 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
       const s = targetSession();
       const g = s ? groupOf(s.id) : groups[0];
       if (!g) return;
+      // In a section view the create-input lives under the cursor session's
+      // project sub-header within its section bucket, so scope the key to it.
+      if (SECTION_VIEW() && s && sections) {
+        const bucket = sections.find((b) => b.session_ids.includes(s.id));
+        if (bucket) {
+          newSessionProject = sectionCreateKey(bucket.name, g.id);
+          collapsed.delete(`sect:${bucket.name}`);
+          renderSidebar();
+          return;
+        }
+      }
       newSessionProject = g.id;
       collapsed.delete(`proj:${g.id}`);
       renderSidebar();
