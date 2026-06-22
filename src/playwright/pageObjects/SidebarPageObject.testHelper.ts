@@ -67,6 +67,73 @@ export class SidebarPageObject extends AppPageObject {
     await expect(this.sessions.locator(".create-input input")).toBeVisible();
   }
 
+  // ----- project sub-headers + create paths (section views) -----
+  /** A project sub-header inside a section bucket. */
+  projectSubheader(name: string): Locator {
+    return this.sessions.locator(".project-subheader").filter({ hasText: name });
+  }
+
+  /** Project sub-header names, top to bottom (the name span, not the buttons). */
+  subheaderNames(): Promise<string[]> {
+    return this.page.evaluate(() =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          "#sessions .project-subheader > span:not(.header-buttons)",
+        ),
+      ].map((s) => (s.textContent ?? "").trim()),
+    );
+  }
+
+  /** The project sub-header a row currently renders under (nearest preceding
+   *  .project-subheader), or null — proves the section sub-grouping. */
+  renderedProjectOf(title: string): Promise<string | null> {
+    return this.page.evaluate((title) => {
+      let project: string | null = null;
+      for (const el of document.querySelectorAll<HTMLElement>("#sessions > *")) {
+        if (el.classList.contains("project-subheader")) {
+          project = el.querySelector("span")?.textContent?.trim() ?? null;
+        } else if (
+          el.classList.contains("session-row") &&
+          el.querySelector(".title")?.textContent?.trim() === title
+        ) {
+          return project;
+        }
+      }
+      return null;
+    }, title);
+  }
+
+  /** The full-width "+ New session" button (section views only). */
+  newSessionButton(): Locator {
+    return this.sessions.locator(".new-session-btn");
+  }
+
+  /** Create via a project sub-header's inline "+" (the per-project quick path). */
+  createViaSubheader(projectName: string, title: string): Promise<void> {
+    return this.step(`createViaSubheader: ${projectName}/${title}`, async () => {
+      const header = this.projectSubheader(projectName);
+      await header.hover();
+      await header.getByTitle("New session in this project").click();
+      const input = this.sessions.locator(".create-input input");
+      await expect(input).toBeVisible();
+      await input.fill(title);
+      await input.press("Enter");
+    });
+  }
+
+  /** Create via the full-width button → pick a project → title prompt (the
+   *  universal path that also reaches sessionless projects). */
+  createViaButton(projectName: string, title: string): Promise<void> {
+    return this.step(`createViaButton: ${projectName}/${title}`, async () => {
+      await this.newSessionButton().click();
+      await this.menuItem(projectName).click();
+      const input = this.page.locator(".confirm-overlay input");
+      await expect(input).toBeVisible();
+      await input.fill(title);
+      await input.press("Enter");
+    });
+  }
+
   // ----- rename (via row context menu → inline input) -----
   rename(title: string, newTitle: string): Promise<void> {
     return this.step(`rename: ${title} → ${newTitle}`, async () => {

@@ -173,6 +173,114 @@ test.describe("drag a session to a section", () => {
   });
 });
 
+test("no full-width new-session button in project view", async ({ sidebar }) => {
+  await expect(sidebar.newSessionButton()).toHaveCount(0);
+});
+
+test.describe("project sub-headers in section views", () => {
+  test.use({
+    seed: {
+      snapshot: makeSnapshot({
+        view_mode: "sections",
+        section_names: ["Review"],
+        sections: [
+          { name: "In Progress", session_ids: ["sess-1", "sess-2"] },
+          { name: "Review", session_ids: [] },
+        ],
+        groups: [
+          {
+            id: "proj-1",
+            name: "acme",
+            repo_path: "/repos/acme",
+            pull_blocked: null,
+            sessions: [makeSession({ id: "sess-1", title: "acme work" })],
+          },
+          {
+            id: "proj-2",
+            name: "beta",
+            repo_path: "/repos/beta",
+            pull_blocked: null,
+            sessions: [
+              makeSession({
+                id: "sess-2",
+                title: "beta work",
+                project_id: "proj-2",
+                project_name: "beta",
+              }),
+            ],
+          },
+        ],
+      }),
+      reviews: {},
+    },
+  });
+
+  test("clusters a section's sessions under their project sub-header", async ({ sidebar }) => {
+    await expect(sidebar.newSessionButton()).toBeVisible();
+    expect(await sidebar.subheaderNames()).toEqual(["acme", "beta"]);
+    expect(await sidebar.renderedProjectOf("acme work")).toBe("acme");
+    expect(await sidebar.renderedProjectOf("beta work")).toBe("beta");
+  });
+
+  test("a sub-header's + creates a session in that project", async ({ sidebar }) => {
+    await sidebar.createViaSubheader("beta", "beta extra");
+
+    await expect(async () => {
+      expect((await sidebar.storedSessions()).map((s) => s.title)).toContain("beta extra");
+    }).toPass();
+    const created = (await sidebar.storedSessions()).find((s) => s.title === "beta extra");
+    expect(created?.project_id).toBe("proj-2");
+  });
+});
+
+test.describe("creating in a sessionless project (section view)", () => {
+  test.use({
+    seed: {
+      snapshot: makeSnapshot({
+        view_mode: "sections",
+        section_names: ["Review"],
+        sections: [
+          { name: "In Progress", session_ids: ["sess-1"] },
+          { name: "Review", session_ids: [] },
+        ],
+        groups: [
+          {
+            id: "proj-1",
+            name: "acme",
+            repo_path: "/repos/acme",
+            pull_blocked: null,
+            sessions: [makeSession({ id: "sess-1", title: "acme work" })],
+          },
+          {
+            id: "proj-2",
+            name: "beta",
+            repo_path: "/repos/beta",
+            pull_blocked: null,
+            sessions: [],
+          },
+        ],
+      }),
+      reviews: {},
+    },
+  });
+
+  test("the full-width button reaches a project with no sessions", async ({ sidebar }) => {
+    // A sessionless project has no sub-header to hang a "+" on — it's absent.
+    expect(await sidebar.subheaderNames()).toEqual(["acme"]);
+
+    await sidebar.createViaButton("beta", "beta first");
+
+    await expect(async () => {
+      expect((await sidebar.storedSessions()).map((s) => s.title)).toContain("beta first");
+    }).toPass();
+    // The new session is bucketed into In Progress and rendered under a fresh
+    // beta sub-header.
+    await expect(async () => {
+      expect(await sidebar.renderedProjectOf("beta first")).toBe("beta");
+    }).toPass();
+  });
+});
+
 test.describe("delete merged-PR sessions", () => {
   test.use({
     seed: {
