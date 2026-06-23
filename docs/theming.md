@@ -30,19 +30,26 @@ A full working example lives at [`example-theme.json`](./example-theme.json).
 | `id` | ✅ | Unique slug. Must **not** match a built-in id (`catppuccin-mocha`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `tokyo-night`, `one-dark-pro`, `dracula`, `nord`, `github-light`, `solarized-light`). |
 | `label` | ✅ | Display name shown in the picker. |
 | `appearance` | ✅ | `"light"` or `"dark"`. Determines which slot (preferred-light / preferred-dark) the theme fills, and the OS-appearance it's used for in System mode. |
-| `cssVars` | optional | The 15 chrome color tokens (below). Any you omit are inherited from the base. |
+| `cssVars` | optional | The 21 chrome color tokens (below). Any you omit are inherited from the base. |
 | `terminal` | optional | xterm palette. Omitted keys inherited from the base. |
 | `shiki` | optional | Syntax-highlighting colors — see below. |
 | `base` | optional | A built-in id to inherit unset `cssVars`/`terminal`/`shiki` from. Defaults to the built-in matching `appearance`. |
 
-### The 15 `cssVars` keys
+### The 21 `cssVars` keys
 
 ```
 bg-base  bg-elevated  bg-inset
-border   border-strong
-text     text-muted   text-dim
+border   border-strong   surface2
+text     text-muted   text-dim   overlay1   subtext1
 accent   success      danger   warning   attention   info   cyan
+accent-tool   attn-blocked   tag-cool
 ```
+
+`surface2` is a surface a touch lighter than `border-strong` (card-hover border,
+muted-icon hover). `overlay1` is secondary muted text / faint icons, dimmer than
+`text-muted`; `subtext1` is body paragraph text. `accent-tool` colors terminal
+tool-call lines (lavender), `attn-blocked` is the blocked-state warning (maroon,
+distinct from the peach `attention`), and `tag-cool` colors cool tag chips (teal).
 
 All values are hex (`#rgb`, `#rrggbb`, or with alpha). An invalid value for a single
 key is **dropped** (that key falls back to the inherited value) — it does not reject

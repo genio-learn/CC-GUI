@@ -51,6 +51,12 @@ const MOCHA: Theme = {
     attention: "#fab387",
     info: "#cba6f7",
     cyan: "#89dceb",
+    surface2: "#585b70",
+    overlay1: "#7f849c",
+    subtext1: "#bac2de",
+    "accent-tool": "#b4befe",
+    "attn-blocked": "#eba0ac",
+    "tag-cool": "#94e2d5",
   },
   terminal: {
     foreground: "#cdd6f4",
@@ -99,6 +105,12 @@ const LATTE: Theme = {
     attention: "#fe640b",
     info: "#8839ef",
     cyan: "#04a5e5",
+    surface2: "#acb0be",
+    overlay1: "#8c8fa1",
+    subtext1: "#5c5f77",
+    "accent-tool": "#7287fd",
+    "attn-blocked": "#e64553",
+    "tag-cool": "#179299",
   },
   terminal: {
     foreground: "#4c4f69",
@@ -147,6 +159,12 @@ const FRAPPE: Theme = {
     attention: "#ef9f76",
     info: "#ca9ee6",
     cyan: "#99d1db",
+    surface2: "#626880",
+    overlay1: "#838ba7",
+    subtext1: "#b5bfe2",
+    "accent-tool": "#babbf1",
+    "attn-blocked": "#ea999c",
+    "tag-cool": "#81c8be",
   },
   terminal: {
     foreground: "#c6d0f5",
@@ -195,6 +213,12 @@ const MACCHIATO: Theme = {
     attention: "#f5a97f",
     info: "#c6a0f6",
     cyan: "#91d7e3",
+    surface2: "#5b6078",
+    overlay1: "#8087a2",
+    subtext1: "#b8c0e0",
+    "accent-tool": "#b7bdf8",
+    "attn-blocked": "#ee99a0",
+    "tag-cool": "#8bd5ca",
   },
   terminal: {
     foreground: "#cad3f5",
@@ -243,6 +267,12 @@ const TOKYO_NIGHT: Theme = {
     attention: "#ff9e64",
     info: "#bb9af7",
     cyan: "#7dcfff",
+    surface2: "#414868",
+    overlay1: "#565f89",
+    subtext1: "#a9b1d6",
+    "accent-tool": "#bb9af7",
+    "attn-blocked": "#ff9e64",
+    "tag-cool": "#7dcfff",
   },
   terminal: {
     foreground: "#c0caf5",
@@ -291,6 +321,12 @@ const ONE_DARK: Theme = {
     attention: "#d19a66",
     info: "#c678dd",
     cyan: "#56b6c2",
+    surface2: "#4b5263",
+    overlay1: "#5c6370",
+    subtext1: "#828997",
+    "accent-tool": "#c678dd",
+    "attn-blocked": "#d19a66",
+    "tag-cool": "#56b6c2",
   },
   terminal: {
     foreground: "#abb2bf",
@@ -339,6 +375,12 @@ const DRACULA: Theme = {
     attention: "#ffb86c",
     info: "#ff79c6",
     cyan: "#8be9fd",
+    surface2: "#565a73",
+    overlay1: "#6272a4",
+    subtext1: "#c0c2ce",
+    "accent-tool": "#d6acff",
+    "attn-blocked": "#ff6e6e",
+    "tag-cool": "#8be9fd",
   },
   terminal: {
     foreground: "#f8f8f2",
@@ -387,6 +429,12 @@ const NORD: Theme = {
     attention: "#d08770",
     info: "#b48ead",
     cyan: "#8fbcbb",
+    surface2: "#434c5e",
+    overlay1: "#4c566a",
+    subtext1: "#d8dee9",
+    "accent-tool": "#b48ead",
+    "attn-blocked": "#d08770",
+    "tag-cool": "#8fbcbb",
   },
   terminal: {
     foreground: "#d8dee9",
@@ -435,6 +483,12 @@ const GITHUB_LIGHT: Theme = {
     attention: "#bc4c00",
     info: "#8250df",
     cyan: "#1b7c83",
+    surface2: "#eaeef2",
+    overlay1: "#6e7781",
+    subtext1: "#656d76",
+    "accent-tool": "#8250df",
+    "attn-blocked": "#bc4c00",
+    "tag-cool": "#1b7c83",
   },
   terminal: {
     foreground: "#1f2328",
@@ -483,6 +537,12 @@ const SOLARIZED_LIGHT: Theme = {
     attention: "#cb4b16",
     info: "#6c71c4",
     cyan: "#2aa198",
+    surface2: "#dcd5bf",
+    overlay1: "#93a1a1",
+    subtext1: "#657b83",
+    "accent-tool": "#6c71c4",
+    "attn-blocked": "#cb4b16",
+    "tag-cool": "#2aa198",
   },
   terminal: {
     foreground: "#657b83",
@@ -549,7 +609,7 @@ export function allThemes(): Theme[] {
 
 // --------------------------------------------------------- theme validation
 
-/** The 15 per-theme color tokens; the source of truth is the built-in shape. */
+/** The 21 per-theme color tokens; the source of truth is the built-in shape. */
 const VAR_KEYS = Object.keys(MOCHA.cssVars);
 /** Bundled Shiki ids we can actually load (only Catppuccin ships in the bundle). */
 const SHIKI_IDS = new Set(
