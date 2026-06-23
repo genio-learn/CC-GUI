@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:#11111b;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#313244;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  ::-webkit-scrollbar-thumb:hover{background:#45475a;background-clip:padding-box;}
+  @keyframes blink{0%,55%{opacity:1;}56%,100%{opacity:0;}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(166,227,161,.45);}50%{box-shadow:0 0 0 4px rgba(166,227,161,0);}}
+  @keyframes fade{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+</style>
+</helmet>
+
+<div style="height:100vh;width:100%;display:flex;flex-direction:column;background:#11111b;color:#cdd6f4;font-family:'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;">
+
+  <!-- ======================= TOP BAR ======================= -->
+  <div style="height:46px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;background:#181825;border-bottom:1px solid #11111b;">
+    <div style="display:flex;align-items:center;gap:9px;">
+      <div style="width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#89b4fa,#cba6f7);"></div>
+      <span style="font-weight:600;font-size:13px;color:#cdd6f4;letter-spacing:.2px;">claude-commander</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7f849c;padding:3px 7px;border:1px solid #313244;border-radius:6px;">8 sessions · 3 live</span>
+    </div>
+
+    <div style="display:flex;gap:3px;margin:0 auto;background:#11111b;padding:3px;border-radius:10px;border:1px solid #1e1e2e;">
+      <sc-for list="{{ segs }}" as="s" hint-placeholder-count="2">
+        <button onClick="{{ s.onClick }}" style="font-family:'IBM Plex Sans';font-weight:600;font-size:12px;color:{{ s.color }};background:{{ s.bg }};border:none;padding:7px 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:all .12s;">
+          <span style="font-size:13px;opacity:.95;">{{ s.glyph }}</span>{{ s.label }}
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:7px;">
+      <button onClick="{{ openPalette }}" style="display:flex;align-items:center;gap:8px;font-family:'IBM Plex Sans';font-size:12px;color:#a6adc8;background:#11111b;border:1px solid #313244;padding:6px 10px;border-radius:8px;cursor:pointer;" style-hover="border-color:#45475a;color:#cdd6f4;">
+        <span style="color:#6c7086;">Jump to…</span>
+        <span style="font-family:'IBM Plex Mono';font-size:11px;color:#7f849c;border:1px solid #313244;border-radius:5px;padding:1px 5px;">⌘K</span>
+      </button>
+      <button onClick="{{ toggleTheme }}" title="theme" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#a6adc8;background:transparent;border:1px solid #313244;border-radius:8px;cursor:pointer;" style-hover="color:#cdd6f4;border-color:#45475a;">◐</button>
+      <button onClick="{{ openHelp }}" title="help" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#a6adc8;background:transparent;border:1px solid #313244;border-radius:8px;cursor:pointer;" style-hover="color:#cdd6f4;border-color:#45475a;">?</button>
+    </div>
+  </div>
+
+  <!-- ======================= BODY ======================= -->
+  <div style="flex:1;min-height:0;position:relative;">
+
+    <!-- ============== DIRECTION A · CONSOLE ============== -->
+    <sc-if value="{{ isA }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;inset:0;display:flex;min-height:0;">
+
+      <!-- SIDEBAR -->
+      <aside style="width:312px;flex:none;background:#181825;border-right:1px solid #11111b;display:flex;flex-direction:column;min-height:0;">
+        <div style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #11111b;">
+          <span style="font-weight:600;font-size:11px;color:#a6adc8;text-transform:uppercase;letter-spacing:1.2px;">Sessions</span>
+          <button title="projects menu" style="width:26px;height:24px;font-size:14px;color:#7f849c;background:transparent;border:1px solid #313244;border-radius:6px;cursor:pointer;">⋯</button>
+        </div>
+
+        <!-- PROJECTS RAIL (persistent project axis: every project, +/$, filter) -->
+        <div style="flex:none;padding:9px 9px 8px;border-bottom:1px solid #11111b;background:#161623;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:1px 6px 8px;">
+            <span style="font-weight:600;font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:1px;">Projects</span>
+            <button title="add / scan for projects" style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Sans';font-size:10.5px;color:#a6adc8;background:transparent;border:1px solid #313244;border-radius:6px;padding:3px 7px;cursor:pointer;" style-hover="color:#cdd6f4;border-color:#45475a;">＋ add</button>
+          </div>
+          <sc-for list="{{ projects }}" as="p" hint-placeholder-count="4">
+            <div onClick="{{ p.onFilter }}" title="click to filter the list to this project" style="display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:7px;cursor:pointer;background:{{ p.filterBg }};margin-bottom:1px;" style-hover="background:rgba(205,214,244,.04);">
+              <span style="width:9px;height:9px;border-radius:3px;background:{{ p.color }};opacity:{{ p.dotOpacity }};flex:none;"></span>
+              <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:{{ p.nameColor }};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:#6c7086;min-width:12px;text-align:right;">{{ p.count }}</span>
+              <button onClick="{{ p.onNew }}" title="new session" style="width:21px;height:21px;font-size:13px;color:#a6adc8;background:transparent;border:1px solid #313244;border-radius:5px;cursor:pointer;line-height:1;flex:none;" style-hover="color:#a6e3a1;border-color:#a6e3a1;">+</button>
+              <button onClick="{{ p.onShell }}" title="project shell ($)" style="width:21px;height:21px;font-size:11px;color:#a6adc8;background:transparent;border:1px solid #313244;border-radius:5px;cursor:pointer;line-height:1;flex:none;" style-hover="color:#89b4fa;border-color:#89b4fa;">$</button>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- SESSION LIST · grouped by Sections OR Projects (toggle); stacks nest in both -->
+        <div style="flex:1;overflow:auto;padding:7px;">
+          <div style="display:flex;align-items:center;gap:8px;padding:1px 3px 9px;">
+            <span style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;">Group by</span>
+            <div style="display:flex;gap:2px;background:#11111b;border:1px solid #1e1e2e;border-radius:8px;padding:2px;margin-left:auto;">
+              <button onClick="{{ groupBySection }}" style="font-family:'IBM Plex Sans';font-size:11px;font-weight:600;color:{{ gbSecColor }};background:{{ gbSecBg }};border:none;border-radius:6px;padding:4px 11px;cursor:pointer;">Sections</button>
+              <button onClick="{{ groupByProject }}" style="font-family:'IBM Plex Sans';font-size:11px;font-weight:600;color:{{ gbProjColor }};background:{{ gbProjBg }};border:none;border-radius:6px;padding:4px 11px;cursor:pointer;">Projects</button>
+            </div>
+          </div>
+          <sc-if value="{{ filterActive }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 9px;margin-bottom:8px;background:rgba(137,180,250,.08);border:1px solid rgba(137,180,250,.2);border-radius:7px;font-size:11px;color:#bac2de;">
+              <span style="width:8px;height:8px;border-radius:2px;background:{{ filterColor }};flex:none;"></span>
+              filtered to <span style="font-family:'IBM Plex Mono';color:#cdd6f4;">{{ filterName }}</span>
+              <div style="flex:1;"></div>
+              <span onClick="{{ clearFilter }}" style="cursor:pointer;color:#6c7086;font-size:13px;" style-hover="color:#f38ba8;">✕</span>
+            </div>
+          </sc-if>
+
+          <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+            <div style="margin-bottom:13px;">
+              <div style="display:flex;align-items:center;gap:7px;padding:6px 8px 6px;">
+                <sc-if value="{{ g.hasAccent }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:3px;background:{{ g.accentColor }};flex:none;"></span></sc-if>
+                <span style="font-family:'IBM Plex Mono';font-weight:600;font-size:10.5px;color:#6c7086;letter-spacing:.6px;text-transform:uppercase;">{{ g.label }}</span>
+                <span style="font-family:'IBM Plex Mono';font-size:10px;color:#45475a;">{{ g.count }}</span>
+                <div style="flex:1;height:1px;background:#1e1e2e;"></div>
+              </div>
+
+              <sc-for list="{{ g.items }}" as="item" hint-placeholder-count="2">
+                <!-- STACK (cascade) -->
+                <sc-if value="{{ item.isStack }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin:1px 0 6px;border:1px solid #313244;border-radius:9px;overflow:hidden;background:rgba(203,166,247,.025);">
+                    <div style="display:flex;align-items:center;gap:8px;padding:7px 7px 7px 9px;background:rgba(203,166,247,.07);border-bottom:1px solid #313244;">
+                      <span style="color:#cba6f7;font-size:12px;">⌗</span>
+                      <span style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;color:#cdd6f4;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.name }}</span>
+                      <sc-if value="{{ item.showTag }}" hint-placeholder-val="{{ true }}"><span style="font-family:'IBM Plex Mono';font-size:9.5px;color:{{ item.projectColor }};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 5px;flex:none;">{{ item.projectShort }}</span></sc-if>
+                      <button title="merge stack" style="width:21px;height:20px;font-size:11px;color:#a6e3a1;background:transparent;border:none;cursor:pointer;line-height:1;flex:none;">⛙</button>
+                      <button title="push stack" style="width:18px;height:20px;font-size:12px;color:#89b4fa;background:transparent;border:none;cursor:pointer;line-height:1;flex:none;">↑</button>
+                      <button title="resume / abandon" style="width:16px;height:20px;font-size:13px;color:#6c7086;background:transparent;border:none;cursor:pointer;line-height:1;flex:none;">⋯</button>
+                    </div>
+                    <div style="padding:5px 6px 5px 4px;">
+                      <sc-for list="{{ item.children }}" as="r" hint-placeholder-count="2">
+                        <div onClick="{{ r.onSelect }}" onContextMenu="{{ r.onMenu }}" style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;cursor:pointer;background:{{ r.rowBg }};border-left:2px solid {{ r.projectColor }};margin:0 0 1px 10px;" style-hover="background:rgba(205,214,244,.04);">
+                          <sc-if value="{{ r.live }}" hint-placeholder-val="{{ false }}"><span style="width:7px;height:7px;border-radius:50%;background:#a6e3a1;flex:none;animation:pulse 1.8s ease-in-out infinite;"></span></sc-if>
+                          <sc-if value="{{ r.notLive }}" hint-placeholder-val="{{ true }}"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.dot }};flex:none;"></span></sc-if>
+                          <div style="flex:1;min-width:0;">
+                            <div style="font-family:'IBM Plex Mono';font-size:12.5px;color:{{ r.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</div>
+                            <div style="font-size:10px;color:#6c7086;margin-top:2px;">{{ r.diffstat }} · {{ r.stateLabel }}</div>
+                          </div>
+                          <sc-if value="{{ r.hasComments }}" hint-placeholder-val="{{ false }}"><span title="pending comments" onClick="{{ r.onReview }}" style="font-family:'IBM Plex Mono';font-size:10px;font-weight:600;color:#cba6f7;background:rgba(203,166,247,.13);border-radius:5px;padding:2px 5px;flex:none;">✎ {{ r.commentCount }}</span></sc-if>
+                          <sc-if value="{{ r.blocked }}" hint-placeholder-val="{{ false }}"><span title="auto-pull blocked" style="font-size:11px;color:#eba0ac;flex:none;">⚠</span></sc-if>
+                          <button onClick="{{ r.onMenu }}" title="session actions (right-click anywhere)" style="width:18px;height:18px;font-size:12px;color:#585b70;background:transparent;border:none;cursor:pointer;line-height:1;flex:none;" style-hover="color:#cdd6f4;">⋯</button>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- STANDALONE SESSION -->
+                <sc-if value="{{ item.isSession }}" hint-placeholder-val="{{ true }}">
+                  <div onClick="{{ item.onSelect }}" onContextMenu="{{ item.onMenu }}" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer;background:{{ item.rowBg }};border-left:2px solid {{ item.rowBorder }};margin-bottom:2px;" style-hover="background:rgba(205,214,244,.045);">
+                    <sc-if value="{{ item.live }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;flex:none;animation:pulse 1.8s ease-in-out infinite;"></span></sc-if>
+                    <sc-if value="{{ item.notLive }}" hint-placeholder-val="{{ true }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ item.dot }};flex:none;"></span></sc-if>
+                    <div style="flex:1;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:7px;">
+                        <span style="font-family:'IBM Plex Mono';font-size:13px;color:{{ item.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ item.name }}</span>
+                        <sc-if value="{{ item.showTag }}" hint-placeholder-val="{{ true }}"><span style="font-family:'IBM Plex Mono';font-size:9.5px;color:{{ item.projectColor }};background:rgba(255,255,255,.05);border-radius:4px;padding:1px 5px;flex:none;">{{ item.projectShort }}</span></sc-if>
+                      </div>
+                      <div style="font-size:10.5px;color:#6c7086;margin-top:2px;">{{ item.diffstat }} · {{ item.stateLabel }}</div>
+                    </div>
+                    <sc-if value="{{ item.hasComments }}" hint-placeholder-val="{{ false }}"><span title="pending review comments" onClick="{{ item.onReview }}" style="font-family:'IBM Plex Mono';font-size:10px;font-weight:600;color:#cba6f7;background:rgba(203,166,247,.13);border-radius:5px;padding:2px 5px;flex:none;">✎ {{ item.commentCount }}</span></sc-if>
+                    <sc-if value="{{ item.blocked }}" hint-placeholder-val="{{ false }}"><span title="auto-pull of main is blocked" style="font-size:11px;color:#eba0ac;flex:none;">⚠</span></sc-if>
+                    <button onClick="{{ item.onMenu }}" title="session actions (right-click anywhere)" style="width:20px;height:20px;font-size:13px;color:#585b70;background:transparent;border:none;cursor:pointer;line-height:1;flex:none;" style-hover="color:#cdd6f4;">⋯</button>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </div>
+          </sc-for>
+
+          <!-- EMPTY PROJECT STATE -->
+          <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="text-align:center;padding:30px 20px;">
+              <div style="width:36px;height:36px;border-radius:10px;border:1px dashed #45475a;display:flex;align-items:center;justify-content:center;margin:0 auto 13px;color:{{ emptyColor }};font-size:17px;">＋</div>
+              <div style="font-size:12.5px;color:#bac2de;margin-bottom:4px;">No sessions in <span style="font-family:'IBM Plex Mono';color:#cdd6f4;">{{ emptyName }}</span> yet</div>
+              <div style="font-size:11px;color:#6c7086;margin-bottom:15px;">Spin one up, or drop into a project shell.</div>
+              <div style="display:flex;gap:8px;justify-content:center;">
+                <button style="font-size:11.5px;font-weight:600;color:#11111b;background:#a6e3a1;border:none;border-radius:7px;padding:7px 12px;cursor:pointer;">＋ New session</button>
+                <button style="font-size:11.5px;color:#89b4fa;background:transparent;border:1px solid #313244;border-radius:7px;padding:7px 12px;cursor:pointer;">$ Shell</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- FOOTER · legend + commander -->
+        <div style="flex:none;border-top:1px solid #11111b;padding:9px 11px;">
+          <div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:10px;font-size:10px;color:#6c7086;">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:#a6e3a1;"></span>running</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:#f9e2af;"></span>finished</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:#89dceb;"></span>idle</span>
+            <span style="display:flex;align-items:center;gap:5px;color:#cba6f7;">✎ comments</span>
+            <span style="display:flex;align-items:center;gap:5px;color:#eba0ac;">⚠ blocked</span>
+            <span style="display:flex;align-items:center;gap:5px;color:#cba6f7;">⌗ stack</span>
+          </div>
+          <button style="width:100%;display:flex;align-items:center;gap:9px;padding:8px 10px;background:#11111b;border:1px solid #313244;border-radius:8px;cursor:pointer;color:#cdd6f4;" style-hover="border-color:#45475a;">
+            <span style="width:8px;height:8px;border-radius:2px;background:#cba6f7;"></span>
+            <span style="font-family:'IBM Plex Mono';font-size:12px;font-weight:500;">commander</span>
+            <span style="margin-left:auto;font-size:10px;color:#6c7086;">attach ⏎</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- CENTER · TERMINAL -->
+      <section style="flex:1;display:flex;flex-direction:column;min-width:0;background:#1e1e2e;">
+        <div style="height:40px;flex:none;display:flex;align-items:stretch;background:#181825;border-bottom:1px solid #11111b;padding-left:7px;gap:2px;overflow:hidden;">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+            <div onClick="{{ t.onClick }}" style="display:flex;align-items:center;gap:8px;padding:0 13px;cursor:pointer;background:{{ t.bg }};border-top:2px solid {{ t.top }};font-family:'IBM Plex Mono';font-size:12px;font-weight:500;color:{{ t.color }};max-width:180px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:{{ t.dot }};flex:none;"></span>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t.name }}</span>
+              <span onClick="{{ t.onClose }}" style="color:#6c7086;font-size:14px;line-height:1;flex:none;" style-hover="color:#f38ba8;">×</span>
+            </div>
+          </sc-for>
+          <button title="new terminal" style="align-self:center;margin-left:6px;width:24px;height:24px;font-size:15px;color:#7f849c;background:transparent;border:none;cursor:pointer;line-height:1;">+</button>
+        </div>
+
+        <div style="flex:1;min-height:0;padding:14px;display:flex;">
+          <div style="flex:1;border-radius:10px;background:#11111b;border:1px solid #313244;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,.25);">
+            
+            <div style="flex:1;overflow:auto;padding:14px 16px;font-family:'IBM Plex Mono';font-size:13px;line-height:1.7;">
+              <sc-for list="{{ term }}" as="l" hint-placeholder-count="7">
+                <div style="color:{{ l.color }};white-space:pre-wrap;padding-left:{{ l.indent }};">{{ l.text }}</div>
+              </sc-for>
+              <div style="margin-top:10px;border:1px solid #45475a;border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px;">
+                <span style="color:#a6e3a1;">❯</span>
+                <span style="color:#585b70;">Try "add a regression test for concurrent refresh"</span>
+                <span style="width:8px;height:15px;background:#cdd6f4;display:inline-block;margin-left:-3px;animation:blink 1.1s step-end infinite;"></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px;margin-top:6px;padding:0 2px;font-size:11px;color:#6c7086;">
+                <span style="color:#a6e3a1;">⏵⏵ accept edits on</span>
+                <span>shift+tab to cycle</span>
+                <span style="margin-left:auto;">? for shortcuts</span>
+              </div>
+            </div>
+            <div style="height:27px;flex:none;display:flex;align-items:stretch;flex-wrap:nowrap;overflow:hidden;font-family:'IBM Plex Mono';font-size:11px;font-weight:600;">
+              
+              
+              
+              
+              <span style="flex:1;min-width:8px;"></span>
+              
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT · DETAIL -->
+      <aside style="width:290px;flex:none;background:#181825;border-left:1px solid #11111b;display:flex;flex-direction:column;min-height:0;">
+        <div style="height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #11111b;">
+          <span style="color:#6c7086;cursor:pointer;font-size:14px;">◀</span>
+          <span style="font-family:'IBM Plex Mono';font-size:13px;font-weight:600;color:#cdd6f4;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ active.name }}</span>
+          <span style="color:#6c7086;cursor:pointer;font-size:15px;">×</span>
+        </div>
+        <div style="flex:1;overflow:auto;padding:14px;">
+          <div style="display:flex;flex-direction:column;gap:1px;font-size:12px;margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1e1e2e;"><span style="color:#6c7086;">branch</span><span style="font-family:'IBM Plex Mono';color:#bac2de;">{{ active.branch }}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1e1e2e;"><span style="color:#6c7086;">worktree</span><span style="font-family:'IBM Plex Mono';color:#bac2de;">~/atlas-api</span></div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1e1e2e;"><span style="color:#6c7086;">PR</span><span style="font-family:'IBM Plex Mono';color:#89b4fa;">{{ active.pr }} · draft</span></div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;"><span style="color:#6c7086;">status</span><span style="color:#f9e2af;">{{ active.stateLabel }}</span></div>
+          </div>
+
+          <div style="margin-bottom:18px;">
+            <div style="font-size:10.5px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;margin-bottom:9px;">Diffstat</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:'IBM Plex Mono';font-size:13px;">
+              <span style="color:#a6e3a1;">+{{ active.added }}</span>
+              <span style="color:#f38ba8;">−{{ active.removed }}</span>
+              <span style="color:#6c7086;font-size:11px;">3 files</span>
+            </div>
+            <div style="display:flex;height:7px;border-radius:4px;overflow:hidden;background:#11111b;">
+              <span style="width:76%;background:#a6e3a1;"></span><span style="width:24%;background:#f38ba8;"></span>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
+              <span style="font-size:10.5px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;">AI Summary</span>
+              <button style="font-size:10.5px;color:#89b4fa;background:rgba(137,180,250,.1);border:1px solid rgba(137,180,250,.25);border-radius:6px;padding:3px 8px;cursor:pointer;">↻ Generate</button>
+            </div>
+            <p style="font-size:12.5px;line-height:1.6;color:#bac2de;margin:0;">Serialized the session token refresh by guarding <span style="font-family:'IBM Plex Mono';color:#cdd6f4;">refresh()</span> with an in-flight promise, eliminating the double-renewal race. Updated the auth test suite (28 passing) and added a regression test for concurrent refresh.</p>
+            <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;">
+              <span style="font-size:10px;font-family:'IBM Plex Mono';color:#94e2d5;background:rgba(148,226,213,.1);border-radius:5px;padding:3px 7px;">race-condition</span>
+              <span style="font-size:10px;font-family:'IBM Plex Mono';color:#fab387;background:rgba(250,179,135,.1);border-radius:5px;padding:3px 7px;">auth</span>
+            </div>
+          </div>
+        </div>
+        <div style="flex:none;border-top:1px solid #11111b;padding:10px 12px;display:flex;gap:8px;">
+          <button onClick="{{ openReviewBtn }}" style="flex:1;font-size:12px;font-weight:600;color:#11111b;background:#89b4fa;border:none;border-radius:8px;padding:9px;cursor:pointer;">± Review diff</button>
+          <button style="font-size:12px;color:#a6adc8;background:#11111b;border:1px solid #313244;border-radius:8px;padding:9px 12px;cursor:pointer;">Open PR</button>
+        </div>
+      </aside>
+    </div>
+    </sc-if>
+
+    <!-- ============== DIRECTION C · BOARD ============== -->
+    <sc-if value="{{ isC }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;min-height:0;background:#181825;">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #11111b;">
+        <sc-for list="{{ boardFilters }}" as="f" hint-placeholder-count="4">
+          <button style="font-size:12px;font-weight:500;color:{{ f.color }};background:{{ f.bg }};border:1px solid {{ f.border }};border-radius:20px;padding:6px 13px;cursor:pointer;display:flex;align-items:center;gap:6px;">{{ f.label }}<span style="font-family:'IBM Plex Mono';font-size:10px;color:#6c7086;">{{ f.count }}</span></button>
+        </sc-for>
+        <div style="flex:1;"></div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#6c7086;background:#11111b;border:1px solid #313244;border-radius:8px;padding:7px 11px;width:200px;">🔍 <span style="color:#45475a;">search sessions…</span></div>
+        <button style="font-size:12px;font-weight:600;color:#11111b;background:#89b4fa;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;">＋ New session</button>
+      </div>
+
+      <div style="flex:1;overflow:auto;display:flex;gap:14px;padding:16px;align-items:flex-start;">
+        <sc-for list="{{ board }}" as="col" hint-placeholder-count="3">
+          <div style="width:306px;flex:none;background:#1e1e2e;border:1px solid #313244;border-radius:14px;display:flex;flex-direction:column;max-height:100%;">
+            <div style="flex:none;display:flex;align-items:center;gap:9px;padding:13px 14px;border-bottom:1px solid #313244;">
+              <span style="width:9px;height:9px;border-radius:3px;background:{{ col.color }};"></span>
+              <span style="font-family:'IBM Plex Mono';font-size:13px;font-weight:600;color:#cdd6f4;">{{ col.label }}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:#6c7086;">{{ col.count }}</span>
+              <div style="flex:1;"></div>
+              <button title="new session" style="width:24px;height:24px;font-size:14px;color:#7f849c;background:#11111b;border:1px solid #313244;border-radius:6px;cursor:pointer;line-height:1;">+</button>
+              <button title="project shell" style="width:24px;height:24px;font-size:11px;color:#7f849c;background:#11111b;border:1px solid #313244;border-radius:6px;cursor:pointer;line-height:1;">$</button>
+            </div>
+            <div style="flex:1;overflow:auto;padding:11px;display:flex;flex-direction:column;gap:11px;">
+              <sc-for list="{{ col.items }}" as="item" hint-placeholder-count="2">
+                <div onClick="{{ item.onSelect }}" onContextMenu="{{ item.onMenu }}" style="flex:none;border-radius:11px;background:#181825;border:1px solid {{ item.cardBorder }};overflow:hidden;cursor:pointer;" style-hover="border-color:#585b70;">
+                  <div style="height:3px;background:{{ item.dot }};"></div>
+                  <div style="padding:12px 13px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">
+                      <sc-if value="{{ item.live }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;flex:none;animation:pulse 1.8s ease-in-out infinite;"></span></sc-if>
+                      <sc-if value="{{ item.notLive }}" hint-placeholder-val="{{ true }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ item.dot }};flex:none;"></span></sc-if>
+                      <span style="font-family:'IBM Plex Mono';font-size:13px;font-weight:600;color:#cdd6f4;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.name }}</span>
+                      <span style="font-size:10px;font-weight:600;color:{{ item.dot }};background:{{ item.chipBg }};border-radius:5px;padding:2px 6px;flex:none;">{{ item.stateLabel }}</span>
+                      <button onClick="{{ item.onMenu }}" title="session actions (right-click card)" style="width:22px;height:22px;font-size:14px;color:#585b70;background:transparent;border:none;cursor:pointer;line-height:1;flex:none;" style-hover="color:#cdd6f4;">⋯</button>
+                    </div>
+                    <div style="background:#11111b;border-radius:7px;padding:8px 10px;font-family:'IBM Plex Mono';font-size:11px;line-height:1.6;margin-bottom:10px;">
+                      <sc-for list="{{ item.miniTerm }}" as="ml" hint-placeholder-count="2"><div style="color:{{ ml.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ ml.text }}</div></sc-for>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:9px;">
+                      <div style="flex:1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:#11111b;">
+                        <span style="width:{{ item.addPct }};background:#a6e3a1;"></span><span style="width:{{ item.delPct }};background:#f38ba8;"></span>
+                      </div>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:#a6e3a1;">+{{ item.added }}</span>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:#f38ba8;">−{{ item.removed }}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:11px;">
+                      <sc-if value="{{ item.hasComments }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono';font-size:10px;color:#cba6f7;background:rgba(203,166,247,.12);border-radius:5px;padding:2px 6px;">✎ {{ item.commentCount }}</span></sc-if>
+                      <sc-if value="{{ item.blocked }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono';font-size:10px;color:#eba0ac;background:rgba(235,160,172,.12);border-radius:5px;padding:2px 6px;">⚠ pull</span></sc-if>
+                      <div style="flex:1;"></div>
+                      <span style="font-size:12px;color:#a6e3a1;background:rgba(166,227,161,.1);border-radius:6px;width:26px;height:24px;display:flex;align-items:center;justify-content:center;">▸</span>
+                      <span onClick="{{ item.onReview }}" style="font-size:13px;color:#cba6f7;background:rgba(203,166,247,.1);border-radius:6px;width:26px;height:24px;display:flex;align-items:center;justify-content:center;">±</span>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- DOCK -->
+      <div style="height:194px;flex:none;border-top:1px solid #11111b;background:#11111b;display:flex;flex-direction:column;">
+        <div style="height:32px;flex:none;display:flex;align-items:center;gap:9px;padding:0 14px;background:#181825;border-bottom:1px solid #11111b;">
+          <span style="color:#a6e3a1;font-size:11px;">▸ attached</span>
+          <span style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;color:#cdd6f4;">{{ active.name }}</span>
+          <span style="font-family:'IBM Plex Mono';font-size:11px;color:#6c7086;">{{ active.branch }}</span>
+          <div style="flex:1;"></div>
+          <span style="color:#6c7086;font-size:13px;cursor:pointer;">⤢</span>
+          <span style="color:#6c7086;font-size:15px;cursor:pointer;">×</span>
+        </div>
+        <div style="flex:1;overflow:auto;padding:11px 16px;font-family:'IBM Plex Mono';font-size:12.5px;line-height:1.65;">
+          <sc-for list="{{ term }}" as="l" hint-placeholder-count="5"><div style="color:{{ l.color }};white-space:pre-wrap;padding-left:{{ l.indent }};">{{ l.text }}</div></sc-for>
+          <div style="display:flex;align-items:center;color:#cdd6f4;"><span style="color:#a6e3a1;">❯</span><span style="width:8px;height:14px;background:#cdd6f4;display:inline-block;margin-left:8px;animation:blink 1.1s step-end infinite;"></span></div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============== REVIEW OVERLAY ============== -->
+    <sc-if value="{{ reviewOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:#1e1e2e;display:flex;flex-direction:column;z-index:30;animation:fade .14s ease;">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:13px;padding:0 16px;background:#181825;border-bottom:1px solid #11111b;">
+        <span style="color:#cba6f7;font-size:15px;">±</span>
+        <span style="font-family:'IBM Plex Mono';font-size:13px;font-weight:600;color:#cdd6f4;">{{ active.name }}</span>
+        <span style="font-family:'IBM Plex Mono';font-size:11px;color:#6c7086;">base: <span style="color:#bac2de;">main</span></span>
+        <span style="font-size:11px;color:#a6e3a1;background:rgba(166,227,161,.1);border-radius:6px;padding:3px 8px;">3 files · +{{ active.added }} −{{ active.removed }}</span>
+        <div style="flex:1;"></div>
+        <button onClick="{{ applyComments }}" style="font-size:12px;font-weight:600;color:#11111b;background:#cba6f7;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;">Apply ({{ staged }}) →</button>
+        <button title="refresh" style="width:34px;height:34px;font-size:13px;color:#a6adc8;background:#11111b;border:1px solid #313244;border-radius:8px;cursor:pointer;">↻</button>
+        <button onClick="{{ closeReview }}" title="close" style="width:34px;height:34px;font-size:15px;color:#a6adc8;background:#11111b;border:1px solid #313244;border-radius:8px;cursor:pointer;">×</button>
+      </div>
+      <div style="flex:1;display:flex;min-height:0;">
+        <div style="width:248px;flex:none;background:#181825;border-right:1px solid #11111b;overflow:auto;padding:9px;">
+          <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;padding:6px 8px;">Changed files</div>
+          <sc-for list="{{ reviewFiles }}" as="f" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:7px;cursor:pointer;background:{{ f.bg }};margin-bottom:2px;" style-hover="background:rgba(205,214,244,.045);">
+              <span style="font-family:'IBM Plex Mono';font-size:12px;color:{{ f.color }};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;">{{ f.name }}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:10px;color:#a6e3a1;">+{{ f.add }}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:10px;color:#f38ba8;">−{{ f.del }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:1;overflow:auto;background:#11111b;">
+          <div style="position:sticky;top:0;display:flex;align-items:center;gap:9px;padding:9px 16px;background:#181825;border-bottom:1px solid #11111b;font-family:'IBM Plex Mono';font-size:12px;color:#cdd6f4;">src/auth/session.ts<span style="color:#6c7086;font-size:11px;">· click a line to comment · shift-click to range</span></div>
+          <div style="font-family:'IBM Plex Mono';font-size:12.5px;line-height:1.7;padding:8px 0;">
+            <sc-for list="{{ diffLines }}" as="d" hint-placeholder-count="8">
+              <div onClick="{{ d.onClick }}" style="display:flex;cursor:pointer;background:{{ d.bg }};" style-hover="background:rgba(137,180,250,.07);">
+                <span style="width:46px;flex:none;text-align:right;padding-right:12px;color:#45475a;user-select:none;">{{ d.num }}</span>
+                <span style="width:16px;flex:none;color:{{ d.signColor }};">{{ d.sign }}</span>
+                <span style="color:{{ d.color }};white-space:pre;">{{ d.text }}</span>
+              </div>
+              <sc-if value="{{ d.hasComment }}" hint-placeholder-val="{{ false }}">
+                <div style="margin:6px 16px 10px 62px;background:#181825;border:1px solid #45475a;border-left:2px solid #cba6f7;border-radius:9px;padding:11px 13px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span style="width:20px;height:20px;border-radius:6px;background:#cba6f7;color:#11111b;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">y</span>
+                    <span style="font-size:11px;font-weight:600;color:#cdd6f4;">you</span>
+                    <span style="font-size:10px;color:#f9e2af;background:rgba(249,226,175,.12);border-radius:5px;padding:2px 6px;">staged</span>
+                  </div>
+                  <div style="font-family:'IBM Plex Sans';font-size:12.5px;color:#bac2de;line-height:1.5;">{{ d.comment }}</div>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============== COMMAND PALETTE ============== -->
+    <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePalette }}" style="position:fixed;inset:0;background:rgba(17,17,27,.62);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding-top:11vh;z-index:60;">
+      <div onClick="{{ stop }}" style="width:580px;max-width:92vw;background:#1e1e2e;border:1px solid #45475a;border-radius:15px;box-shadow:0 28px 70px rgba(0,0,0,.55);overflow:hidden;animation:fade .12s ease;">
+        <div style="display:flex;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid #11111b;">
+          <span style="color:#89b4fa;font-size:15px;">⌘</span>
+          <span style="flex:1;font-size:15px;color:#6c7086;">Jump to a session or run a command…</span>
+          <span style="font-family:'IBM Plex Mono';font-size:10px;color:#6c7086;border:1px solid #313244;border-radius:5px;padding:2px 6px;">esc</span>
+        </div>
+        <div style="max-height:50vh;overflow:auto;padding:8px;">
+          <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;padding:8px 10px 5px;">Sessions</div>
+          <sc-for list="{{ paletteSessions }}" as="p" hint-placeholder-count="4">
+            <div onClick="{{ p.onClick }}" style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:9px;cursor:pointer;" style-hover="background:rgba(137,180,250,.1);">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ p.dot }};flex:none;"></span>
+              <span style="font-family:'IBM Plex Mono';font-size:13px;color:#cdd6f4;">{{ p.name }}</span>
+              <span style="font-size:11px;color:#6c7086;">{{ p.project }}</span>
+              <div style="flex:1;"></div>
+              <span style="font-size:11px;color:#6c7086;">{{ p.stateLabel }}</span>
+            </div>
+          </sc-for>
+          <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;padding:12px 10px 5px;">Commands</div>
+          <sc-for list="{{ paletteCommands }}" as="c" hint-placeholder-count="4">
+            <div onClick="{{ c.onClick }}" style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:9px;cursor:pointer;" style-hover="background:rgba(137,180,250,.1);">
+              <span style="width:22px;text-align:center;font-size:13px;color:{{ c.color }};">{{ c.icon }}</span>
+              <span style="font-size:13px;color:#cdd6f4;">{{ c.label }}</span>
+              <div style="flex:1;"></div>
+              <span style="font-family:'IBM Plex Mono';font-size:10px;color:#6c7086;border:1px solid #313244;border-radius:5px;padding:2px 6px;">{{ c.kbd }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============== HELP OVERLAY ============== -->
+    <sc-if value="{{ helpOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeHelp }}" style="position:fixed;inset:0;background:rgba(17,17,27,.62);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:60;">
+      <div onClick="{{ stop }}" style="width:620px;max-width:92vw;background:#1e1e2e;border:1px solid #45475a;border-radius:15px;box-shadow:0 28px 70px rgba(0,0,0,.55);padding:22px 24px;animation:fade .12s ease;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+          <span style="font-size:16px;font-weight:700;color:#cdd6f4;">Keyboard shortcuts</span>
+          <span onClick="{{ closeHelp }}" style="color:#6c7086;font-size:17px;cursor:pointer;">×</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 28px;">
+          <sc-for list="{{ shortcuts }}" as="k" hint-placeholder-count="8">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #11111b;">
+              <span style="font-size:12.5px;color:#bac2de;">{{ k.label }}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:#cdd6f4;background:#11111b;border:1px solid #313244;border-radius:6px;padding:3px 8px;">{{ k.keys }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============== THEME POPOVER ============== -->
+    <sc-if value="{{ themeOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeTheme }}" style="position:fixed;inset:0;z-index:55;">
+      <div onClick="{{ stop }}" style="position:absolute;top:52px;right:14px;width:248px;background:#1e1e2e;border:1px solid #45475a;border-radius:13px;box-shadow:0 20px 50px rgba(0,0,0,.5);padding:11px;animation:fade .12s ease;">
+        <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:.8px;padding:5px 8px 8px;">Theme · live preview</div>
+        <sc-for list="{{ themes }}" as="t" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer;background:{{ t.bg }};margin-bottom:2px;" style-hover="background:rgba(205,214,244,.05);">
+            <div style="display:flex;gap:3px;">
+              <span style="width:11px;height:11px;border-radius:3px;background:{{ t.c1 }};"></span>
+              <span style="width:11px;height:11px;border-radius:3px;background:{{ t.c2 }};"></span>
+              <span style="width:11px;height:11px;border-radius:3px;background:{{ t.c3 }};"></span>
+            </div>
+            <span style="font-size:12.5px;color:#cdd6f4;flex:1;">{{ t.name }}</span>
+            <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}"><span style="color:#a6e3a1;font-size:12px;">✓</span></sc-if>
+          </div>
+        </sc-for>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px;border-top:1px solid #11111b;margin-top:4px;font-size:11px;color:#6c7086;">
+          <span style="font-family:'IBM Plex Mono';">follow system</span><div style="flex:1;"></div><span style="width:30px;height:17px;border-radius:9px;background:#313244;position:relative;"><span style="position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#6c7086;"></span></span>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============== SESSION CONTEXT MENU ============== -->
+    <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeMenu }}" style="position:fixed;inset:0;z-index:65;">
+      <div onClick="{{ stop }}" style="position:absolute;top:{{ menuY }};left:{{ menuX }};width:218px;background:#1e1e2e;border:1px solid #45475a;border-radius:11px;box-shadow:0 20px 50px rgba(0,0,0,.55);padding:6px;animation:fade .1s ease;">
+        <sc-for list="{{ menuItems }}" as="m" hint-placeholder-count="6">
+          <sc-if value="{{ m.borderTop }}" hint-placeholder-val="{{ false }}"><div style="height:1px;background:#313244;margin:5px 6px;"></div></sc-if>
+          <div onClick="{{ m.onClick }}" style="display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:7px;cursor:pointer;color:{{ m.color }};font-size:12.5px;" style-hover="background:rgba(205,214,244,.06);">
+            <span style="width:16px;text-align:center;font-size:13px;">{{ m.icon }}</span>{{ m.label }}
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============== DELETE CONFIRMATION ============== -->
+    <sc-if value="{{ confirmOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeConfirm }}" style="position:fixed;inset:0;background:rgba(17,17,27,.66);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:70;">
+      <div onClick="{{ stop }}" style="width:430px;max-width:92vw;background:#1e1e2e;border:1px solid #45475a;border-radius:15px;box-shadow:0 28px 70px rgba(0,0,0,.6);padding:22px 24px;animation:fade .12s ease;">
+        <div style="display:flex;align-items:center;gap:13px;margin-bottom:14px;">
+          <div style="width:40px;height:40px;border-radius:11px;background:rgba(243,139,168,.13);display:flex;align-items:center;justify-content:center;color:#f38ba8;font-size:19px;flex:none;">⌦</div>
+          <div style="min-width:0;">
+            <div style="font-size:15px;font-weight:700;color:#cdd6f4;">Delete this session?</div>
+            <div style="font-family:'IBM Plex Mono';font-size:12px;color:#f38ba8;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ confirmName }}</div>
+          </div>
+        </div>
+        <p style="font-size:12.5px;line-height:1.6;color:#bac2de;margin:0 0 20px;">This kills the agent, removes its worktree + tmux session, and deletes the branch <span style="font-family:'IBM Plex Mono';color:#cdd6f4;">{{ confirmBranch }}</span>. This can’t be undone.</p>
+        <div style="display:flex;gap:9px;justify-content:flex-end;">
+          <button onClick="{{ closeConfirm }}" style="font-size:12.5px;font-weight:600;color:#cdd6f4;background:#313244;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;" style-hover="background:#45475a;">Cancel</button>
+          <button onClick="{{ deleteSession }}" style="font-size:12.5px;font-weight:600;color:#11111b;background:#f38ba8;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;" style-hover="background:#f5a3b8;">Delete session</button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:820}}">
+class Component extends DCLogic {
+  state = {
+    dir: 'A',
+    active: 'fix-auth-refresh',
+    tabs: ['fix-auth-refresh', 'add-rate-limit', 'redesign-settings'],
+    activeTab: 'fix-auth-refresh',
+    projectFilter: null,
+    groupBy: 'section',
+    paletteOpen: false,
+    reviewOpen: false,
+    helpOpen: false,
+    themeOpen: false,
+    staged: 2,
+    removed: [],
+    menuFor: null, menuX: '0px', menuY: '0px',
+    confirmFor: null,
+  };
+
+  base() {
+    return [
+      { id:'fix-auth-refresh', name:'fix-auth-refresh', project:'atlas-api', section:'Done', state:'done', comments:0, blocked:false, added:124, removed:38, branch:'agent/fix-auth-refresh', pr:'#482' },
+      { id:'add-rate-limit', name:'add-rate-limit', project:'atlas-api', section:'Running', state:'live', comments:0, blocked:false, added:56, removed:4, branch:'agent/add-rate-limit', pr:'—' },
+      { id:'migrate-db-pool', name:'migrate-db-pool', project:'atlas-api', section:'Needs review', state:'idle', comments:3, blocked:false, added:210, removed:96, branch:'agent/migrate-db-pool', pr:'—' },
+      { id:'redesign-settings', name:'redesign-settings', project:'web-dashboard', section:'Running', state:'live', comments:0, blocked:false, added:90, removed:30, branch:'agent/redesign-settings', pr:'—', stackId:'S1', stackName:'redesign-settings', stackOrder:0 },
+      { id:'settings-nav', name:'settings-nav', project:'web-dashboard', section:'Running', state:'live', comments:0, blocked:false, added:120, removed:40, branch:'agent/settings-nav', pr:'—', stackId:'S1', stackName:'redesign-settings', stackOrder:1 },
+      { id:'settings-forms', name:'settings-forms', project:'web-dashboard', section:'Running', state:'idle', comments:2, blocked:true, added:92, removed:80, branch:'agent/settings-forms', pr:'—', stackId:'S1', stackName:'redesign-settings', stackOrder:2 },
+      { id:'bump-providers', name:'bump-providers', project:'infra-terraform', section:'Needs review', state:'done', comments:1, blocked:false, added:44, removed:44, branch:'agent/bump-providers', pr:'#470' },
+      { id:'fix-chart-tooltip', name:'fix-chart-tooltip', project:'web-dashboard', section:'Stopped', state:'stopped', comments:0, blocked:false, added:12, removed:3, branch:'agent/fix-chart-tooltip', pr:'#461' },
+    ];
+  }
+
+  setDir = (d) => this.setState({ dir: d, reviewOpen: false });
+  selectSession = (id) => this.setState(s => ({ active:id, activeTab:id, tabs: s.tabs.includes(id) ? s.tabs : [...s.tabs, id] }));
+  selectTab = (id) => this.setState({ active:id, activeTab:id });
+  closeTab = (id, e) => { if(e) e.stopPropagation(); this.setState(s => { const tabs = s.tabs.filter(t=>t!==id); const active = s.active===id ? (tabs[0]||null) : s.active; return { tabs, active, activeTab: active }; }); };
+  setFilter = (p) => this.setState(s => ({ projectFilter: s.projectFilter===p ? null : p }));
+  groupBySection = () => this.setState({ groupBy:'section' });
+  groupByProject = () => this.setState({ groupBy:'project' });
+  clearFilter = () => this.setState({ projectFilter:null });
+  openPalette = () => this.setState({ paletteOpen:true });
+  closePalette = () => this.setState({ paletteOpen:false });
+  openHelp = () => this.setState({ helpOpen:true });
+  closeHelp = () => this.setState({ helpOpen:false });
+  toggleTheme = () => this.setState(s => ({ themeOpen: !s.themeOpen }));
+  closeTheme = () => this.setState({ themeOpen:false });
+  openReviewBtn = () => this.setState({ reviewOpen:true });
+  openReviewFor = (id, e) => { if(e) e.stopPropagation(); this.setState({ active:id, activeTab:id, reviewOpen:true }); };
+  closeReview = () => this.setState({ reviewOpen:false });
+  applyComments = () => this.setState({ reviewOpen:false, staged:0 });
+  stageLine = () => this.setState(s => ({ staged: s.staged + 1 }));
+  openMenu = (id, e) => { if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); } const x = (e && e.clientX) || 200, y = (e && e.clientY) || 200; const W = window.innerWidth || 1280, H = window.innerHeight || 800; this.setState({ menuFor:id, menuX: Math.min(x, W-228)+'px', menuY: Math.min(y, H-330)+'px' }); };
+  closeMenu = () => this.setState({ menuFor:null });
+  openConfirm = (id) => this.setState({ confirmFor:id, menuFor:null });
+  closeConfirm = () => this.setState({ confirmFor:null });
+  deleteSession = () => this.setState(s => { const id = s.confirmFor; const removed = s.removed.includes(id) ? s.removed : [...s.removed, id]; const tabs = s.tabs.filter(t=>t!==id); const remaining = this.base().filter(b=>!removed.includes(b.id)); let active = s.active, activeTab = s.activeTab; if (active===id) active = (remaining[0] && remaining[0].id) || null; if (activeTab===id) activeTab = active; return { removed, tabs, active, activeTab, confirmFor:null }; });
+  stop = (e) => { if(e) e.stopPropagation(); };
+
+  componentDidMount() {
+    this._key = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.setState(s => ({ paletteOpen: !s.paletteOpen })); }
+      else if (e.key === 'Escape') this.setState({ paletteOpen:false, reviewOpen:false, helpOpen:false, themeOpen:false, menuFor:null, confirmFor:null });
+      else if (e.key === '?' && !/input|textarea/i.test((e.target.tagName||''))) this.setState({ helpOpen:true });
+    };
+    window.addEventListener('keydown', this._key);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._key); }
+
+  renderVals() {
+    const s = this.state;
+    const DOT = { live:'#a6e3a1', done:'#f9e2af', idle:'#89dceb', stopped:'#6c7086' };
+    const LABEL = { live:'running', done:'finished', idle:'idle', stopped:'stopped' };
+    const CHIPBG = { live:'rgba(166,227,161,.13)', done:'rgba(249,226,175,.13)', idle:'rgba(137,220,235,.13)', stopped:'rgba(108,112,134,.16)' };
+    const PCOLOR = { 'atlas-api':'#89b4fa', 'web-dashboard':'#f9e2af', 'infra-terraform':'#a6e3a1', 'mobile-app':'#f5c2e7' };
+    const PSHORT = { 'atlas-api':'atlas', 'web-dashboard':'web', 'infra-terraform':'infra', 'mobile-app':'mobile' };
+    const MINI = {
+      live:[{text:'● running tests…',color:'#a6e3a1'},{text:'  ⎿ 18/28 passed',color:'#6c7086'}],
+      done:[{text:'● done — applied 14 edits',color:'#f9e2af'},{text:'  ⎿ ✔ suite green',color:'#6c7086'}],
+      idle:[{text:'● awaiting your review',color:'#89dceb'},{text:'  ⎿ comments staged',color:'#6c7086'}],
+      stopped:[{text:'○ session stopped',color:'#6c7086'},{text:'  attach to resume',color:'#585b70'}],
+    };
+
+    const row = (x) => {
+      const total = x.added + x.removed || 1;
+      return { ...x,
+        dot: DOT[x.state], stateLabel: LABEL[x.state], chipBg: CHIPBG[x.state],
+        live: x.state==='live', notLive: x.state!=='live',
+        hasComments: x.comments>0, commentCount: String(x.comments),
+        nameColor: x.state==='stopped' ? '#7f849c' : '#cdd6f4',
+        projectColor: PCOLOR[x.project], projectShort: PSHORT[x.project],
+        diffstat: '+'+x.added+' −'+x.removed,
+        addPct: Math.round(x.added/total*100)+'%', delPct: Math.round(x.removed/total*100)+'%',
+        rowBg: x.id===s.active ? 'rgba(137,180,250,.12)' : 'transparent',
+        rowBorder: x.id===s.active ? '#89b4fa' : 'transparent',
+        cardBorder: x.id===s.active ? '#585b70' : '#313244',
+        miniTerm: MINI[x.state],
+        isSession: true, isStack: false,
+        onSelect: () => this.selectSession(x.id),
+        onReview: (e) => this.openReviewFor(x.id, e),
+        onMenu: (e) => this.openMenu(x.id, e),
+      };
+    };
+    const list = this.base().filter(x=>!s.removed.includes(x.id)).map(row);
+    const active = list.find(x=>x.id===s.active) || list[0];
+
+    // PROJECTS RAIL — persistent project axis (every project, incl. empty)
+    const projOrder = ['atlas-api','web-dashboard','infra-terraform','mobile-app'];
+    const projects = projOrder.map(name => {
+      const n = list.filter(x=>x.project===name).length;
+      const activeF = s.projectFilter===name;
+      return { name, color: PCOLOR[name], count: String(n), empty: n===0,
+        dotOpacity: n===0 ? '.4' : '1',
+        nameColor: n===0 ? '#6c7086' : '#cdd6f4',
+        filterBg: activeF ? 'rgba(137,180,250,.12)' : 'transparent',
+        onFilter: () => this.setFilter(name),
+        onNew: this.stop, onShell: this.stop };
+    });
+
+    // UNIFIED LIST — project axis lives in the rail; this list groups by Sections OR Projects (toggle). Stacks nest in both.
+    const filter = s.projectFilter;
+    const vis = filter ? list.filter(x=>x.project===filter) : list;
+    const byProject = s.groupBy === 'project';
+    const showTag = !byProject; // per-row project tag is redundant when grouped under project headers
+
+    const buildItems = (arr) => {
+      const items = []; const seen = {};
+      arr.forEach(x => {
+        if (x.stackId) {
+          if (seen[x.stackId]) return; seen[x.stackId] = true;
+          const ch = list.filter(y=>y.stackId===x.stackId).sort((a,b)=>a.stackOrder-b.stackOrder);
+          items.push({ isStack:true, isSession:false, name: ch[0].stackName, projectShort: PSHORT[ch[0].project], projectColor: PCOLOR[ch[0].project], showTag, count: ch.length+' sessions', children: ch });
+        } else items.push({ ...x, showTag });
+      });
+      return items;
+    };
+
+    let groups;
+    if (byProject) {
+      const po = ['atlas-api','web-dashboard','infra-terraform','mobile-app'].filter(p => vis.some(x=>x.project===p));
+      groups = po.map(label => { const arr = vis.filter(x=>x.project===label); return { label, hasAccent:true, accentColor:PCOLOR[label], count:String(arr.length), items: buildItems(arr) }; });
+    } else {
+      const so = ['Needs review','Running','Done','Stopped'];
+      groups = so.map(label => { const arr = vis.filter(x=>x.section===label); return { label, hasAccent:false, accentColor:'transparent', count:String(arr.length), items: buildItems(arr) }; });
+    }
+    groups = groups.filter(g => g.items.length);
+
+    const gbSecBg = byProject ? 'transparent' : '#313244';
+    const gbSecColor = byProject ? '#6c7086' : '#cdd6f4';
+    const gbProjBg = byProject ? '#313244' : 'transparent';
+    const gbProjColor = byProject ? '#cdd6f4' : '#6c7086';
+
+    const emptyState = (filter && groups.length===0);
+
+    // board (unchanged design) — 3 active projects
+    const board = ['atlas-api','web-dashboard','infra-terraform'].map(label => {
+      const items = list.filter(x=>x.project===label);
+      return { label, items, count: String(items.length),
+        color: PCOLOR[label] };
+    });
+    const boardFilters = [
+      { label:'All', count:'8', color:'#cdd6f4', bg:'#313244', border:'#45475a' },
+      { label:'Needs review', count:'2', color:'#cba6f7', bg:'transparent', border:'#313244' },
+      { label:'Running', count:'4', color:'#a6e3a1', bg:'transparent', border:'#313244' },
+      { label:'Blocked', count:'1', color:'#eba0ac', bg:'transparent', border:'#313244' },
+    ];
+
+    const segMeta = [ {key:'A',label:'Console',glyph:'▦'}, {key:'C',label:'Board',glyph:'▤'} ];
+    const segs = segMeta.map(m => ({ label:m.label, glyph:m.glyph,
+      bg: s.dir===m.key ? '#313244' : 'transparent',
+      color: s.dir===m.key ? '#cdd6f4' : '#6c7086',
+      onClick: () => this.setDir(m.key) }));
+
+    const tabs = s.tabs.map(id => { const x = list.find(y=>y.id===id) || {name:id, dot:'#6c7086'};
+      const act = id===s.activeTab;
+      return { id, name:x.name, dot:x.dot, bg: act?'#1e1e2e':'transparent', top: act?'#89b4fa':'transparent', color: act?'#cdd6f4':'#7f849c',
+        onClick: () => this.selectTab(id), onClose: (e) => this.closeTab(id, e) }; });
+
+    const term = [
+      { text:'✻ Welcome to Claude Code', color:'#fab387', indent:'0' },
+      { text:'  model: claude-sonnet-4-6  ·  ~/atlas-api  ·  main', color:'#6c7086', indent:'0' },
+      { text:' ', color:'#6c7086', indent:'0' },
+      { text:'❯ fix the auth token refresh race condition', color:'#bac2de', indent:'0' },
+      { text:' ', color:'#6c7086', indent:'0' },
+      { text:'● I\u2019ll trace how refresh() is called before changing anything.', color:'#cdd6f4', indent:'0' },
+      { text:' ', color:'#6c7086', indent:'0' },
+      { text:'● Read(src/auth/session.ts)', color:'#b4befe', indent:'0' },
+      { text:'⎿  Read 142 lines (ctrl+r to expand)', color:'#6c7086', indent:'16px' },
+      { text:'● Grep(pattern: "renew\\(")', color:'#b4befe', indent:'0' },
+      { text:'⎿  3 matches across 2 files', color:'#6c7086', indent:'16px' },
+      { text:' ', color:'#6c7086', indent:'0' },
+      { text:'● Two callers read the same stale token, so each fires renew()', color:'#cdd6f4', indent:'0' },
+      { text:'and the later result clobbers the earlier write.', color:'#cdd6f4', indent:'14px' },
+      { text:' ', color:'#6c7086', indent:'0' },
+      { text:'● Update(src/auth/session.ts)', color:'#b4befe', indent:'0' },
+      { text:'⎿  Updated · 9 additions, 4 removals', color:'#a6e3a1', indent:'16px' },
+      { text:'● Bash(npm test -- auth)', color:'#b4befe', indent:'0' },
+      { text:'⎿  ✓ 28 passed (1.4s)', color:'#a6e3a1', indent:'16px' },
+      { text:' ', color:'#6c7086', indent:'0' },
+      { text:'● Done \u2014 refresh() now shares one in-flight promise per session.', color:'#f9e2af', indent:'0' },
+    ];
+
+    const paletteSessions = list.slice(0,4).map(x => ({ name:x.name, project:x.project, dot:x.dot, stateLabel:x.stateLabel, onClick: () => this.setState({ active:x.id, activeTab:x.id, tabs: this.state.tabs.includes(x.id)?this.state.tabs:[...this.state.tabs,x.id], paletteOpen:false }) }));
+    const paletteCommands = [
+      { icon:'+', color:'#a6e3a1', label:'New session…', kbd:'⌘N', onClick:this.closePalette },
+      { icon:'±', color:'#cba6f7', label:'Open review for current session', kbd:'⌘R', onClick:() => this.setState({reviewOpen:true,paletteOpen:false}) },
+      { icon:'$', color:'#89b4fa', label:'Open project shell…', kbd:'', onClick:this.closePalette },
+      { icon:'◐', color:'#89b4fa', label:'Change theme…', kbd:'', onClick:() => this.setState({themeOpen:true,paletteOpen:false}) },
+      { icon:'⌦', color:'#f38ba8', label:'Delete all merged-PR sessions', kbd:'', onClick:this.closePalette },
+    ];
+
+    const reviewFiles = [
+      { name:'src/auth/session.ts', add:9, del:4, active:true },
+      { name:'src/auth/index.ts', add:3, del:0, active:false },
+      { name:'tests/auth.test.ts', add:112, del:34, active:false },
+    ].map(f => ({ ...f, bg: f.active?'rgba(137,180,250,.1)':'transparent', color: f.active?'#cdd6f4':'#a6adc8' }));
+
+    const raw = [
+      { num:'9', sign:' ', text:'export async function refresh(session: Session) {', kind:'ctx' },
+      { num:'10', sign:'-', text:'  const token = await renew(session.id)', kind:'del' },
+      { num:'10', sign:'+', text:'  if (session.refreshing) return session.refreshing', kind:'add' },
+      { num:'11', sign:'+', text:'  session.refreshing = renew(session.id)', kind:'add', comment:'Should we add a timeout here so a hung renew() doesn\u2019t block every caller forever? 30s feels safe.' },
+      { num:'12', sign:'-', text:'  session.token = token', kind:'del' },
+      { num:'12', sign:'+', text:'  session.token = await session.refreshing', kind:'add' },
+      { num:'13', sign:'+', text:'  session.refreshing = null', kind:'add' },
+      { num:'14', sign:' ', text:'  return session.token', kind:'ctx', comment:'Nice \u2014 confirm callers handle the shared-promise rejection path too.' },
+      { num:'15', sign:' ', text:'}', kind:'ctx' },
+    ];
+    const KB = { add:{bg:'rgba(166,227,161,.08)', sign:'#a6e3a1', color:'#cdd6f4'}, del:{bg:'rgba(243,139,168,.08)', sign:'#f38ba8', color:'#a6adc8'}, ctx:{bg:'transparent', sign:'#45475a', color:'#bac2de'} };
+    const diffLines = raw.map(d => ({ num:d.num, sign:d.sign, text:d.text,
+      bg:KB[d.kind].bg, signColor:KB[d.kind].sign, color:KB[d.kind].color,
+      hasComment: !!d.comment, comment: d.comment || '', onClick: this.stageLine }));
+
+    const shortcuts = [
+      { label:'Command palette', keys:'⌘K' }, { label:'Help', keys:'?' },
+      { label:'Next / prev session', keys:'⌃Tab' }, { label:'Jump to tab 1–9', keys:'⌘1–9' },
+      { label:'Close terminal tab', keys:'⌘W' }, { label:'Open review', keys:'⌘R' },
+      { label:'New session', keys:'⌘N' }, { label:'Filter by project', keys:'⌘P' },
+      { label:'Attach commander', keys:'⌘.' }, { label:'Toggle detail pane', keys:'⌘I' },
+      { label:'Apply staged comments', keys:'⌘⏎' }, { label:'Theme picker', keys:'⌘T' },
+    ];
+
+    const themes = [
+      { name:'Mocha (active)', c1:'#1e1e2e', c2:'#89b4fa', c3:'#cba6f7', active:true, bg:'rgba(137,180,250,.08)' },
+      { name:'Macchiato', c1:'#24273a', c2:'#8aadf4', c3:'#c6a0f6', active:false, bg:'transparent' },
+      { name:'Frappé', c1:'#303446', c2:'#8caaee', c3:'#ca9ee6', active:false, bg:'transparent' },
+      { name:'Latte (light)', c1:'#eff1f5', c2:'#1e66f5', c3:'#8839ef', active:false, bg:'transparent' },
+      { name:'Custom JSON…', c1:'#11111b', c2:'#a6e3a1', c3:'#f9e2af', active:false, bg:'transparent' },
+    ];
+
+    const ms = list.find(x=>x.id===s.menuFor);
+    const menuItems = ms ? [
+      { icon:'▸', label:'Attach', color:'#cdd6f4', borderTop:false, onClick:() => { this.selectSession(ms.id); this.closeMenu(); } },
+      { icon:'$', label:'Open shell', color:'#cdd6f4', borderTop:false, onClick:this.closeMenu },
+      { icon:'±', label:'Review diff', color:'#cdd6f4', borderTop:false, onClick:() => { this.openReviewFor(ms.id); this.closeMenu(); } },
+      { icon:'✎', label:'Rename…', color:'#cdd6f4', borderTop:false, onClick:this.closeMenu },
+      { icon:'↻', label:'Restart', color:'#cdd6f4', borderTop:true, onClick:this.closeMenu },
+      { icon:'⤓', label:'Restart fresh', color:'#cdd6f4', borderTop:false, onClick:this.closeMenu },
+      { icon:'■', label:'Kill — stop process', color:'#f9e2af', borderTop:false, onClick:this.closeMenu },
+      { icon:'⌦', label:'Delete session…', color:'#f38ba8', borderTop:true, onClick:() => this.openConfirm(ms.id) },
+    ] : [];
+    const cf = this.base().find(x=>x.id===s.confirmFor);
+
+    return {
+      isA: s.dir==='A', isC: s.dir==='C',
+      segs, projects, groups, board, boardFilters, tabs, active, term,
+      filterActive: !!filter, filterName: filter || '', filterColor: filter ? PCOLOR[filter] : '#6c7086',
+      gbSecBg, gbSecColor, gbProjBg, gbProjColor, groupBySection: this.groupBySection, groupByProject: this.groupByProject,
+      isEmpty: emptyState, emptyName: filter || '', emptyColor: filter ? PCOLOR[filter] : '#6c7086',
+      paletteOpen: s.paletteOpen, paletteSessions, paletteCommands,
+      reviewOpen: s.reviewOpen, reviewFiles, diffLines, staged: String(s.staged),
+      helpOpen: s.helpOpen, shortcuts,
+      themeOpen: s.themeOpen, themes,
+      menuOpen: !!ms, menuItems, menuX: s.menuX, menuY: s.menuY, closeMenu: this.closeMenu,
+      confirmOpen: !!cf, confirmName: cf?cf.name:'', confirmBranch: cf?cf.branch:'', closeConfirm: this.closeConfirm, deleteSession: this.deleteSession,
+      clearFilter: this.clearFilter, openPalette: this.openPalette, closePalette: this.closePalette,
+      openHelp: this.openHelp, closeHelp: this.closeHelp, toggleTheme: this.toggleTheme, closeTheme: this.closeTheme,
+      openReviewBtn: this.openReviewBtn, closeReview: this.closeReview, applyComments: this.applyComments, stop: this.stop,
+    };
+  }
+}
+</script>
+</body>
+</html>
