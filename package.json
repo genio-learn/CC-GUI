@@ -18,6 +18,9 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@shikijs/engine-oniguruma": "^4.2.0",
+    "@shikijs/langs": "^4.2.0",
+    "@shikijs/themes": "^4.2.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@xterm/addon-clipboard": "^0.2.0",

@@ -1,4 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
+import { createOnigurumaEngine } from "@shikijs/engine-oniguruma";
+import {
+  createHighlighterCore,
+  type HighlighterCore,
+  type LanguageInput,
+  type ThemeInput,
+} from "shiki/core";
 import { noTextAssist } from "./dom";
 import { makeResizable } from "./resize";
 import { currentTheme, onThemeChange, type Theme } from "./theme";
@@ -55,18 +62,69 @@ const EXT_LANG: Record<string, string> = {
   svelte: "svelte",
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let highlighterPromise: Promise<any> | null = null;
+// Fine-grained Shiki loaders: we bundle only the languages EXT_LANG can name and
+// the theme ids the built-in registry uses. Importing the full "shiki" bundle
+// instead emits a lazy chunk for every one of Shiki's ~270 langs and ~60 themes
+// (almost all unused). Each lang module inlines its embedded grammars (e.g. vue →
+// html/css/ts), so loading one is self-contained.
+const LANG_LOADERS: Record<string, LanguageInput> = {
+  rust: () => import("@shikijs/langs/rust"),
+  typescript: () => import("@shikijs/langs/typescript"),
+  tsx: () => import("@shikijs/langs/tsx"),
+  javascript: () => import("@shikijs/langs/javascript"),
+  jsx: () => import("@shikijs/langs/jsx"),
+  python: () => import("@shikijs/langs/python"),
+  go: () => import("@shikijs/langs/go"),
+  ruby: () => import("@shikijs/langs/ruby"),
+  java: () => import("@shikijs/langs/java"),
+  kotlin: () => import("@shikijs/langs/kotlin"),
+  swift: () => import("@shikijs/langs/swift"),
+  c: () => import("@shikijs/langs/c"),
+  cpp: () => import("@shikijs/langs/cpp"),
+  csharp: () => import("@shikijs/langs/csharp"),
+  css: () => import("@shikijs/langs/css"),
+  scss: () => import("@shikijs/langs/scss"),
+  html: () => import("@shikijs/langs/html"),
+  json: () => import("@shikijs/langs/json"),
+  yaml: () => import("@shikijs/langs/yaml"),
+  toml: () => import("@shikijs/langs/toml"),
+  markdown: () => import("@shikijs/langs/markdown"),
+  shellscript: () => import("@shikijs/langs/shellscript"),
+  sql: () => import("@shikijs/langs/sql"),
+  xml: () => import("@shikijs/langs/xml"),
+  vue: () => import("@shikijs/langs/vue"),
+  svelte: () => import("@shikijs/langs/svelte"),
+};
+
+const THEME_LOADERS: Record<string, ThemeInput> = {
+  "catppuccin-mocha": () => import("@shikijs/themes/catppuccin-mocha"),
+  "catppuccin-latte": () => import("@shikijs/themes/catppuccin-latte"),
+  "catppuccin-frappe": () => import("@shikijs/themes/catppuccin-frappe"),
+  "catppuccin-macchiato": () => import("@shikijs/themes/catppuccin-macchiato"),
+  "tokyo-night": () => import("@shikijs/themes/tokyo-night"),
+  "one-dark-pro": () => import("@shikijs/themes/one-dark-pro"),
+  dracula: () => import("@shikijs/themes/dracula"),
+  nord: () => import("@shikijs/themes/nord"),
+  "github-light": () => import("@shikijs/themes/github-light"),
+  "solarized-light": () => import("@shikijs/themes/solarized-light"),
+};
+
+let highlighterPromise: Promise<HighlighterCore> | null = null;
 
 function getHighlighter() {
-  // Themes load on demand (ensureShikiTheme) rather than up front: built-ins are
-  // bundled ids, custom themes supply a full TextMate object at runtime, so the
-  // set isn't known when the highlighter is created.
-  highlighterPromise ??= import("shiki").then((shiki) =>
-    shiki.createHighlighter({ themes: [], langs: [] }),
-  );
+  // Languages and themes load on demand (loadLanguage / ensureShikiTheme) rather
+  // than up front: built-ins are bundled ids, custom themes supply a full TextMate
+  // object at runtime, so the set isn't known when the highlighter is created.
+  highlighterPromise ??= createHighlighterCore({
+    themes: [],
+    langs: [],
+    engine: createOnigurumaEngine(import("shiki/wasm")),
+  });
   return highlighterPromise;
 }
+
+// Shiki language ids already registered in the highlighter, so we never double-load.
+const loadedLangs = new Set<string>();
 
 // Shiki theme names already registered in the highlighter, so we never double-load.
 const loadedThemes = new Set<string>();
@@ -77,12 +135,13 @@ const loadedThemes = new Set<string>();
  * theme's is a full TextMate object whose `name` validateTheme forced to the theme
  * id. Keyed by that name so repeated renders reuse the already-loaded theme.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function ensureShikiTheme(hl: any, theme: Theme): Promise<string> {
+async function ensureShikiTheme(hl: HighlighterCore, theme: Theme): Promise<string> {
   const shiki = theme.shiki;
   const name = typeof shiki === "string" ? shiki : (shiki.name ?? theme.id);
   if (!loadedThemes.has(name)) {
-    await hl.loadTheme(shiki);
+    // A built-in id loads via its bundled loader; a custom theme's TextMate object
+    // is passed straight through.
+    await hl.loadTheme(typeof shiki === "string" ? THEME_LOADERS[shiki] : shiki);
     loadedThemes.add(name);
   }
   return name;
@@ -112,7 +171,10 @@ async function prepareHighlights(file: FileDiff): Promise<void> {
   }
   try {
     const hl = await getHighlighter();
-    await hl.loadLanguage(lang);
+    if (!loadedLangs.has(lang)) {
+      await hl.loadLanguage(LANG_LOADERS[lang]);
+      loadedLangs.add(lang);
+    }
     const themeName = await ensureShikiTheme(hl, currentTheme());
     const hunks = file.hunks.map((hunk) => {
       const code = hunk.lines.map((l) => l.content).join("\n");
