@@ -3,16 +3,17 @@ import { makeSession, makeSnapshot } from "../../network/seed.testHelper";
 
 test("renders the seeded snapshot", async ({ sidebar }) => {
   await expect(sidebar.titles()).toHaveText(["fix login bug"]);
-  expect(await sidebar.viewLabel()).toBe("View: Project");
+  // Seeded view_mode "project" lights the Projects segment of GROUP BY.
+  expect(await sidebar.activeGrouping()).toBe("Projects");
 });
 
 test("cycles the view mode", async ({ sidebar }) => {
-  await sidebar.cycleView();
+  await sidebar.setGrouping("Sections");
 
   // set_view_mode mutated the fake; the frontend re-read it via get_groups.
   expect(await sidebar.storedViewMode()).toBe("sections");
   await expect(async () => {
-    expect(await sidebar.viewLabel()).toBe("View: Sections");
+    expect(await sidebar.activeGrouping()).toBe("Sections");
   }).toPass();
 });
 
@@ -95,12 +96,16 @@ test.describe("glyphs and badges", () => {
     },
   });
 
-  test("shows unread, comment, pull-blocked, and status glyphs", async ({ sidebar }) => {
-    await expect(sidebar.unreadDot("needs attention")).toBeVisible();
+  test("shows unread, comment, blocked, and status glyphs", async ({ sidebar }) => {
+    // Unread (finished-while-away) surfaces as the dot's "finished" colour,
+    // overriding the underlying agent state.
+    expect(await sidebar.dotClass("needs attention")).toContain("dot-finished");
+    // Mauve ✎ pending-comments chip.
     await expect(sidebar.commentBadge("needs attention")).toBeVisible();
-    await expect(sidebar.pullBlocked("acme")).toBeVisible();
-    expect(await sidebar.glyphClass("needs attention")).toContain("agent-waiting");
-    expect(await sidebar.glyphClass("stopped one")).toContain("status-stopped");
+    // Maroon ⚠ chip on rows of an auto-pull-blocked project.
+    await expect(sidebar.blockedBadge("needs attention")).toBeVisible();
+    // A stopped session shows the stopped dot.
+    expect(await sidebar.dotClass("stopped one")).toContain("dot-stopped");
   });
 });
 

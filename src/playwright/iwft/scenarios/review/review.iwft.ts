@@ -21,15 +21,19 @@ test("comment renders after saving, and the fake stores the derived draft", asyn
   });
 });
 
-test("apply sends staged comments and hides the button", async ({ review }) => {
+test("apply sends staged comments and returns to the workspace", async ({ review }) => {
   await review.selectLine("beta new");
   await review.writeComment("nit");
 
-  await expect(review.applyLocator()).toHaveText("Apply (1)");
+  await expect(review.applyLocator()).toHaveText("Apply (1) →");
   await review.apply();
 
-  await expect(review.applyLocator()).toBeHidden(); // pending → 0
-  expect(await review.statusText()).toBe("Sent 1 comment(s) to the agent");
+  // A successful apply clears the staged comment and closes the review,
+  // returning to the workspace; the fake recorded the applied comment.
+  await expect(review.paneLocator()).toBeHidden();
+  const stored = await review.storedComments(SESSION_ID);
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({ comment: "nit", status: "applied" });
 });
 
 test("a comment can be deleted", async ({ review }) => {

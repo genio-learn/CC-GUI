@@ -24,15 +24,19 @@ export class SidebarPageObject extends AppPageObject {
     return this.rows.count();
   }
 
-  // ----- view mode -----
-  viewLabel(): Promise<string> {
-    return this.sessions.locator(".view-bar span").first().innerText();
+  // ----- view mode (GROUP BY segmented control) -----
+  /** Label of the currently-active grouping segment (e.g. "Projects"). */
+  activeGrouping(): Promise<string> {
+    return this.sessions.locator(".group-by-bar .segment.active").innerText();
   }
 
-  /** Click the view-mode cycle toggle (project → sections → section stacks). */
-  cycleView(): Promise<void> {
-    return this.step("cycleView", () =>
-      this.sessions.locator(".view-bar button").click(),
+  /** Drive the GROUP BY segmented control to a side ("Sections" | "Projects").
+   *  Round-trips through set_view_mode, like the old cycle toggle did. */
+  setGrouping(segment: "Sections" | "Projects"): Promise<void> {
+    return this.step(`setGrouping: ${segment}`, () =>
+      this.sessions
+        .locator(".group-by-bar .segment", { hasText: segment })
+        .click(),
     );
   }
 
@@ -217,24 +221,26 @@ export class SidebarPageObject extends AppPageObject {
   }
 
   // ----- glyphs / badges -----
-  pullBlocked(projectName: string): Locator {
-    return this.sessions
-      .locator(".project-header")
-      .filter({ hasText: projectName })
-      .locator(".pull-blocked");
+  /** The maroon ⚠ blocked chip on a row in an auto-pull-blocked project. */
+  blockedBadge(title: string): Locator {
+    return this.row(title).locator(".blocked-badge");
   }
 
+  /** The mauve ✎ pending-comments chip on a row. */
   commentBadge(title: string): Locator {
     return this.row(title).locator(".comment-badge");
   }
 
-  unreadDot(title: string): Locator {
-    return this.row(title).locator(".unread-dot");
+  /** A row's 8px liveness dot. Its state class (dot-running/finished/idle/
+   *  stopped/transient) carries the colour; an unread (finished-while-away)
+   *  session shows as dot-finished. */
+  statusDot(title: string): Locator {
+    return this.row(title).locator(".glyph.dot");
   }
 
-  /** Class on a row's status glyph (e.g. agent-working, status-stopped). */
-  glyphClass(title: string): Promise<string> {
-    return this.row(title).locator(".glyph").getAttribute("class") as Promise<string>;
+  /** Class on a row's liveness dot (e.g. "glyph dot dot-finished"). */
+  dotClass(title: string): Promise<string> {
+    return this.statusDot(title).getAttribute("class") as Promise<string>;
   }
 
   // ----- event push (drives the backend's sessions-updated path) -----

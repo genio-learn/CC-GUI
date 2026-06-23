@@ -42,9 +42,16 @@ test("Esc reverts the preview to the applied theme", async ({ themePicker }) => 
   expect(await themePicker.cssVar("--accent")).toBe(applied);
 });
 
-test("the current theme is tagged", async ({ themePicker }) => {
+test("the active theme is marked with the check", async ({ themePicker }) => {
+  // Commit a concrete theme so the active selection is deterministic (the
+  // default mode is "system", which resolves by OS appearance), then reopen
+  // and confirm the popover marks that theme — the one actually on screen.
   await themePicker.open("dark");
-  expect(await themePicker.currentLabel()).toBe("Catppuccin Mocha");
+  await themePicker.down(); // Catppuccin Frappé
+  await themePicker.commitEnter();
+
+  await themePicker.open("dark");
+  expect(await themePicker.currentLabel()).toBe("Catppuccin Frappé");
 });
 
 test.describe("custom themes", () => {
