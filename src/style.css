@@ -75,6 +75,9 @@
   /* Overlays — scrim tokenized off the inset bg so it reskins with the theme. */
   --scrim: color-mix(in srgb, var(--bg-inset) 64%, transparent);
   --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-terminal: 0 8px 30px rgba(0, 0, 0, 0.25);
+  --shadow-popover: 0 20px 50px rgba(0, 0, 0, 0.5);
+  --shadow-dialog: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
 
 * {
@@ -1018,6 +1021,17 @@ body {
   }
 }
 
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ── Project identity colour (hashed per project_id → --proj-0..7) ───────── */
 .proj-0 {
   --proj-color: var(--proj-0);
@@ -1297,6 +1311,8 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1421,6 +1437,8 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 18px 22px;
 }
 
@@ -1473,6 +1491,7 @@ body {
   inset: 0;
   z-index: 50;
   background: var(--scrim);
+  backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
 }
@@ -1490,6 +1509,8 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 18px 22px;
 }
 
@@ -1609,6 +1630,7 @@ body.resizing .panel-resizer {
   inset: 0;
   z-index: 150;
   background: var(--scrim);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1619,6 +1641,8 @@ body.resizing .panel-resizer {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 16px 18px;
 }
 
@@ -1685,6 +1709,8 @@ body.resizing .panel-resizer {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 6px;
   outline: none;
 }
@@ -1692,7 +1718,7 @@ body.resizing .panel-resizer {
 /* Anchored under the title-bar ◐ button (positioned in themeModal.ts). */
 .theme-popover {
   position: fixed;
-  box-shadow: 0 20px 50px var(--shadow);
+  box-shadow: var(--shadow-popover);
 }
 
 .theme-modal-list {
@@ -1822,7 +1848,7 @@ body.resizing .panel-resizer {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 8px 24px var(--shadow);
+  box-shadow: var(--shadow-popover);
   font-size: 12px;
 }
 
@@ -1964,6 +1990,7 @@ body.resizing .panel-resizer {
   background: var(--bg-inset);
   border: 1px solid var(--border);
   border-radius: 10px;
+  box-shadow: var(--shadow-terminal);
   overflow: hidden;
 }
 
@@ -2770,4 +2797,22 @@ body.resizing .panel-resizer {
 
 ::selection {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-running {
+    animation: none;
+  }
+  .palette-box,
+  .help-box,
+  .settings-box,
+  .confirm-box,
+  .theme-modal {
+    animation: none;
+  }
+  .theme-follow-toggle,
+  .theme-follow-toggle::after,
+  .toast {
+    transition: none;
+  }
 }

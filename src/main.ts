@@ -416,6 +416,7 @@ async function attachTerminal(
   const term = new Terminal({
     fontFamily: '"MesloLGS NF Embedded", "MesloLGS NF", Menlo, Monaco, monospace',
     fontSize: 13,
+    cursorBlink: true,
     theme: currentTheme().terminal,
   });
   const fit = new FitAddon();
