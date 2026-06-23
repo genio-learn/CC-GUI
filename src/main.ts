@@ -9,7 +9,7 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview, closeReview } from "./review";
-import { toast, confirmDialog, promptDialog } from "./toast";
+import { toast, confirmDialog, promptDialog, deleteSessionDialog } from "./toast";
 import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
 import { registerPaletteProvider, togglePalette } from "./palette";
@@ -1480,12 +1480,11 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
 
 function sessionMenuItems(refs: RowRefs): MenuItem[] {
   const s = refs.session;
+  // Core actions, in the order from the design brief.
   const items: MenuItem[] = [
     { label: "Attach", action: () => void openTerminal(s) },
-    { label: "Shell terminal", action: () => void openShell(s) },
+    { label: "Open shell", action: () => void openShell(s) },
     { label: "Review diff", action: () => void openReview(s.id, s.title) },
-    { label: "Details", action: () => toggleDetail(s) },
-    "separator",
     {
       label: "Rename…",
       action: () => {
@@ -1493,71 +1492,83 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
         renderSidebar();
       },
     },
+    "separator",
+    { label: "Restart", action: () => void lifecycle("restart_session", s.id) },
+    {
+      label: "Restart fresh",
+      action: () => {
+        void invoke("restart_fresh", { tmuxSession: s.tmux_session_name })
+          .catch((e) => toast(`restart_fresh failed: ${e}`, "error"))
+          .finally(() => void refreshNow());
+      },
+    },
+    {
+      label: "Kill — stop process",
+      warning: true,
+      action: () => void lifecycle("kill_session", s.id),
+    },
+    "separator",
+    {
+      label: "Delete session…",
+      danger: true,
+      action: () => {
+        void deleteSessionDialog(s.title, s.branch).then((ok) => {
+          if (ok) deleteSession(s);
+        });
+      },
+    },
+  ];
+
+  // Secondary capabilities, preserved below a separator so the rework doesn't
+  // drop existing functionality (details, editor, PR, cascade, sections).
+  const extras: MenuItem[] = [
+    { label: "Details", action: () => toggleDetail(s) },
     { label: "Open in editor", action: () => void lifecycle("open_in_editor", s.id) },
   ];
   if (s.pr_url) {
     const url = s.pr_url;
-    items.push({
+    extras.push({
       label: `Open PR #${s.pr_number}`,
       action: () => void invoke("open_external", { url }),
     });
   }
-  items.push("separator");
-  items.push({
+  extras.push({
     label: "Cascade-merge main → stack",
     action: () => void invokeToast("cascade_merge", { id: s.id }),
   });
-  items.push({
+  extras.push({
     label: "Push stack to origin",
     action: () => void invokeToast("push_stack", { id: s.id }),
   });
   if (s.status === "cascade_paused") {
-    items.push({
+    extras.push({
       label: "Resume cascade",
       action: () => void invokeToast("cascade_resume", {}),
     });
-    items.push({
+    extras.push({
       label: "Abandon cascade",
       danger: true,
       action: () => void invokeToast("cascade_abandon", {}),
     });
   }
   if (sectionNames.length) {
-    items.push("separator");
     for (const name of sectionNames) {
       if (name !== s.current_section) {
-        items.push({
+        extras.push({
           label: `Move to section: ${name}`,
           action: () => void lifecycleArgs("move_to_section", { id: s.id, section: name }),
         });
       }
     }
     if (s.current_section) {
-      items.push({
+      extras.push({
         label: "Clear section pin",
         action: () => void lifecycleArgs("move_to_section", { id: s.id, section: null }),
       });
     }
   }
-  items.push("separator");
-  if (s.status === "stopped") {
-    items.push({ label: "Restart", action: () => void lifecycle("restart_session", s.id) });
-  }
-  if (s.status === "running") {
-    items.push({ label: "Kill", action: () => void lifecycle("kill_session", s.id), danger: true });
-  }
-  items.push({
-    label: "Delete (worktree + branch)",
-    danger: true,
-    action: () => {
-      void confirmDialog(
-        `Delete session "${s.title}"?\nThis removes the worktree and branch.`,
-        "Delete",
-      ).then((ok) => {
-        if (ok) deleteSession(s);
-      });
-    },
-  });
+
+  items.push("separator", ...extras);
   return items;
 }
 
@@ -2437,8 +2448,12 @@ function applySnapshot(snap: Snapshot): void {
 registerPaletteProvider(() =>
   groups.flatMap((g) =>
     g.sessions.map((s) => ({
+      kind: "session" as const,
       label: s.title,
       hint: `${g.name} · ${s.branch}`,
+      dotClass: statusGlyph(s).className.split(" ").find((c) => c.startsWith("dot-")) ?? "",
+      project: g.name,
+      state: humanState(s),
       action: () => void openTerminal(s),
     })),
   ),

@@ -366,9 +366,12 @@ function renderFiles(): void {
 
 function renderCommentBlock(c: Comment): HTMLDivElement {
   const block = document.createElement("div");
-  block.className = "review-comment";
+  block.className = `review-comment comment-${c.status}`;
   const head = document.createElement("div");
   head.className = "comment-head";
+  const avatar = document.createElement("span");
+  avatar.className = "comment-avatar";
+  avatar.textContent = "you";
   const badge = document.createElement("span");
   badge.className = `comment-status comment-${c.status}`;
   badge.textContent = c.status;
@@ -376,7 +379,7 @@ function renderCommentBlock(c: Comment): HTMLDivElement {
   range.className = "comment-range";
   const [start, end] = c.line_range;
   range.textContent = `${c.side} ${start === end ? start : `${start}–${end}`}`;
-  head.append(badge, range);
+  head.append(avatar, badge, range);
   if (c.status !== "applied") {
     const spacer = document.createElement("span");
     spacer.className = "spacer";
@@ -740,7 +743,7 @@ function renderApply(): void {
   const pending = snapshot.comments.filter((c) => c.status !== "applied").length;
   applyEl.classList.toggle("hidden", pending === 0);
   applyEl.disabled = applying;
-  applyEl.textContent = applying ? "Applying…" : `Apply (${pending})`;
+  applyEl.textContent = applying ? "Applying…" : `Apply (${pending}) →`;
 }
 
 async function applyComments(): Promise<void> {
@@ -751,6 +754,13 @@ async function applyComments(): Promise<void> {
   try {
     const outcome = await invoke<ApplyOutcome>("apply_comments", { id: sessionId });
     statusEl.textContent = describeOutcome(outcome);
+    // Applying clears the staged comments and returns to the workspace; a
+    // blocked outcome (drifted comments) stays open so the failure is visible.
+    if (outcome.outcome === "applied") {
+      applying = false;
+      closeReview();
+      return;
+    }
   } catch (e) {
     statusEl.textContent = `apply failed: ${e}`;
   }

@@ -8,6 +8,14 @@ export type PaletteEntry = {
   label: string;
   hint: string;
   action: () => void;
+  /** Which section the entry renders under. Defaults to "command" so command
+   *  providers need no change; the session provider marks its entries. */
+  kind?: "session" | "command";
+  /** Session-only: liveness-dot class (e.g. "dot-running") and the project +
+   *  human-readable state shown alongside the name. */
+  dotClass?: string;
+  project?: string;
+  state?: string;
 };
 
 let providers: (() => PaletteEntry[])[] = [];
@@ -39,11 +47,20 @@ overlay.id = "palette";
 overlay.classList.add("hidden");
 const box = document.createElement("div");
 box.className = "palette-box";
+const header = document.createElement("div");
+header.className = "palette-header";
+const kbd = document.createElement("span");
+kbd.className = "palette-kbd";
+kbd.textContent = "⌘";
 const input = noTextAssist(document.createElement("input"));
 input.placeholder = "Jump to session or run a command…";
+const esc = document.createElement("span");
+esc.className = "palette-esc";
+esc.textContent = "esc";
+header.append(kbd, input, esc);
 const list = document.createElement("div");
 list.className = "palette-list";
-box.append(input, list);
+box.append(header, list);
 overlay.appendChild(box);
 document.body.appendChild(overlay);
 
@@ -69,9 +86,15 @@ export function togglePalette(): void {
   else closePalette();
 }
 
+/** Sessions render in their own section above Commands, so group them ahead of
+ *  commands while preserving the per-kind order (provider order or score). */
+function kindRank(e: PaletteEntry): number {
+  return e.kind === "session" ? 0 : 1;
+}
+
 function refilter(): void {
   const q = input.value.trim();
-  filtered = !q
+  const ranked = !q
     ? entries.slice(0, 30)
     : entries
         .map((e) => ({ e, s: score(q, `${e.label} ${e.hint}`) }))
@@ -79,22 +102,57 @@ function refilter(): void {
         .sort((a, b) => b.s - a.s)
         .slice(0, 30)
         .map((x) => x.e);
+  // Stable group-by-kind: sessions first, commands after, order within each
+  // kind preserved (Array.sort is stable on V8).
+  filtered = ranked.slice().sort((a, b) => kindRank(a) - kindRank(b));
   selected = Math.min(selected, Math.max(0, filtered.length - 1));
   renderList();
 }
 
+function groupLabel(kind: PaletteEntry["kind"]): string {
+  return kind === "session" ? "Sessions" : "Commands";
+}
+
 function renderList(): void {
   list.innerHTML = "";
+  let lastKind: PaletteEntry["kind"] | null = null;
   filtered.forEach((e, i) => {
+    const kind = e.kind ?? "command";
+    if (kind !== lastKind) {
+      const group = document.createElement("div");
+      group.className = "palette-group";
+      group.textContent = groupLabel(kind);
+      list.appendChild(group);
+      lastKind = kind;
+    }
     const row = document.createElement("div");
     row.className = "palette-row";
     row.classList.toggle("selected", i === selected);
+    // Label stays the first <span> child (test/page-object contract).
     const label = document.createElement("span");
+    label.className = "palette-label";
     label.textContent = e.label;
-    const hint = document.createElement("span");
-    hint.className = "palette-hint";
-    hint.textContent = e.hint;
-    row.append(label, hint);
+    if (kind === "session") {
+      // Non-<span> so the label stays the row's first <span> (test contract).
+      const dot = document.createElement("i");
+      dot.className = `palette-dot dot ${e.dotClass ?? ""}`.trim();
+      const project = document.createElement("span");
+      project.className = "palette-meta";
+      project.textContent = e.project ?? "";
+      const state = document.createElement("span");
+      state.className = "palette-state";
+      state.textContent = e.state ?? "";
+      row.append(dot, label, project, state);
+    } else {
+      // Non-<span> so the label stays the row's first <span> (test contract).
+      const icon = document.createElement("i");
+      icon.className = "palette-icon";
+      icon.textContent = "⌥";
+      const hint = document.createElement("span");
+      hint.className = "palette-hint";
+      hint.textContent = e.hint;
+      row.append(icon, label, hint);
+    }
     row.addEventListener("click", () => {
       closePalette();
       e.action();
