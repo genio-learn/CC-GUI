@@ -167,7 +167,10 @@ const detailTitleEl = document.querySelector<HTMLSpanElement>("#detail-title")!;
 const detailMetaEl = document.querySelector<HTMLDListElement>("#detail-meta")!;
 const detailDiffstatEl = document.querySelector<HTMLDivElement>("#detail-diffstat")!;
 const detailSummaryEl = document.querySelector<HTMLDivElement>("#detail-summary")!;
+const detailTagsEl = document.querySelector<HTMLDivElement>("#detail-tags")!;
 const summaryGenEl = document.querySelector<HTMLButtonElement>("#summary-gen")!;
+const detailReviewEl = document.querySelector<HTMLButtonElement>("#detail-review")!;
+const detailPrEl = document.querySelector<HTMLButtonElement>("#detail-pr")!;
 
 // ---------------------------------------------------------------- terminals
 
@@ -175,6 +178,9 @@ type TermEntry = {
   term: Terminal;
   fit: FitAddon;
   container: HTMLDivElement;
+  surface: HTMLDivElement; // inner element xterm renders into (frame minus chrome)
+  titleLabel: HTMLSpanElement; // title-bar "<session> — <program> · <project>"
+  powerline: HTMLDivElement; // status line below the surface
   tab: HTMLDivElement;
   glyph: HTMLSpanElement;
   title: string;
@@ -210,6 +216,13 @@ function activateTerminal(name: string): void {
     });
     entry.term.focus();
   }
+  // The active session changed: the cached detail is for the prior terminal,
+  // so paint the frame from the snapshot row now (omitting edits/elapsed until
+  // the poll lands) and (re)start the per-active detail poll.
+  if (frameDetail && frameDetail.name !== name) frameDetail = null;
+  updateFrame();
+  syncFrameDetailPoll();
+  void refreshFrameDetail();
   renderSidebar();
 }
 
@@ -226,6 +239,7 @@ function closeTerminal(name: string): void {
     if (activeTerm) activateTerminal(activeTerm);
   }
   placeholderEl.style.display = terminals.size ? "none" : "flex";
+  syncFrameDetailPoll(); // stop the poll if no session terminal remains
   renderSidebar();
 }
 
@@ -291,11 +305,23 @@ tabsEl.addEventListener("drop", (e) => {
   if (!draggingTab) return;
   e.preventDefault();
   const before = tabBeforeX(e.clientX);
+  // Keep the trailing "+" button last: drop "at the end" means before it.
   if (before) tabsEl.insertBefore(draggingTab, before);
-  else tabsEl.appendChild(draggingTab);
+  else tabsEl.insertBefore(draggingTab, tabNewBtn);
   clearDropMarker();
   syncTermOrderFromDom();
 });
+
+// "+" new-terminal button — pinned to the end of the strip. It has no
+// `dataset.term`, so the drag-reorder helpers (tabBeforeX queries `.tab`,
+// syncTermOrderFromDom filters by dataset.term) ignore it; the drop handler
+// keeps it last by inserting dragged tabs before it.
+const tabNewBtn = document.createElement("button");
+tabNewBtn.className = "tab-new";
+tabNewBtn.textContent = "+";
+tabNewBtn.title = "New session";
+tabNewBtn.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
+tabsEl.appendChild(tabNewBtn);
 
 async function openTerminal(session: SessionRow): Promise<void> {
   // A deliberate attach resets the crash-loop guard for this session.
@@ -347,8 +373,33 @@ async function attachTerminal(
   }
   if (existing) closeTerminal(name); // dead: rebuild from scratch
 
+  // Framed terminal: a rounded surface with a title bar above and a powerline
+  // status line below the real xterm surface. xterm renders into `surface`
+  // (flex:1); the fixed-height title bar / powerline are flex-shrink:0 so the
+  // FitAddon measures only the remaining space (see activateTerminal/refitActive).
   const container = document.createElement("div");
   container.className = "term-container";
+
+  const titlebar = document.createElement("div");
+  titlebar.className = "term-titlebar";
+  const traffic = document.createElement("div");
+  traffic.className = "term-traffic";
+  for (const c of ["close", "min", "max"]) {
+    const dot = document.createElement("span");
+    dot.className = `term-traffic-dot ${c}`;
+    traffic.appendChild(dot);
+  }
+  const titleLabel = document.createElement("span");
+  titleLabel.className = "term-frame-label";
+  titlebar.append(traffic, titleLabel);
+
+  const surface = document.createElement("div");
+  surface.className = "term-surface";
+
+  const powerline = document.createElement("div");
+  powerline.className = "term-powerline";
+
+  container.append(titlebar, surface, powerline);
   terminalsEl.appendChild(container);
 
   const term = new Terminal({
@@ -374,7 +425,7 @@ async function attachTerminal(
     document.fonts.load('13px "MesloLGS NF Embedded"'),
     document.fonts.load('bold 13px "MesloLGS NF Embedded"'),
   ]).catch(() => {});
-  term.open(container);
+  term.open(surface);
 
   // Honor OSC 52: programs like Claude's TUI manage their own mouse selection
   // and copy by emitting an OSC 52 clipboard sequence (this is what makes a
@@ -393,7 +444,7 @@ async function attachTerminal(
   // the container bubbles after xterm's own handlers, so the selection is
   // final. In an app that grabs the mouse (Claude), xterm makes no selection
   // and this no-ops — OSC 52 above handles that case instead.
-  container.addEventListener("mouseup", () => {
+  surface.addEventListener("mouseup", () => {
     const sel = term.getSelection();
     if (!sel) return;
     void writeText(sel).catch((e) =>
@@ -470,12 +521,15 @@ async function attachTerminal(
   });
   tab.append(glyph, label, close);
   tab.addEventListener("click", () => activateTerminal(name));
-  tabsEl.appendChild(tab);
+  tabsEl.insertBefore(tab, tabNewBtn); // keep the "+" button trailing
 
   const entry: TermEntry = {
     term,
     fit,
     container,
+    surface,
+    titleLabel,
+    powerline,
     tab,
     glyph,
     title,
@@ -507,6 +561,135 @@ function refitActive(): void {
     rows: entry.term.rows,
     cols: entry.term.cols,
   });
+}
+
+// ----------------------------------------------------- terminal frame chrome
+// The title bar and powerline mirror the active session's snapshot row
+// (project / branch / state — always present) plus an "N edits" / "elapsed"
+// pair derived from get_session_detail (diff_stat + created_at), the same
+// command the detail pane polls. Those two segments are omitted when no detail
+// is available, so nothing is fabricated.
+
+// Last detail fetched for the *active* terminal, keyed by tmux session name so
+// a stale fetch for a since-switched terminal is discarded.
+let frameDetail: { name: string; edits: number | null; created: string | null } | null = null;
+let frameTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Sum of +N/-N magnitudes in a diff_stat string, or null if none parse. */
+function diffEditCount(diffStat: string | null): number | null {
+  if (!diffStat) return null;
+  let total = 0;
+  let saw = false;
+  for (const token of diffStat.split(/(\+\d+|-\d+)/)) {
+    const m = /^([+-])(\d+)$/.exec(token);
+    if (m) {
+      total += Number(m[2]);
+      saw = true;
+    }
+  }
+  return saw ? total : null;
+}
+
+/** Compact "Hh Mm" / "Mm" / "Ss" elapsed since an ISO timestamp. */
+function elapsedSince(iso: string): string | null {
+  const start = new Date(iso).getTime();
+  if (Number.isNaN(start)) return null;
+  const secs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m`;
+}
+
+/** A powerline segment: an optional leading glyph + text, with a class. */
+function plSeg(cls: string, glyph: string, text: string): HTMLSpanElement {
+  const seg = document.createElement("span");
+  seg.className = `pl-seg ${cls}`;
+  if (glyph) {
+    const g = document.createElement("span");
+    g.className = "pl-glyph";
+    g.textContent = glyph;
+    seg.append(g);
+  }
+  seg.append(document.createTextNode(text));
+  return seg;
+}
+
+/** Rebuild the active terminal's title bar + powerline from the latest
+ *  snapshot row (and cached detail for edits/elapsed). No-op for terminals
+ *  with no matching session (commander / plain shells). */
+function updateFrame(): void {
+  if (!activeTerm) return;
+  const entry = terminals.get(activeTerm);
+  if (!entry) return;
+  const s = groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === activeTerm);
+
+  if (!s) {
+    // Commander / shell: label from the tab title, no session powerline data.
+    entry.titleLabel.textContent = entry.title;
+    entry.powerline.innerHTML = "";
+    entry.powerline.classList.add("empty");
+    return;
+  }
+
+  entry.titleLabel.textContent = `${s.title} — ${s.program} · ${s.project_name}`;
+
+  entry.powerline.innerHTML = "";
+  entry.powerline.classList.remove("empty");
+  entry.powerline.append(plSeg(`proj ${projClass(s.project_id)}`, "⚡", s.project_name));
+  entry.powerline.append(plSeg("branch", "", s.branch));
+
+  const det = frameDetail && frameDetail.name === activeTerm ? frameDetail : null;
+  if (det?.edits != null) {
+    entry.powerline.append(plSeg("edits", "✔", `${det.edits} edits`));
+  }
+  if (det?.created) {
+    const el = elapsedSince(det.created);
+    if (el) entry.powerline.append(plSeg("elapsed", "◷", el));
+  }
+
+  const state = plSeg("state", "", humanState(s));
+  state.classList.add("right");
+  entry.powerline.append(state);
+}
+
+/** Fetch get_session_detail for the active session and refresh the frame.
+ *  Resolves the row's `id` (not the tmux name) for the command. */
+async function refreshFrameDetail(): Promise<void> {
+  const name = activeTerm;
+  if (!name) return;
+  const s = groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === name);
+  if (!s) {
+    frameDetail = null;
+    updateFrame();
+    return;
+  }
+  let d: SessionDetail | null = null;
+  try {
+    d = await invoke<SessionDetail | null>("get_session_detail", { id: s.id });
+  } catch {
+    return; // transient; next tick retries, keep the last good frame
+  }
+  if (activeTerm !== name) return; // switched away while fetching
+  frameDetail = d
+    ? { name, edits: diffEditCount(d.diff_stat), created: d.created_at }
+    : { name, edits: null, created: null };
+  updateFrame();
+}
+
+/** Start/stop the per-active-terminal detail poll. Runs only while a session
+ *  terminal is active; torn down for commander/shell or when no tab is open. */
+function syncFrameDetailPoll(): void {
+  const hasSession =
+    activeTerm != null &&
+    groups.flatMap((g) => g.sessions).some((x) => x.tmux_session_name === activeTerm);
+  if (hasSession && !frameTimer) {
+    frameTimer = setInterval(() => void refreshFrameDetail(), 2000);
+  } else if (!hasSession && frameTimer) {
+    clearInterval(frameTimer);
+    frameTimer = null;
+  }
 }
 
 window.addEventListener("resize", () => {
@@ -611,6 +794,7 @@ makeResizable({
 
 let detailId: string | null = null;
 let detailTimer: ReturnType<typeof setInterval> | null = null;
+let detailPrUrl: string | null = null; // PR url from the last fetched detail, for the footer
 
 type Summary = { state: "loading" } | { state: "ready"; text: string } | { state: "error"; text: string };
 const summaries = new Map<string, Summary>(); // keyed by session id, app-session cache
@@ -625,23 +809,21 @@ function metaRow(label: string, value: string): [HTMLElement, HTMLElement] {
 
 function renderDetail(d: SessionDetail): void {
   detailTitleEl.textContent = d.title;
+  detailPrUrl = d.pr_url;
 
   detailMetaEl.innerHTML = "";
   const status =
     d.status.toLowerCase() === "running" ? `running · ${d.agent_state}` : d.status.toLowerCase();
-  const rows: [string, string][] = [
-    ["Project", d.project_name],
-    ["Branch", d.branch],
-    ["Status", status],
-    ["Program", d.program],
-    ["Created", new Date(d.created_at).toLocaleString()],
-  ];
+  // Order per the brief: branch / (worktree — omitted, not surfaced to the
+  // frontend SessionDetail) / PR / status; project/program/created kept.
+  const rows: [string, string][] = [["Project", d.project_name], ["Branch", d.branch]];
   if (d.pr_number != null) {
     rows.push([
       "PR",
       `#${d.pr_number} (${d.pr_draft ? "draft" : d.pr_state.toLowerCase()})${d.pr_url ? ` — ${d.pr_url}` : ""}`,
     ]);
   }
+  rows.push(["Status", status], ["Program", d.program], ["Created", new Date(d.created_at).toLocaleString()]);
   for (const [label, value] of rows) {
     detailMetaEl.append(...metaRow(label, value));
   }
@@ -649,16 +831,52 @@ function renderDetail(d: SessionDetail): void {
   detailDiffstatEl.innerHTML = "";
   if (d.diff_stat) {
     // Colorize "+N" / "-N" tokens in the diffstat summary.
+    let adds = 0;
+    let dels = 0;
     for (const token of d.diff_stat.split(/(\+\d+|-\d+)/)) {
       const span = document.createElement("span");
-      if (/^\+\d+$/.test(token)) span.className = "added";
-      if (/^-\d+$/.test(token)) span.className = "removed";
+      if (/^\+\d+$/.test(token)) {
+        span.className = "added";
+        adds += Number(token.slice(1));
+      }
+      if (/^-\d+$/.test(token)) {
+        span.className = "removed";
+        dels += Number(token.slice(1));
+      }
       span.textContent = token;
       detailDiffstatEl.appendChild(span);
+    }
+    // Proportional add/remove bar.
+    const total = adds + dels;
+    if (total > 0) {
+      const bar = document.createElement("div");
+      bar.className = "diffstat-bar";
+      const a = document.createElement("span");
+      a.className = "added";
+      a.style.width = `${(adds / total) * 100}%`;
+      const r = document.createElement("span");
+      r.className = "removed";
+      r.style.width = `${(dels / total) * 100}%`;
+      bar.append(a, r);
+      detailDiffstatEl.appendChild(bar);
     }
   } else {
     detailDiffstatEl.textContent = "No changes";
   }
+
+  // Tag chips: derive from the matching snapshot row's PR labels (real data;
+  // no dedicated tag source exists). Empty when the session has no labels.
+  detailTagsEl.innerHTML = "";
+  const row = groups.flatMap((g) => g.sessions).find((x) => x.id === d.id);
+  for (const label of row?.pr_labels ?? []) {
+    const chip = document.createElement("span");
+    chip.className = "detail-tag";
+    chip.textContent = label;
+    detailTagsEl.appendChild(chip);
+  }
+
+  // Footer: Open PR is enabled only when this session has a PR url.
+  detailPrEl.disabled = !d.pr_url;
 }
 
 function renderSummary(): void {
@@ -666,7 +884,7 @@ function renderSummary(): void {
   const summary = summaries.get(detailId);
   detailSummaryEl.classList.remove("placeholder", "error");
   summaryGenEl.disabled = summary?.state === "loading";
-  summaryGenEl.textContent = summary?.state === "ready" ? "Regenerate" : "Generate";
+  summaryGenEl.textContent = summary?.state === "ready" ? "↻ Regenerate" : "↻ Generate";
   if (!summary) {
     detailSummaryEl.classList.add("placeholder");
     detailSummaryEl.textContent = "No summary yet — Generate sends the branch diff to Claude.";
@@ -716,6 +934,7 @@ async function refreshDetail(): Promise<void> {
 
 function closeDetail(): void {
   detailId = null;
+  detailPrUrl = null;
   if (detailTimer) clearInterval(detailTimer);
   detailTimer = null;
   detailEl.classList.add("hidden");
@@ -728,10 +947,13 @@ function toggleDetail(s: SessionRow): void {
     return;
   }
   detailId = s.id;
+  detailPrUrl = null;
   detailEl.classList.remove("hidden");
   detailTitleEl.textContent = s.title;
   detailMetaEl.innerHTML = "";
   detailDiffstatEl.textContent = "Loading…";
+  detailTagsEl.innerHTML = "";
+  detailPrEl.disabled = true;
   renderSummary();
   if (detailTimer) clearInterval(detailTimer);
   detailTimer = setInterval(() => void refreshDetail(), 2000);
@@ -740,6 +962,13 @@ function toggleDetail(s: SessionRow): void {
 }
 
 document.querySelector("#detail-close")!.addEventListener("click", closeDetail);
+document.querySelector("#detail-collapse")!.addEventListener("click", closeDetail);
+detailReviewEl.addEventListener("click", () => {
+  if (detailId) void openReview(detailId, detailTitleEl.textContent ?? "");
+});
+detailPrEl.addEventListener("click", () => {
+  if (detailPrUrl) void invoke("open_external", { url: detailPrUrl });
+});
 
 /**
  * Crash-loop guard, cap 3 *consecutive* ends per tmux name. "Consecutive"
@@ -990,6 +1219,11 @@ function updateTabGlyphs(): void {
       entry.glyph.hidden = true;
     }
   }
+  // Snapshot-driven frame parts (project / branch / state / title) stay live;
+  // edits/elapsed refresh on their own poll. Also (re)sync the poll in case the
+  // active row just appeared or went away.
+  updateFrame();
+  syncFrameDetailPoll();
 }
 
 function actionButton(
