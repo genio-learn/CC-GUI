@@ -208,13 +208,23 @@ function activateTerminal(name: string): void {
   placeholderEl.style.display = terminals.size ? "none" : "flex";
   const entry = terminals.get(name);
   if (entry) {
-    entry.fit.fit();
-    void invoke("resize_pty", {
-      tmuxSession: name,
-      rows: entry.term.rows,
-      cols: entry.term.cols,
-    });
-    entry.term.focus();
+    // In board mode the terminal lives in the dock; dock+fit there (fitting in
+    // the hidden #terminals would measure a zero-size element). Otherwise fit
+    // in place.
+    if (layout === "board") {
+      dockActiveTerminal();
+    } else {
+      entry.fit.fit();
+      void invoke("resize_pty", {
+        tmuxSession: name,
+        rows: entry.term.rows,
+        cols: entry.term.cols,
+      });
+      entry.term.focus();
+    }
+  } else if (layout === "board") {
+    // The active terminal was just removed: refresh the dock to its placeholder.
+    updateDockHeader();
   }
   // The active session changed: the cached detail is for the prior terminal,
   // so paint the frame from the snapshot row now (omitting edits/elapsed until
@@ -237,6 +247,7 @@ function closeTerminal(name: string): void {
   if (activeTerm === name) {
     activeTerm = terminals.keys().next().value ?? null;
     if (activeTerm) activateTerminal(activeTerm);
+    else if (layout === "board") updateDockHeader(); // no terminal left → dock placeholder
   }
   placeholderEl.style.display = terminals.size ? "none" : "flex";
   syncFrameDetailPoll(); // stop the poll if no session terminal remains
@@ -561,6 +572,67 @@ function refitActive(): void {
     rows: entry.term.rows,
     cols: entry.term.cols,
   });
+}
+
+// ---------------------------------------------------------------- board dock
+// In board mode the active session's terminal lives in the dock at the bottom
+// of #board: we MOVE the existing `.term-container` node out of #terminals into
+// #board-dock-surface (one PTY — no duplicate). The container is absolutely
+// positioned (inset:4px), so it fills whichever positioned parent holds it;
+// after any re-parent it must be re-fit once its new parent is laid out. When
+// switching back to Console the container returns to #terminals.
+
+// The user can "×" detach the dock without killing the PTY: the terminal goes
+// back to #terminals and the dock shows its placeholder even though a terminal
+// is still active. Cleared by attaching from a card or re-entering board mode.
+let dockDetached = false;
+
+/** Fill the dock header (session name + branch) from the active terminal's
+ *  snapshot row, and toggle the placeholder vs. the docked terminal. */
+function updateDockHeader(): void {
+  const entry = activeTerm && !dockDetached ? terminals.get(activeTerm) : null;
+  if (!entry) {
+    boardDockNameEl.textContent = "";
+    boardDockBranchEl.textContent = "";
+    boardDockPlaceholderEl.style.display = "flex";
+    return;
+  }
+  const s = groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === activeTerm);
+  boardDockNameEl.textContent = s ? s.title : entry.title;
+  boardDockBranchEl.textContent = s ? s.branch : "";
+  boardDockPlaceholderEl.style.display = "none";
+}
+
+/** Move the active terminal's container into the dock surface and re-fit. With
+ *  no active terminal (or after an explicit detach) the dock shows its
+ *  placeholder. Safe to call repeatedly (re-parenting a node into its current
+ *  parent is a no-op move). */
+function dockActiveTerminal(): void {
+  updateDockHeader();
+  if (!activeTerm || dockDetached) return;
+  const entry = terminals.get(activeTerm);
+  if (!entry) return;
+  boardDockSurfaceEl.appendChild(entry.container);
+  // Mirror activateTerminal: only the active container is shown, and fit must
+  // run after the move so it measures the dock surface, not #terminals.
+  entry.container.classList.add("active");
+  entry.fit.fit();
+  void invoke("resize_pty", {
+    tmuxSession: activeTerm,
+    rows: entry.term.rows,
+    cols: entry.term.cols,
+  });
+  entry.term.focus();
+}
+
+/** Restore the active terminal's container to #terminals (Console layout) and
+ *  re-fit it there. */
+function undockTerminal(): void {
+  if (!activeTerm) return;
+  const entry = terminals.get(activeTerm);
+  if (!entry) return;
+  terminalsEl.appendChild(entry.container);
+  refitActive();
 }
 
 // ----------------------------------------------------- terminal frame chrome
@@ -1025,6 +1097,11 @@ let topInput: "add" | "scan" | null = null; // sidebar-top path input mode
 // null for "all projects". Composes with whichever grouping is active.
 let projectFilter: string | null = null;
 
+// Board layout: which cards are visible (filter pills) + a name search. Mirrors
+// projectFilter's "local UI state, re-render on change" shape.
+let boardFilter: "all" | "review" | "running" | "blocked" = "all";
+let boardSearch = "";
+
 const SECTION_VIEW = (): boolean => sections !== null;
 
 /** Create-input key for a project sub-header inside a section. The `sect:`
@@ -1074,6 +1151,10 @@ let visibleGroups: string[][] = [];
 function updateSelectionClasses(): void {
   for (const [id, refs] of rowRefs) {
     refs.row.classList.toggle("selected", id === selectedId);
+  }
+  // Board cards share the sidebar's selection model.
+  for (const [id, card] of boardCardRefs) {
+    card.classList.toggle("selected", id === selectedId);
   }
   if (selectedId) {
     rowRefs.get(selectedId)?.row.scrollIntoView({ block: "nearest" });
@@ -1339,6 +1420,7 @@ function deleteSession(s: SessionRow): void {
   for (const g of groups) g.sessions = g.sessions.filter((row) => row.id !== s.id);
   if (sections) for (const b of sections) b.session_ids = b.session_ids.filter((id) => id !== s.id);
   renderSidebar();
+  renderBoard();
   updateTitleBarCounts();
   invoke("delete_session", { id: s.id })
     .then(() => refreshNow()) // a fresh snapshot confirms absence and clears the mask
@@ -2325,6 +2407,13 @@ document.querySelector<HTMLButtonElement>("#sidebar-menu")!.addEventListener("cl
 
 const appEl = document.querySelector<HTMLElement>("#app")!;
 const boardEl = document.querySelector<HTMLElement>("#board")!;
+const boardFilterEl = document.querySelector<HTMLDivElement>("#board-filter")!;
+const boardColumnsEl = document.querySelector<HTMLDivElement>("#board-columns")!;
+const boardDockEl = document.querySelector<HTMLDivElement>("#board-dock")!;
+const boardDockSurfaceEl = document.querySelector<HTMLDivElement>("#board-dock-surface")!;
+const boardDockPlaceholderEl = document.querySelector<HTMLDivElement>("#board-dock-placeholder")!;
+const boardDockNameEl = document.querySelector<HTMLSpanElement>("#board-dock-name")!;
+const boardDockBranchEl = document.querySelector<HTMLSpanElement>("#board-dock-branch")!;
 const tbCount = document.querySelector<HTMLElement>("#tb-count")!;
 const tbConsole = document.querySelector<HTMLButtonElement>("#tb-console")!;
 const tbBoard = document.querySelector<HTMLButtonElement>("#tb-board")!;
@@ -2344,7 +2433,14 @@ function setLayout(next: "console" | "board"): void {
   boardEl.classList.toggle("hidden", next !== "board");
   tbConsole.classList.toggle("active", next === "console");
   tbBoard.classList.toggle("active", next === "board");
-  refitActive();
+  // Re-parent the active terminal into/out of the dock now that the target
+  // surface is visible, then fit it (dock/undock fit internally).
+  if (next === "board") {
+    dockDetached = false; // a fresh board entry re-docks the active terminal
+    dockActiveTerminal();
+  } else {
+    undockTerminal();
+  }
 }
 
 tbConsole.addEventListener("click", () => setLayout("console"));
@@ -2360,6 +2456,22 @@ appEl.classList.toggle("board-mode", layout === "board");
 boardEl.classList.toggle("hidden", layout !== "board");
 tbConsole.classList.toggle("active", layout === "console");
 tbBoard.classList.toggle("active", layout === "board");
+// Dock the active terminal (if any) when booting straight into board mode.
+if (layout === "board") dockActiveTerminal();
+
+// Dock "×" detaches: undock the terminal back to #terminals and show the dock
+// placeholder. It does NOT kill the PTY — the session stays attached and the
+// terminal reappears in Console (or on the next card ▸).
+document.querySelector<HTMLButtonElement>("#board-dock-close")!.addEventListener("click", () => {
+  undockTerminal();
+  dockDetached = true;
+  updateDockHeader();
+});
+// Dock "⤢" expand: toggle a taller dock; re-fit so the terminal grows with it.
+document.querySelector<HTMLButtonElement>("#board-dock-expand")!.addEventListener("click", () => {
+  boardDockEl.classList.toggle("expanded");
+  if (layout === "board") dockActiveTerminal();
+});
 
 // ------------------------------------------------------------ commander chip
 
@@ -2431,6 +2543,345 @@ commanderChip.addEventListener("click", () => {
   })();
 });
 
+// ------------------------------------------------------------------- board
+//
+// The Board layout renders the SAME snapshot `groups` as the sidebar — one
+// column per project, agent cards inside — reusing the Console helpers
+// (projClass / applyStatusGlyph / humanState / sessionMenuItems / openReview /
+// openTerminal). Selection is shared with the sidebar via `selectedId`.
+
+/** Card DOM refs by session id, so updateSelectionClasses can toggle the
+ *  selected border without a full rebuild. Rebuilt on every renderBoard. */
+const boardCardRefs = new Map<string, HTMLDivElement>();
+
+/** Per-session diffstat cache, lazily filled from get_session_detail. Mirrors
+ *  the powerline's per-active poll, but keyed by id so a card keeps its bar
+ *  across re-renders. `null` = fetched, no diff; absent = not yet fetched. */
+const boardDiffStats = new Map<string, string | null>();
+const boardDiffPending = new Set<string>();
+
+/** Map a liveness `.dot` state class to the semantic token class the accent
+ *  bar / state pill use. Keeps the board in lockstep with the dot colours
+ *  without re-deriving the status logic (we read applyStatusGlyph's output). */
+function boardStateClass(s: SessionRow): string {
+  const probe = document.createElement("span");
+  applyStatusGlyph(probe, s);
+  for (const cls of STATUS_GLYPH_CLASSES) {
+    if (probe.classList.contains(cls)) return `state-${cls.slice(4)}`; // dot-running → state-running
+  }
+  return "state-idle";
+}
+
+/** Does a session pass the active board filter pill? Search composes on top. */
+function boardMatchesFilter(s: SessionRow): boolean {
+  switch (boardFilter) {
+    case "review":
+      return s.has_pending_comments;
+    case "running":
+      return s.status === "running";
+    case "blocked":
+      return groupOf(s.id)?.pull_blocked != null;
+    default:
+      return true;
+  }
+}
+
+function boardMatchesSearch(s: SessionRow): boolean {
+  if (!boardSearch) return true;
+  return s.title.toLowerCase().includes(boardSearch.toLowerCase());
+}
+
+/** Sessions of a project visible under the current filter + search. */
+function boardVisibleSessions(g: ProjectGroup): SessionRow[] {
+  return g.sessions.filter((s) => boardMatchesFilter(s) && boardMatchesSearch(s));
+}
+
+/** Lazy-fetch a session's diffstat for its card bar; fill in place when it
+ *  lands. Skips while a fetch is in flight or already cached. */
+function ensureBoardDiffStat(id: string, bar: HTMLElement): void {
+  if (boardDiffStats.has(id)) {
+    fillDiffstatBar(bar, boardDiffStats.get(id) ?? null);
+    return;
+  }
+  if (boardDiffPending.has(id)) return;
+  boardDiffPending.add(id);
+  invoke<SessionDetail | null>("get_session_detail", { id })
+    .then((d) => {
+      boardDiffStats.set(id, d?.diff_stat ?? null);
+      if (bar.isConnected) fillDiffstatBar(bar, d?.diff_stat ?? null);
+    })
+    .catch(() => {
+      /* transient — leave uncached so a later render retries */
+    })
+    .finally(() => boardDiffPending.delete(id));
+}
+
+/** Render a diffstat into a card's bar: colorized +adds/−dels counts above a
+ *  proportional add/remove bar. Mirrors renderDetail's parsing. Omits both when
+ *  there is no diff (graceful — never fabricated). */
+function fillDiffstatBar(container: HTMLElement, diffStat: string | null): void {
+  container.innerHTML = "";
+  if (!diffStat) {
+    container.classList.add("hidden");
+    return;
+  }
+  let adds = 0;
+  let dels = 0;
+  const counts = document.createElement("div");
+  counts.className = "card-diffcounts";
+  for (const token of diffStat.split(/(\+\d+|-\d+)/)) {
+    if (/^\+\d+$/.test(token)) {
+      adds += Number(token.slice(1));
+      const span = document.createElement("span");
+      span.className = "added";
+      span.textContent = token;
+      counts.appendChild(span);
+    } else if (/^-\d+$/.test(token)) {
+      dels += Number(token.slice(1));
+      const span = document.createElement("span");
+      span.className = "removed";
+      span.textContent = token;
+      counts.appendChild(span);
+    }
+  }
+  const total = adds + dels;
+  if (total === 0) {
+    container.classList.add("hidden");
+    return;
+  }
+  container.classList.remove("hidden");
+  const bar = document.createElement("div");
+  bar.className = "diffstat-bar";
+  const a = document.createElement("span");
+  a.className = "added";
+  a.style.width = `${(adds / total) * 100}%`;
+  const r = document.createElement("span");
+  r.className = "removed";
+  r.style.width = `${(dels / total) * 100}%`;
+  bar.append(a, r);
+  container.append(counts, bar);
+}
+
+/** One agent card for a session. */
+function renderAgentCard(s: SessionRow): HTMLDivElement {
+  const card = document.createElement("div");
+  card.className = "agent-card";
+  card.classList.toggle("selected", selectedId === s.id);
+  boardCardRefs.set(s.id, card);
+
+  // 3px top accent bar in the liveness state colour.
+  const accent = document.createElement("div");
+  accent.className = `card-accent ${boardStateClass(s)}`;
+  card.appendChild(accent);
+
+  // Header: liveness dot + name + state pill + ⋯ menu.
+  const header = document.createElement("div");
+  header.className = "card-header";
+  const name = document.createElement("span");
+  name.className = "card-title";
+  name.textContent = s.title;
+  name.title = `Branch: ${s.branch}`;
+  const pill = document.createElement("span");
+  pill.className = `card-state-pill ${boardStateClass(s)}`;
+  pill.textContent = humanState(s);
+  const menu = document.createElement("button");
+  menu.className = "row-action card-menu";
+  menu.textContent = "⋯";
+  menu.title = "Session menu";
+  menu.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showContextMenu(e, sessionMenuItems(cardRefs(s)));
+  });
+  header.append(statusGlyph(s), name, pill, menu);
+  card.appendChild(header);
+
+  // 2-line mini preview: concise REAL status (state + branch), monospace on the
+  // crust background. Not fabricated terminal output.
+  const preview = document.createElement("div");
+  preview.className = "card-preview";
+  const line1 = document.createElement("div");
+  line1.className = "card-preview-line";
+  line1.textContent = humanState(s);
+  const line2 = document.createElement("div");
+  line2.className = "card-preview-line dim";
+  line2.textContent = s.branch;
+  preview.append(line1, line2);
+  card.appendChild(preview);
+
+  // Diffstat bar (lazy; hidden until a diff lands).
+  const diff = document.createElement("div");
+  diff.className = "card-diffstat hidden";
+  card.appendChild(diff);
+  ensureBoardDiffStat(s.id, diff);
+
+  // Footer: ✎/⚠ chips + quick actions ▸ attach (success) / ± review (info).
+  const footer = document.createElement("div");
+  footer.className = "card-footer";
+  const chips = document.createElement("span");
+  chips.className = "card-chips";
+  if (s.has_pending_comments) {
+    const c = document.createElement("span");
+    c.className = "comment-badge";
+    c.textContent = "✎";
+    c.title = "Has pending review comments";
+    chips.appendChild(c);
+  }
+  const blocked = groupOf(s.id)?.pull_blocked;
+  if (blocked) {
+    const b = document.createElement("span");
+    b.className = "blocked-badge";
+    b.textContent = "⚠";
+    b.title = `Auto-pull blocked: ${blocked}`;
+    chips.appendChild(b);
+  }
+  const actions = document.createElement("span");
+  actions.className = "card-actions";
+  const attach = document.createElement("button");
+  attach.className = "card-action attach";
+  attach.textContent = "▸";
+  attach.title = "Attach";
+  attach.addEventListener("click", (e) => {
+    e.stopPropagation();
+    selectRow(s.id);
+    dockDetached = false; // an explicit attach re-docks even after a "×" detach
+    void openTerminal(s);
+  });
+  const review = document.createElement("button");
+  review.className = "card-action review";
+  review.textContent = "±";
+  review.title = "Review diff";
+  review.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void openReview(s.id, s.title);
+  });
+  actions.append(attach, review);
+  footer.append(chips, actions);
+  card.appendChild(footer);
+
+  // Click selects; right-click opens the same menu as the ⋯ button.
+  card.addEventListener("click", () => selectRow(s.id));
+  card.addEventListener("contextmenu", (e) => showContextMenu(e, sessionMenuItems(cardRefs(s))));
+  return card;
+}
+
+/** Minimal RowRefs for sessionMenuItems from a card (it reads only .session;
+ *  rename routes through the sidebar, which is acceptable on the board). */
+function cardRefs(s: SessionRow): RowRefs {
+  return {
+    row: document.createElement("div"),
+    main: document.createElement("div"),
+    actions: document.createElement("div"),
+    status: s.status,
+    session: s,
+  };
+}
+
+/** One project column: header (color square + name + visible count + +/$) over
+ *  a body of stacked agent cards. Rendered for every project incl. sessionless. */
+function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
+  const col = document.createElement("div");
+  col.className = "board-col";
+
+  const header = document.createElement("div");
+  header.className = "board-col-header";
+  const square = document.createElement("span");
+  square.className = `proj-square ${projClass(g.id)}`;
+  const name = document.createElement("span");
+  name.className = "board-col-name";
+  name.textContent = g.name;
+  name.title = g.name;
+
+  const visible = boardVisibleSessions(g);
+  const count = document.createElement("span");
+  count.className = "board-col-count";
+  count.textContent = String(visible.length);
+
+  const add = document.createElement("button");
+  add.className = "proj-btn add";
+  add.textContent = "+";
+  add.title = "New session in this project";
+  add.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void createSessionInProject(g);
+  });
+  const shell = document.createElement("button");
+  shell.className = "proj-btn shell";
+  shell.textContent = "$";
+  shell.title = "Project shell";
+  shell.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void openProjectShell(g);
+  });
+  header.append(square, name, count, add, shell);
+  col.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "board-col-body";
+  for (const s of visible) body.appendChild(renderAgentCard(s));
+  col.appendChild(body);
+  return col;
+}
+
+/** Filter bar: pill filters + name search + primary "New session". */
+function renderBoardFilterBar(): void {
+  boardFilterEl.innerHTML = "";
+
+  const pills = document.createElement("div");
+  pills.className = "board-pills";
+  const defs: { key: typeof boardFilter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "review", label: "Needs review" },
+    { key: "running", label: "Running" },
+    { key: "blocked", label: "Blocked" },
+  ];
+  for (const { key, label } of defs) {
+    const pill = document.createElement("button");
+    pill.className = "board-pill";
+    pill.textContent = label;
+    pill.classList.toggle("active", boardFilter === key);
+    pill.addEventListener("click", () => {
+      boardFilter = key;
+      renderBoardFilterBar();
+      renderBoardColumns();
+    });
+    pills.appendChild(pill);
+  }
+
+  const search = noTextAssist(document.createElement("input"));
+  search.className = "board-search";
+  search.type = "search";
+  search.placeholder = "Search sessions…";
+  search.value = boardSearch;
+  search.addEventListener("input", () => {
+    boardSearch = search.value;
+    renderBoardColumns();
+  });
+
+  const create = document.createElement("button");
+  create.className = "board-new primary";
+  create.textContent = "＋ New session";
+  create.title = "New session";
+  create.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
+
+  boardFilterEl.append(pills, search, create);
+}
+
+/** Rebuild the columns from the current snapshot + filter + search. */
+function renderBoardColumns(): void {
+  boardCardRefs.clear();
+  boardColumnsEl.innerHTML = "";
+  for (const g of groups) boardColumnsEl.appendChild(renderBoardColumn(g));
+}
+
+/** Full board render. The filter bar is rebuilt only when needed (it owns the
+ *  live search input); columns rebuild on every snapshot tick. Preserving the
+ *  search field's focus/value: the input keeps its own value, and a snapshot
+ *  re-render only touches columns, never the filter bar. */
+function renderBoard(): void {
+  if (!boardFilterEl.childElementCount) renderBoardFilterBar();
+  renderBoardColumns();
+}
+
 function applySnapshot(snap: Snapshot): void {
   applyPendingOverlays(snap);
   groups = snap.groups;
@@ -2439,6 +2890,7 @@ function applySnapshot(snap: Snapshot): void {
   sectionNames = snap.section_names;
   updateTitleBarCounts();
   renderSidebar();
+  renderBoard();
   updateTabGlyphs();
   renderCommander(snap.commander);
 }
