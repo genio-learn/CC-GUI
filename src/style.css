@@ -50,6 +50,25 @@
   --attn-blocked: #eba0ac;
   --tag-cool: #94e2d5;
 
+  /* Project identity palette (hashed per project_id; see projVar/projClass).
+     Themeable in their own right — consumers reference var(--proj-N), never
+     a raw hex. Seeded from the design brief's example hues. */
+  --proj-0: #89b4fa; /* atlas / blue */
+  --proj-1: #f9e2af; /* web / yellow */
+  --proj-2: #a6e3a1; /* infra / green */
+  --proj-3: #f5c2e7; /* mobile / pink */
+  --proj-4: #cba6f7; /* mauve */
+  --proj-5: #94e2d5; /* teal */
+  --proj-6: #fab387; /* peach */
+  --proj-7: #eba0ac; /* maroon */
+
+  /* Alpha tints derived from base tokens (color-mix, so they reskin with the
+     theme — never raw rgba as a consumer). */
+  --row-selected-bg: color-mix(in srgb, var(--accent) 12%, transparent);
+  --row-hover-bg: color-mix(in srgb, var(--text) 5%, transparent);
+  --chip-faint-bg: color-mix(in srgb, var(--text) 5%, transparent);
+  --stack-tint: color-mix(in srgb, var(--info) 8%, transparent);
+
   /* Derived roles */
   --file-renamed: var(--accent);
 
@@ -205,7 +224,8 @@ body {
 #sidebar {
   width: 300px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--bg-inset);
   display: flex;
   flex-direction: column;
 }
@@ -214,13 +234,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  height: 40px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
 }
 
 #sidebar h1 {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 
@@ -264,13 +287,147 @@ body {
   font-size: 9px;
 }
 
-.view-bar {
+/* ── Projects rail: a persistent project axis above the session list ─────── */
+.projects-rail {
+  background: var(--bg-inset);
+  border-radius: 6px;
+  padding: 6px 4px;
+  margin-bottom: 6px;
+}
+
+.rail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px 2px;
+  padding: 2px 6px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.rail-label {
+  color: var(--text-dim);
+}
+
+.proj-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.proj-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.proj-row.active {
+  background: var(--row-selected-bg);
+}
+
+.proj-row.empty {
+  opacity: 0.5;
+}
+
+.proj-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proj-count {
+  margin-left: auto;
   font-size: 11px;
   color: var(--text-dim);
+}
+
+.proj-btn {
+  width: 21px;
+  height: 21px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.proj-btn.add:hover {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.proj-btn.shell:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── GROUP BY segmented control ──────────────────────────────────────────── */
+.group-by-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px;
+  font-size: 11px;
+}
+
+.group-by-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segment {
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.segment:hover {
+  background: var(--row-hover-bg);
+}
+
+.segment.active {
+  background: var(--row-selected-bg);
+  color: var(--accent);
+}
+
+/* ── Active project-filter banner ────────────────────────────────────────── */
+.filter-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  border-radius: 5px;
+  background: var(--row-selected-bg);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.filter-text {
+  flex: 1;
 }
 
 .session-row.stacked {
@@ -287,7 +444,7 @@ body {
 }
 
 .session-row:hover {
-  background: var(--border);
+  background: var(--row-hover-bg);
 }
 
 .session-row.dragging {
@@ -306,26 +463,138 @@ body {
 }
 
 .session-row.selected {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+  background: var(--row-selected-bg);
+  border-left: 2px solid var(--accent);
+  padding-left: 6px; /* 8px − 2px border so content doesn't shift */
 }
 
 .session-row.attached .title {
   font-weight: 600;
 }
 
+/* ── Cascade stack: bordered group (faint mauve tint) ────────────────────── */
+.stack {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--stack-tint);
+  margin: 2px 0;
+  padding: 2px;
+}
+
+.stack-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+}
+
+.stack-glyph {
+  color: var(--info);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.stack-name {
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stack-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.stack-actions .stack-merge:hover {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.stack-actions .stack-push:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Children inside a stack carry a project-color left border (no plain indent). */
+.stack .session-row.stacked {
+  margin-left: 4px;
+  border-left: 2px solid var(--proj-color);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* ── Empty-project state (filtered to a project with no sessions) ─────────── */
+.empty-project {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 12px;
+  color: var(--text-muted);
+}
+
+.empty-tile {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  font-size: 20px;
+  color: var(--text-dim);
+}
+
+.empty-msg {
+  font-size: 12px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .row-main {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Top line of a row: dot · name · tag · PR badge · right-side chips. */
+.row-line {
+  display: flex;
+  align-items: center;
   gap: 7px;
   min-width: 0;
 }
 
 .row-main .title {
+  font-family: Menlo, Monaco, monospace;
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Sub-line: humanized state (+ branch when it diverges from the title). */
+.row-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-sub .row-state {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 
 .row-main .meta {
@@ -336,35 +605,104 @@ body {
   text-overflow: ellipsis;
 }
 
-.glyph {
-  font-size: 11px;
-  width: 12px;
+/* Right-side chips (✎ / ⚠) pushed to the row's trailing edge. */
+.row-chips {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.agent-working {
-  color: var(--success);
+/* ── Liveness dot (shared by sidebar rows and terminal tabs) ─────────────── */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-dim);
 }
 
-.agent-waiting {
-  color: var(--attention);
-  font-weight: 700;
+.glyph.dot {
+  font-size: 0; /* override legacy .glyph text sizing; this is a pure dot now */
 }
 
-.agent-idle {
-  color: var(--cyan);
+.dot-running {
+  background: var(--success);
+  animation: dot-pulse 1.8s ease-in-out infinite;
 }
 
-.agent-unknown {
-  color: var(--text-muted);
+.dot-finished {
+  background: var(--warning);
 }
 
-.status-stopped {
-  color: var(--text-dim);
+.dot-idle {
+  background: var(--cyan);
 }
 
-.status-transient {
-  color: var(--warning);
+.dot-stopped {
+  background: var(--text-dim);
+}
+
+.dot-transient {
+  background: var(--warning);
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 0%, transparent);
+  }
+}
+
+/* ── Project identity colour (hashed per project_id → --proj-0..7) ───────── */
+.proj-0 {
+  --proj-color: var(--proj-0);
+}
+.proj-1 {
+  --proj-color: var(--proj-1);
+}
+.proj-2 {
+  --proj-color: var(--proj-2);
+}
+.proj-3 {
+  --proj-color: var(--proj-3);
+}
+.proj-4 {
+  --proj-color: var(--proj-4);
+}
+.proj-5 {
+  --proj-color: var(--proj-5);
+}
+.proj-6 {
+  --proj-color: var(--proj-6);
+}
+.proj-7 {
+  --proj-color: var(--proj-7);
+}
+
+.proj-square {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--proj-color);
+}
+
+.proj-tag {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: var(--proj-color);
+  background: var(--chip-faint-bg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
 }
 
 .row-actions {
@@ -483,14 +821,16 @@ body {
 }
 
 .comment-badge {
-  font-size: 10px;
+  color: var(--info);
+  font-size: 11px;
   flex-shrink: 0;
 }
 
-.unread-dot {
-  color: var(--warning);
-  font-size: 9px;
+.blocked-badge {
+  color: var(--attn-blocked);
+  font-size: 11px;
   flex-shrink: 0;
+  cursor: help;
 }
 
 .pull-blocked {
@@ -498,6 +838,40 @@ body {
   font-size: 10px;
   margin-left: 6px;
   cursor: help;
+}
+
+/* ── Sidebar footer: status legend + commander chip ──────────────────────── */
+#sidebar-footer {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-glyph.legend-info {
+  color: var(--info);
+}
+
+.legend-glyph.legend-blocked {
+  color: var(--attn-blocked);
+}
+
+/* Static legend dots never pulse — freeze the running swatch. */
+#status-legend .dot {
+  animation: none;
 }
 
 #commander-chip {
@@ -519,13 +893,22 @@ body {
   display: none;
 }
 
-.chip-dot {
-  font-size: 9px;
-  color: var(--text-dim);
+.commander-square {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--info);
 }
 
-.chip-dot.running {
-  color: var(--success);
+.commander-label {
+  font-family: Menlo, Monaco, monospace;
+}
+
+.commander-attach {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 /* ---------------------------------------------------------- palette + help */
