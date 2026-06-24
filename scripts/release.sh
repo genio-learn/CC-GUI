@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Cut a release: bump the version across all manifests, commit, tag, push.
-# The tag push triggers .github/workflows/release.yml, which builds and
+# Cut a release: bump the version across all manifests, then land the bump on
+# main via a PR (main is protected against direct pushes) and tag the merged
+# tip. The tag push triggers .github/workflows/release.yml, which builds and
 # attaches the bundles. Assumes feature commits are already on main.
+#
+# Requires the gh CLI (authenticated) to open and merge the release PR.
 #
 # Usage: scripts/release.sh <patch|minor|major|X.Y.Z>
 
@@ -25,6 +28,7 @@ replace_in() {
 branch=$(git symbolic-ref --short HEAD)
 [[ "$branch" == "main" ]]                    || { echo "error: not on main (on $branch)" >&2; exit 1; }
 [[ -z "$(git status --porcelain)" ]]         || { echo "error: working tree not clean" >&2; exit 1; }
+command -v gh >/dev/null                      || { echo "error: gh CLI not found (needed to open/merge the release PR)" >&2; exit 1; }
 git fetch -q origin main
 [[ -z "$(git rev-list HEAD..origin/main)" ]] || { echo "error: behind origin/main — pull first" >&2; exit 1; }
 
@@ -56,9 +60,33 @@ npm install --package-lock-only --silent
 
 npm run typecheck   # cheap sanity gate before we tag
 
+# main is protected against direct pushes (changes must land via a PR), so put
+# the bump on a release branch, open a PR, and merge it — then fast-forward
+# local main to the merged tip and tag *that* (its tree equals the bump commit).
+relbranch="release-v$new"
+git switch -c "$relbranch"
 git commit -aqm "Release v$new"
+git push -q -u origin "$relbranch"
+
+gh pr create --base main --head "$relbranch" \
+  --title "Release v$new" \
+  --body "Version bump to v$new across all manifests. Tag v$new is pushed on the merged tip to trigger the release build."
+
+# Mergeability can lag a moment after the PR is created; retry briefly.
+merged=
+for i in 1 2 3 4 5; do
+  if gh pr merge "$relbranch" --merge --delete-branch; then merged=1; break; fi
+  echo "PR not mergeable yet (attempt $i/5); retrying in 5s…" >&2
+  sleep 5
+done
+[[ -n "$merged" ]] || { echo "error: could not merge $relbranch — merge it manually, then: git switch main && git pull && git tag v$new && git push origin v$new" >&2; exit 1; }
+
+# Fast-forward local main to the merged tip and tag it.
+git switch main
+git fetch -q origin main
+git merge -q --ff-only origin/main
+git branch -qD "$relbranch" 2>/dev/null || true
 git tag "v$new"
-git push origin main
 git push origin "v$new"
 
 echo "Pushed v$new → https://github.com/genio-learn/CC-GUI/actions/workflows/release.yml"
