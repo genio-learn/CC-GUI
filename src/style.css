@@ -627,26 +627,34 @@ body {
 .project-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 10px 8px 4px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent);
+  color: var(--text-dim);
 }
 
 .project-header.collapsible {
   cursor: pointer;
 }
 
-/* Projects grouping: indent the session rows/stacks under their project header
-   so the grouping reads from layout, easing the colour load of the project
-   squares + status dots. Direct children only, so stack children keep their
-   own single indent. */
-#sessions.group-by-project > .session-row,
-#sessions.group-by-project > .stack {
-  margin-left: 12px;
+/* A thin subtle hairline that fills the rest of a group-header row after the
+   name + count, trailing off toward the edge (mirrors the design mockups). */
+.header-rule {
+  flex: 1;
+  min-width: 12px;
+  height: 0;
+  align-self: center;
+  border-top: 1px solid var(--border);
+}
+
+/* Session count next to a group-header name: recedes behind the label. */
+.project-header .meta,
+.project-subheader .meta {
+  font-weight: 400;
+  color: var(--text-dim);
 }
 
 /* Project sub-header inside a section bucket: indented under the section,

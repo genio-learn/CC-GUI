@@ -1139,6 +1139,14 @@ function makeCollapsible(header: HTMLDivElement, name: HTMLSpanElement, key: str
   return isCollapsed;
 }
 
+/** A thin subtle hairline that grows to fill the rest of a group header row
+ *  (after the name + count), trailing off toward the edge. */
+function headerRule(): HTMLSpanElement {
+  const rule = document.createElement("span");
+  rule.className = "header-rule";
+  return rule;
+}
+
 function findSession(id: string): SessionRow | undefined {
   for (const g of groups) {
     const s = g.sessions.find((s) => s.id === id);
@@ -2159,7 +2167,7 @@ function renderSections(buckets: SectionBucket[]): void {
     const count = document.createElement("span");
     count.className = "meta";
     count.textContent = String(ids.length);
-    header.append(name, count);
+    header.append(name, count, headerRule());
     const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
     makeSectionDropTarget(header, bucket, bucketIndex);
     sessionsEl.appendChild(header);
@@ -2281,9 +2289,6 @@ function renderSidebar(): void {
   // dragend may never fire — drop the stale id rather than leave it dangling.
   draggingSessionId = null;
   sessionsEl.innerHTML = "";
-  // In Projects grouping, indent the session rows under their project header so
-  // the hierarchy reads from layout rather than relying on the colour cues alone.
-  sessionsEl.classList.toggle("group-by-project", !sections);
   if (topInput) {
     sessionsEl.appendChild(renderTopInput(topInput));
   }
@@ -2347,14 +2352,11 @@ function renderSidebar(): void {
       renderSidebar();
     });
     buttons.append(shell, add);
-    header.append(square, name, buttons);
+    const count = document.createElement("span");
+    count.className = "meta";
+    count.textContent = String(group.sessions.length);
+    header.append(square, name, count, headerRule(), buttons);
     const isCollapsed = makeCollapsible(header, name, `proj:${group.id}`);
-    if (isCollapsed) {
-      const count = document.createElement("span");
-      count.className = "meta";
-      count.textContent = String(group.sessions.length);
-      buttons.prepend(count);
-    }
     header.addEventListener("contextmenu", (e) => showContextMenu(e, projectMenuItems(group)));
     sessionsEl.appendChild(header);
     if (isCollapsed) continue;
