@@ -75,6 +75,9 @@
   /* Overlays — scrim tokenized off the inset bg so it reskins with the theme. */
   --scrim: color-mix(in srgb, var(--bg-inset) 64%, transparent);
   --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-terminal: 0 8px 30px rgba(0, 0, 0, 0.25);
+  --shadow-popover: 0 20px 50px rgba(0, 0, 0, 0.5);
+  --shadow-dialog: 0 28px 70px rgba(0, 0, 0, 0.6);
 }
 
 * {
@@ -227,6 +230,9 @@ body {
 .state-stopped {
   --state-color: var(--text-dim);
 }
+.state-waiting {
+  --state-color: var(--warning);
+}
 .state-transient {
   --state-color: var(--warning);
 }
@@ -265,6 +271,14 @@ body {
 .board-pill.active {
   background: var(--border);
   color: var(--text);
+}
+
+/* Separate the hide-empty toggle from the filter/section pills. */
+.board-pill.hide-empty {
+  margin-left: 6px;
+  border-left: 1px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  padding-left: 12px;
 }
 
 .board-search {
@@ -372,6 +386,7 @@ body {
 .agent-card {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 11px;
@@ -616,17 +631,34 @@ body {
 .project-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 10px 8px 4px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent);
+  color: var(--text-dim);
 }
 
 .project-header.collapsible {
   cursor: pointer;
+}
+
+/* A thin subtle hairline that fills the rest of a group-header row after the
+   name + count, trailing off toward the edge (mirrors the design mockups). */
+.header-rule {
+  flex: 1;
+  min-width: 12px;
+  height: 0;
+  align-self: center;
+  border-top: 1px solid var(--border);
+}
+
+/* Session count next to a group-header name: recedes behind the label. */
+.project-header .meta,
+.project-subheader .meta {
+  font-weight: 400;
+  color: var(--text-dim);
 }
 
 /* Project sub-header inside a section bucket: indented under the section,
@@ -943,18 +975,12 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Sub-line: humanized state (+ branch when it diverges from the title). */
+/* Sub-line: the diverging branch only (the liveness dot conveys state). */
 .row-sub {
   display: flex;
   align-items: baseline;
   gap: 6px;
   min-width: 0;
-}
-
-.row-sub .row-state {
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
 }
 
 .row-main .meta {
@@ -1008,6 +1034,20 @@ body {
   background: var(--warning);
 }
 
+/* Waiting-for-input: a yellow "?" glyph rather than a circle, so it reads
+   distinctly from an in-progress (green) or finished (yellow dot) session.
+   Overrides the .dot circle box + the .glyph.dot font-size:0. */
+.dot.dot-waiting {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 @keyframes dot-pulse {
   0%,
   100% {
@@ -1015,6 +1055,17 @@ body {
   }
   50% {
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 0%, transparent);
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -1229,6 +1280,10 @@ body {
   color: var(--attn-blocked);
 }
 
+.legend-glyph.legend-waiting {
+  color: var(--warning);
+}
+
 /* Static legend dots never pulse — freeze the running swatch. */
 #status-legend .dot {
   animation: none;
@@ -1297,6 +1352,8 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1421,6 +1478,8 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 18px 22px;
 }
 
@@ -1473,6 +1532,7 @@ body {
   inset: 0;
   z-index: 50;
   background: var(--scrim);
+  backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
 }
@@ -1490,6 +1550,8 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 18px 22px;
 }
 
@@ -1556,6 +1618,16 @@ body {
   left: -3px;
 }
 
+.panel-resizer.top {
+  top: -3px;
+  left: 0;
+  right: 0;
+  bottom: auto;
+  width: auto;
+  height: 5px;
+  cursor: row-resize;
+}
+
 .panel-resizer:hover {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
@@ -1563,6 +1635,10 @@ body {
 body.resizing {
   cursor: col-resize;
   user-select: none;
+}
+
+body.resizing.vertical {
+  cursor: row-resize;
 }
 
 body.resizing .panel-resizer {
@@ -1609,6 +1685,7 @@ body.resizing .panel-resizer {
   inset: 0;
   z-index: 150;
   background: var(--scrim);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1619,6 +1696,8 @@ body.resizing .panel-resizer {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 16px 18px;
 }
 
@@ -1685,6 +1764,8 @@ body.resizing .panel-resizer {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  box-shadow: var(--shadow-dialog);
+  animation: overlay-in 0.13s ease;
   padding: 6px;
   outline: none;
 }
@@ -1692,7 +1773,7 @@ body.resizing .panel-resizer {
 /* Anchored under the title-bar ◐ button (positioned in themeModal.ts). */
 .theme-popover {
   position: fixed;
-  box-shadow: 0 20px 50px var(--shadow);
+  box-shadow: var(--shadow-popover);
 }
 
 .theme-modal-list {
@@ -1822,7 +1903,7 @@ body.resizing .panel-resizer {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 8px 24px var(--shadow);
+  box-shadow: var(--shadow-popover);
   font-size: 12px;
 }
 
@@ -1964,6 +2045,7 @@ body.resizing .panel-resizer {
   background: var(--bg-inset);
   border: 1px solid var(--border);
   border-radius: 10px;
+  box-shadow: var(--shadow-terminal);
   overflow: hidden;
 }
 
@@ -2770,4 +2852,22 @@ body.resizing .panel-resizer {
 
 ::selection {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-running {
+    animation: none;
+  }
+  .palette-box,
+  .help-box,
+  .settings-box,
+  .confirm-box,
+  .theme-modal {
+    animation: none;
+  }
+  .theme-follow-toggle,
+  .theme-follow-toggle::after,
+  .toast {
+    transition: none;
+  }
 }

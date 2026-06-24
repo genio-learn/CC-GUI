@@ -416,6 +416,7 @@ async function attachTerminal(
   const term = new Terminal({
     fontFamily: '"MesloLGS NF Embedded", "MesloLGS NF", Menlo, Monaco, monospace',
     fontSize: 13,
+    cursorBlink: true,
     theme: currentTheme().terminal,
   });
   const fit = new FitAddon();
@@ -1101,6 +1102,11 @@ let projectFilter: string | null = null;
 // projectFilter's "local UI state, re-render on change" shape.
 let boardFilter: "all" | "review" | "running" | "blocked" = "all";
 let boardSearch = "";
+// Custom-section filter (composes with the four base pills + search). null = no
+// section narrowing. Cleared if the section disappears from the snapshot.
+let boardSectionFilter: string | null = null;
+// Hide project columns with zero sessions (persisted).
+let hideEmptyColumns = localStorage.getItem("cc-board-hide-empty") === "1";
 
 const SECTION_VIEW = (): boolean => sections !== null;
 
@@ -1131,6 +1137,14 @@ function makeCollapsible(header: HTMLDivElement, name: HTMLSpanElement, key: str
   header.classList.add("collapsible");
   header.addEventListener("click", () => toggleCollapsed(key));
   return isCollapsed;
+}
+
+/** A thin subtle hairline that grows to fill the rest of a group header row
+ *  (after the name + count), trailing off toward the edge. */
+function headerRule(): HTMLSpanElement {
+  const rule = document.createElement("span");
+  rule.className = "header-rule";
+  return rule;
 }
 
 function findSession(id: string): SessionRow | undefined {
@@ -1210,6 +1224,7 @@ const STATUS_GLYPH_CLASSES = [
   "dot-idle",
   "dot-stopped",
   "dot-transient",
+  "dot-waiting",
 ];
 
 /** Set `el`'s liveness dot (colour/pulse/tooltip) from a session's status.
@@ -1231,7 +1246,9 @@ function applyStatusGlyph(el: HTMLSpanElement, s: SessionRow): void {
       cls = "dot-running";
       title = "running";
     } else if (s.agent_state === "waitingforinput") {
-      cls = "dot-finished";
+      // Distinct from the in-progress dot: a yellow "?" glyph, not a circle.
+      cls = "dot-waiting";
+      el.textContent = "?";
       title = "waiting for input";
     } else if (s.agent_state === "idle") {
       cls = "dot-idle";
@@ -1486,11 +1503,9 @@ function branchMatchesTitle(title: string, branch: string): boolean {
   return slug(title) === slug(branch);
 }
 
-/** Humanized liveness for the row sub-line. Mirrors renderDetail's
- *  `running · <agent_state>` shape. NOTE: the brief's sub-line also wants a
- *  diffstat ("+adds −dels · state"), but diff_stat lives only on SessionDetail
- *  (fetched per-session), not on SessionRow — so the list row shows state only.
- *  See ui-overhaul.md watch-items. */
+/** Humanized liveness label. Mirrors renderDetail's `running · <agent_state>`
+ *  shape. Used by the board card pill/preview, the powerline, and the palette
+ *  (NOT the sidebar row sub-line — there the liveness dot conveys state). */
 function humanState(s: SessionRow): string {
   if (s.status === "running") return `running · ${s.agent_state}`;
   return s.status.replace(/_/g, " ");
@@ -1541,23 +1556,25 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   }
   if (chips.childElementCount) line.appendChild(chips);
 
-  // Sub-line: humanized state. (Branch shown here only when it diverges from
-  // the title — otherwise it just repeats the name; always in the hover title.)
-  const sub = document.createElement("div");
-  sub.className = "row-sub";
+  // Sub-line: the 8px liveness dot already conveys state, so no textual state
+  // label here. SessionRow carries no diff_stat (only SessionDetail does, and
+  // we avoid per-row fetches), so there is no "+adds −dels" source for the row;
+  // the sub-line shows only the branch when it diverges from the title
+  // (otherwise it just repeats the name — always in the hover title), and is
+  // omitted entirely when there is nothing to show.
   const showBranch = !branchMatchesTitle(s.title, s.branch);
   if (showBranch) {
+    const sub = document.createElement("div");
+    sub.className = "row-sub";
     const branch = document.createElement("span");
     branch.className = "meta";
     branch.textContent = s.branch;
     sub.append(branch);
+    main.append(line, sub);
+    return;
   }
-  const state = document.createElement("span");
-  state.className = "row-state";
-  state.textContent = humanState(s);
-  sub.append(state);
 
-  main.append(line, sub);
+  main.append(line);
 }
 
 function sessionMenuItems(refs: RowRefs): MenuItem[] {
@@ -2153,7 +2170,7 @@ function renderSections(buckets: SectionBucket[]): void {
     const count = document.createElement("span");
     count.className = "meta";
     count.textContent = String(ids.length);
-    header.append(name, count);
+    header.append(name, count, headerRule());
     const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
     makeSectionDropTarget(header, bucket, bucketIndex);
     sessionsEl.appendChild(header);
@@ -2306,6 +2323,8 @@ function renderSidebar(): void {
     if (projectFilter && group.id !== projectFilter) continue;
     const header = document.createElement("div");
     header.className = "project-header";
+    const square = document.createElement("span");
+    square.className = `proj-square ${projClass(group.id)}`;
     const name = document.createElement("span");
     name.textContent = group.name;
     if (group.pull_blocked) {
@@ -2336,14 +2355,11 @@ function renderSidebar(): void {
       renderSidebar();
     });
     buttons.append(shell, add);
-    header.append(name, buttons);
+    const count = document.createElement("span");
+    count.className = "meta";
+    count.textContent = String(group.sessions.length);
+    header.append(square, name, count, headerRule(), buttons);
     const isCollapsed = makeCollapsible(header, name, `proj:${group.id}`);
-    if (isCollapsed) {
-      const count = document.createElement("span");
-      count.className = "meta";
-      count.textContent = String(group.sessions.length);
-      buttons.prepend(count);
-    }
     header.addEventListener("contextmenu", (e) => showContextMenu(e, projectMenuItems(group)));
     sessionsEl.appendChild(header);
     if (isCollapsed) continue;
@@ -2467,10 +2483,26 @@ document.querySelector<HTMLButtonElement>("#board-dock-close")!.addEventListener
   dockDetached = true;
   updateDockHeader();
 });
-// Dock "⤢" expand: toggle a taller dock; re-fit so the terminal grows with it.
+// Dock "⤢" expand: toggle a taller dock preset. Clear any drag-set inline
+// height so the `.expanded` CSS height wins; on collapse, restore the CSS
+// default by clearing the inline height too (the next drag re-establishes one).
 document.querySelector<HTMLButtonElement>("#board-dock-expand")!.addEventListener("click", () => {
+  boardDockEl.style.height = "";
   boardDockEl.classList.toggle("expanded");
   if (layout === "board") dockActiveTerminal();
+});
+
+// Dock vertical resize: drag the separator between the columns and the dock to
+// set the dock height. Re-fits the docked xterm on each frame.
+makeResizable({
+  key: "cc-dock-height",
+  target: boardDockEl,
+  edge: "top",
+  min: 120,
+  max: 600,
+  onResize: () => {
+    if (layout === "board") dockActiveTerminal();
+  },
 });
 
 // ------------------------------------------------------------ commander chip
@@ -2505,6 +2537,7 @@ function renderStatusLegend(): void {
   const legend = document.querySelector<HTMLElement>("#status-legend")!;
   legend.append(
     legendItem(legendDot("dot-running"), "running"),
+    legendItem(legendGlyph("?", "legend-waiting"), "waiting"),
     legendItem(legendDot("dot-finished"), "finished"),
     legendItem(legendDot("dot-idle"), "idle"),
     legendItem(legendGlyph("✎", "legend-info"), "comments"),
@@ -2572,8 +2605,10 @@ function boardStateClass(s: SessionRow): string {
   return "state-idle";
 }
 
-/** Does a session pass the active board filter pill? Search composes on top. */
+/** Does a session pass the active board filter pill? The base pill and the
+ *  optional custom-section pill both must pass; search composes on top. */
 function boardMatchesFilter(s: SessionRow): boolean {
+  if (boardSectionFilter && s.current_section !== boardSectionFilter) return false;
   switch (boardFilter) {
     case "review":
       return s.has_pending_comments;
@@ -2736,15 +2771,20 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   }
   const actions = document.createElement("span");
   actions.className = "card-actions";
+  // Attach path shared by the ▸ button and a card-body click: select, clear any
+  // prior "×" detach, and open the terminal (which docks in board mode).
+  const attachCard = (): void => {
+    selectRow(s.id);
+    dockDetached = false; // an explicit attach re-docks even after a "×" detach
+    void openTerminal(s);
+  };
   const attach = document.createElement("button");
   attach.className = "card-action attach";
   attach.textContent = "▸";
   attach.title = "Attach";
   attach.addEventListener("click", (e) => {
     e.stopPropagation();
-    selectRow(s.id);
-    dockDetached = false; // an explicit attach re-docks even after a "×" detach
-    void openTerminal(s);
+    attachCard();
   });
   const review = document.createElement("button");
   review.className = "card-action review";
@@ -2758,8 +2798,9 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   footer.append(chips, actions);
   card.appendChild(footer);
 
-  // Click selects; right-click opens the same menu as the ⋯ button.
-  card.addEventListener("click", () => selectRow(s.id));
+  // Click attaches (same as ▸); right-click opens the same menu as the ⋯ button.
+  // The ▸/±/⋯ buttons stopPropagation, so they never double-trigger this.
+  card.addEventListener("click", attachCard);
   card.addEventListener("contextmenu", (e) => showContextMenu(e, sessionMenuItems(cardRefs(s))));
   return card;
 }
@@ -2817,6 +2858,7 @@ function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
 
   const body = document.createElement("div");
   body.className = "board-col-body";
+  body.dataset.project = g.id;
   for (const s of visible) body.appendChild(renderAgentCard(s));
   col.appendChild(body);
   return col;
@@ -2847,6 +2889,35 @@ function renderBoardFilterBar(): void {
     pills.appendChild(pill);
   }
 
+  // One pill per configured custom section. Selecting toggles a section filter
+  // that narrows cards to that section (composes with the base pills + search).
+  for (const sectionName of sectionNames) {
+    const pill = document.createElement("button");
+    pill.className = "board-pill section";
+    pill.textContent = sectionName;
+    pill.classList.toggle("active", boardSectionFilter === sectionName);
+    pill.addEventListener("click", () => {
+      boardSectionFilter = boardSectionFilter === sectionName ? null : sectionName;
+      renderBoardFilterBar();
+      renderBoardColumns();
+    });
+    pills.appendChild(pill);
+  }
+
+  // Toggle: hide project columns with zero sessions.
+  const hideEmpty = document.createElement("button");
+  hideEmpty.className = "board-pill hide-empty";
+  hideEmpty.textContent = "Hide empty";
+  hideEmpty.title = "Hide project columns with no sessions";
+  hideEmpty.classList.toggle("active", hideEmptyColumns);
+  hideEmpty.addEventListener("click", () => {
+    hideEmptyColumns = !hideEmptyColumns;
+    localStorage.setItem("cc-board-hide-empty", hideEmptyColumns ? "1" : "0");
+    renderBoardFilterBar();
+    renderBoardColumns();
+  });
+  pills.appendChild(hideEmpty);
+
   const search = noTextAssist(document.createElement("input"));
   search.className = "board-search";
   search.type = "search";
@@ -2868,9 +2939,29 @@ function renderBoardFilterBar(): void {
 
 /** Rebuild the columns from the current snapshot + filter + search. */
 function renderBoardColumns(): void {
+  // Columns are rebuilt wholesale on every snapshot tick (~2s); capture the
+  // per-column vertical scroll (keyed by project) + the strip's horizontal
+  // scroll so an in-progress session doesn't yank the view back to the top.
+  const prevScroll = new Map<string, number>();
+  for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
+    if (body.dataset.project) prevScroll.set(body.dataset.project, body.scrollTop);
+  }
+  const prevScrollLeft = boardColumnsEl.scrollLeft;
+
   boardCardRefs.clear();
   boardColumnsEl.innerHTML = "";
-  for (const g of groups) boardColumnsEl.appendChild(renderBoardColumn(g));
+  for (const g of groups) {
+    // "Hide empty" hides columns with no VISIBLE cards, so a project whose
+    // sessions are all filtered out (e.g. by the section filter) drops too.
+    if (hideEmptyColumns && boardVisibleSessions(g).length === 0) continue;
+    boardColumnsEl.appendChild(renderBoardColumn(g));
+  }
+
+  for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
+    const top = body.dataset.project ? prevScroll.get(body.dataset.project) : undefined;
+    if (top) body.scrollTop = top;
+  }
+  boardColumnsEl.scrollLeft = prevScrollLeft;
 }
 
 /** Full board render. The filter bar is rebuilt only when needed (it owns the
@@ -2887,7 +2978,16 @@ function applySnapshot(snap: Snapshot): void {
   groups = snap.groups;
   viewMode = snap.view_mode;
   sections = snap.sections;
+  const prevSectionNames = sectionNames;
   sectionNames = snap.section_names;
+  // A section filter referencing a now-removed section can no longer match.
+  if (boardSectionFilter && !sectionNames.includes(boardSectionFilter)) {
+    boardSectionFilter = null;
+  }
+  // Rebuild the (otherwise sticky) filter bar when the section pills change.
+  if (prevSectionNames.join(" ") !== sectionNames.join(" ")) {
+    boardFilterEl.innerHTML = "";
+  }
   updateTitleBarCounts();
   renderSidebar();
   renderBoard();

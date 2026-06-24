@@ -8,6 +8,7 @@ import { makeSession, makeSnapshot } from "../../network/seed.testHelper";
 test.use({
   seed: {
     snapshot: makeSnapshot({
+      section_names: ["Review", "Build"],
       groups: [
         {
           id: "proj-atlas",
@@ -23,6 +24,7 @@ test.use({
               tmux_session_name: "cc-s-login",
               project_id: "proj-atlas",
               project_name: "atlas",
+              current_section: "Review",
             }),
             makeSession({
               id: "s-docs",
@@ -34,6 +36,7 @@ test.use({
               tmux_session_name: "cc-s-docs",
               project_id: "proj-atlas",
               project_name: "atlas",
+              current_section: "Review",
             }),
           ],
         },
@@ -51,6 +54,7 @@ test.use({
               tmux_session_name: "cc-s-cache",
               project_id: "proj-beacon",
               project_name: "beacon",
+              current_section: "Build",
             }),
           ],
         },
@@ -124,4 +128,63 @@ test("attaching from a card docks that session's terminal", async ({ board }) =>
   // Streamed PTY bytes render in the docked terminal (one PTY, re-parented).
   await board.pushText("cc-s-login", "docked-output");
   await board.expectDockScreenContains("docked-output");
+});
+
+test("clicking a card body also docks that session's terminal", async ({ board }) => {
+  await board.enter();
+  expect(await board.dockPlaceholderVisible()).toBe(true);
+
+  // A body click (on the title, not a quick-action button) attaches like ▸.
+  await board.clickCard("fix login bug");
+
+  expect(await board.dockName_()).toBe("fix login bug");
+  expect(await board.dockPlaceholderVisible()).toBe(false);
+
+  await board.pushText("cc-s-login", "body-click-output");
+  await board.expectDockScreenContains("body-click-output");
+});
+
+test("the Hide empty toggle omits sessionless project columns", async ({ board }) => {
+  await board.enter();
+  await expect(board.columnNames()).toHaveText(["atlas", "beacon", "ember"]);
+
+  // "ember" has no sessions, so hiding empty columns drops it.
+  await board.toggleHideEmpty();
+  await expect(board.columnNames()).toHaveText(["atlas", "beacon"]);
+
+  // Toggling back restores it.
+  await board.toggleHideEmpty();
+  await expect(board.columnNames()).toHaveText(["atlas", "beacon", "ember"]);
+});
+
+test("Hide empty drops columns left empty by the section filter", async ({ board }) => {
+  await board.enter();
+  await board.toggleHideEmpty();
+  // Sessionless "ember" is already gone; atlas + beacon remain.
+  await expect(board.columnNames()).toHaveText(["atlas", "beacon"]);
+
+  // Only atlas has "Review" sessions; beacon's lone session is in "Build", so
+  // once filtered it has no visible cards and must also drop.
+  await board.toggleSectionFilter("Review");
+  await expect(board.columnNames()).toHaveText(["atlas"]);
+});
+
+test("a custom-section pill narrows cards to that section and composes with search", async ({
+  board,
+}) => {
+  await board.enter();
+
+  // The "Review" section holds the two atlas sessions.
+  await board.toggleSectionFilter("Review");
+  await expect(board.cardTitles()).toHaveText(["fix login bug", "update docs"]);
+
+  // Composes with search: narrow within the section.
+  await board.search("login");
+  await expect(board.cardTitles()).toHaveText(["fix login bug"]);
+
+  // Clearing search, switching to "Build" shows only the beacon session.
+  await board.search("");
+  await board.toggleSectionFilter("Review"); // toggle Review off
+  await board.toggleSectionFilter("Build");
+  await expect(board.cardTitles()).toHaveText(["tune cache"]);
 });
