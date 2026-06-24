@@ -74,6 +74,68 @@ export function confirmDialog(message: string, confirmLabel = "Confirm"): Promis
 }
 
 /**
+ * Dedicated delete-session confirmation. Red ⌦ icon, mono red session name, and
+ * the branch-deletion warning body. Resolves true on Delete/Enter, false on
+ * Cancel/Esc/backdrop click. Lifecycle mirrors confirmDialog.
+ */
+export function deleteSessionDialog(name: string, branch: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    const box = document.createElement("div");
+    box.className = "confirm-box delete-dialog";
+
+    const icon = document.createElement("div");
+    icon.className = "delete-icon";
+    icon.textContent = "⌦";
+
+    const heading = document.createElement("div");
+    heading.className = "delete-heading";
+    heading.textContent = "Delete this session?";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "delete-name";
+    nameEl.textContent = name;
+
+    const body = document.createElement("div");
+    body.className = "delete-body";
+    body.textContent =
+      `This kills the agent, removes its worktree + tmux session, and deletes the branch ${branch}. This can't be undone.`;
+
+    const buttons = document.createElement("div");
+    buttons.className = "confirm-buttons";
+    const cancel = document.createElement("button");
+    cancel.textContent = "Cancel";
+    const ok = document.createElement("button");
+    ok.className = "danger";
+    ok.textContent = "Delete session";
+    buttons.append(cancel, ok);
+
+    box.append(icon, heading, nameEl, body, buttons);
+    overlay.appendChild(box);
+
+    const done = (result: boolean) => {
+      overlay.remove();
+      resolve(result);
+    };
+    cancel.addEventListener("click", () => done(false));
+    ok.addEventListener("click", () => done(true));
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) done(false);
+    });
+    box.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") done(false);
+      // Don't override a focused Cancel button: Enter there means cancel.
+      if (e.key === "Enter" && document.activeElement !== cancel) done(true);
+    });
+
+    document.body.appendChild(overlay);
+    ok.focus();
+  });
+}
+
+/**
  * In-app replacement for window.prompt. Resolves the trimmed input on Save/Enter,
  * or null on Cancel/Esc/backdrop click or empty input.
  */

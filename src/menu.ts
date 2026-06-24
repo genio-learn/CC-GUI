@@ -2,7 +2,7 @@
 // click, Esc, or scroll.
 
 export type MenuItem =
-  | { label: string; action: () => void; danger?: boolean }
+  | { label: string; action: () => void; danger?: boolean; warning?: boolean }
   | "separator";
 
 let menuEl: HTMLDivElement | null = null;
@@ -29,6 +29,7 @@ export function showContextMenu(e: MouseEvent, items: MenuItem[]): void {
     const row = document.createElement("div");
     row.className = "menu-item";
     if (item.danger) row.classList.add("danger");
+    if (item.warning) row.classList.add("warning");
     row.textContent = item.label;
     row.addEventListener("click", () => {
       dismissMenu();

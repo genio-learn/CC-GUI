@@ -61,6 +61,12 @@ export class ReviewPanePageObject extends AppPageObject {
     return this.applyButton;
   }
 
+  /** The review overlay itself — hidden once a successful apply returns to the
+   *  workspace. */
+  paneLocator(): Locator {
+    return this.pane;
+  }
+
   statusText(): Promise<string> {
     return this.status.innerText();
   }

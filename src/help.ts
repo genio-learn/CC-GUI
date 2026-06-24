@@ -66,10 +66,17 @@ box.className = "help-box";
 const title = document.createElement("h2");
 title.textContent = "CC-GUI help";
 box.appendChild(title);
+// Sections flow into two masonry-style columns (CSS column-count); each section
+// is break-avoid so its heading + table stay together.
+const columns = document.createElement("div");
+columns.className = "help-columns";
+box.appendChild(columns);
 for (const [section, rows] of HELP_SECTIONS) {
+  const block = document.createElement("div");
+  block.className = "help-section";
   const h = document.createElement("h3");
   h.textContent = section;
-  box.appendChild(h);
+  block.appendChild(h);
   const table = document.createElement("dl");
   table.className = "help-table";
   for (const [key, desc] of rows) {
@@ -79,20 +86,24 @@ for (const [section, rows] of HELP_SECTIONS) {
     dd.textContent = desc;
     table.append(dt, dd);
   }
-  box.appendChild(table);
+  block.appendChild(table);
+  columns.appendChild(block);
 }
 // Keybindings section, filled in once the config's key table is fetched
 // (main.ts wires the supported actions through setHelpKeybindings).
+const keybindBlock = document.createElement("div");
+keybindBlock.className = "help-section";
 const keybindHeader = document.createElement("h3");
 keybindHeader.textContent = "Keyboard (claude-commander config)";
 const keybindTable = document.createElement("dl");
 keybindTable.className = "help-table";
-keybindHeader.style.display = "none";
-box.append(keybindHeader, keybindTable);
+keybindBlock.style.display = "none";
+keybindBlock.append(keybindHeader, keybindTable);
+columns.appendChild(keybindBlock);
 
 export function setHelpKeybindings(rows: [string, string][]): void {
   keybindTable.innerHTML = "";
-  keybindHeader.style.display = rows.length ? "" : "none";
+  keybindBlock.style.display = rows.length ? "" : "none";
   for (const [keys, desc] of rows) {
     const dt = document.createElement("dt");
     dt.textContent = keys;

@@ -72,8 +72,8 @@
   /* Derived roles */
   --file-renamed: var(--accent);
 
-  /* Overlays */
-  --scrim: rgba(0, 0, 0, 0.45);
+  /* Overlays — scrim tokenized off the inset bg so it reskins with the theme. */
+  --scrim: color-mix(in srgb, var(--bg-inset) 64%, transparent);
   --shadow: rgba(0, 0, 0, 0.5);
 }
 
@@ -919,6 +919,7 @@ body {
   inset: 0;
   z-index: 50;
   background: var(--scrim);
+  backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
 }
@@ -941,24 +942,60 @@ body {
   overflow: hidden;
 }
 
-.palette-box input {
+.palette-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   background: var(--bg-inset);
-  border: none;
   border-bottom: 1px solid var(--border);
+  padding: 0 14px;
+}
+
+.palette-kbd {
+  color: var(--text-dim);
+  font-size: 14px;
+  flex: none;
+}
+
+.palette-header input {
+  flex: 1;
+  background: transparent;
+  border: none;
   color: var(--text);
   font-size: 14px;
-  padding: 12px 14px;
+  padding: 12px 0;
   outline: none;
+}
+
+.palette-esc {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 
 .palette-list {
   overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+.palette-group {
+  padding: 10px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
 }
 
 .palette-row {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   padding: 7px 14px;
   font-size: 13px;
   cursor: pointer;
@@ -969,7 +1006,45 @@ body {
   background: var(--border);
 }
 
+.palette-label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-dot {
+  flex: none;
+}
+
+.palette-icon {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--text-dim);
+  font-style: normal;
+}
+
+.palette-meta {
+  flex: 0 1 auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-state {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .palette-hint {
+  flex: none;
+  margin-left: auto;
   color: var(--text-dim);
   font-size: 11px;
   white-space: nowrap;
@@ -991,27 +1066,39 @@ body {
 
 .help-box h2 {
   font-size: 15px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.help-columns {
+  column-count: 2;
+  column-gap: 28px;
+}
+
+.help-section {
+  break-inside: avoid;
+  margin-bottom: 14px;
 }
 
 .help-box h3 {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent);
-  margin: 14px 0 6px;
+  color: var(--text-dim);
+  margin: 0 0 6px;
 }
 
 .help-table {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 4px 14px;
+  gap: 4px 12px;
   font-size: 12px;
 }
 
 .help-table dt {
-  color: var(--warning);
+  color: var(--subtext1);
   font-family: Menlo, Monaco, monospace;
+  font-size: 11px;
 }
 
 .help-table dd {
@@ -1185,25 +1272,67 @@ body.resizing .panel-resizer {
   margin-bottom: 14px;
 }
 
-/* ------------------------------------------------------------- theme modal */
+.delete-dialog {
+  text-align: center;
+}
+
+.delete-icon {
+  font-size: 28px;
+  line-height: 1;
+  color: var(--danger);
+  margin-bottom: 10px;
+}
+
+.delete-heading {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.delete-name {
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  color: var(--danger);
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.delete-body {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.delete-dialog .confirm-buttons {
+  justify-content: center;
+}
+
+/* ----------------------------------------------------- theme picker popover */
+
+/* Transparent full-inset layer: catches outside-click / Esc without dimming. */
+.theme-popover-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
 
 .theme-modal {
-  width: 360px;
+  width: 280px;
   max-height: 70vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  padding: 12px;
+  padding: 6px;
   outline: none;
 }
 
-.theme-modal-title {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 0 4px;
-  margin-bottom: 8px;
+/* Anchored under the title-bar ◐ button (positioned in themeModal.ts). */
+.theme-popover {
+  position: fixed;
+  box-shadow: 0 20px 50px var(--shadow);
 }
 
 .theme-modal-list {
@@ -1237,7 +1366,7 @@ body.resizing .panel-resizer {
   width: 11px;
   height: 11px;
   border-radius: 3px;
-  border: 1px solid var(--scrim);
+  border: 1px solid var(--border);
 }
 
 .theme-modal-label {
@@ -1245,29 +1374,57 @@ body.resizing .panel-resizer {
   color: var(--text);
 }
 
-.theme-modal-current,
 .theme-modal-tag {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 8px;
   flex-shrink: 0;
-}
-
-.theme-modal-current {
-  color: var(--accent);
-  border: 1px solid var(--accent);
-}
-
-.theme-modal-tag {
   color: var(--text-dim);
   border: 1px solid var(--border-strong);
 }
 
-.theme-modal-hint {
-  font-size: 11px;
-  color: var(--text-dim);
-  padding: 0 4px;
-  margin-top: 8px;
+.theme-modal-check {
+  color: var(--accent);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Follow-system toggle row. */
+.theme-follow-row {
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+}
+
+.theme-follow-toggle {
+  width: 26px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.12s;
+}
+
+.theme-follow-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.12s;
+}
+
+.theme-follow-toggle.on {
+  background: var(--accent);
+}
+
+.theme-follow-toggle.on::after {
+  transform: translateX(11px);
+  background: var(--bg-base);
 }
 
 .confirm-buttons {
@@ -1322,6 +1479,10 @@ body.resizing .panel-resizer {
 
 .menu-item.danger {
   color: var(--danger);
+}
+
+.menu-item.warning {
+  color: var(--warning);
 }
 
 .menu-separator {
@@ -1777,6 +1938,23 @@ body.resizing .panel-resizer {
   color: var(--warning);
 }
 
+#review-apply {
+  color: var(--info);
+  border-color: var(--info);
+  font-weight: 600;
+}
+
+#review-apply:hover:not(:disabled) {
+  color: var(--info);
+  border-color: var(--info);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+}
+
+#review-apply:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 #review-apply.hidden {
   display: none;
 }
@@ -1818,13 +1996,28 @@ body.resizing .panel-resizer {
   color: var(--danger);
 }
 
+/* Inline comment bubble. Staged comments read as authored-by-you drafts:
+   mauve (--info) border + faint mauve tint. Drifted/applied dial the accent
+   back to their own status color. */
 .review-comment {
   margin: 4px 12px 4px 100px;
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--accent);
+  border: 1px solid var(--info);
+  border-left: 3px solid var(--info);
   border-radius: 6px;
   padding: 6px 10px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: color-mix(in srgb, var(--info) 8%, var(--bg-elevated));
+}
+
+.review-comment.comment-drifted {
+  border-color: var(--attention);
+  border-left-color: var(--attention);
+  background: color-mix(in srgb, var(--attention) 8%, var(--bg-elevated));
+}
+
+.review-comment.comment-applied {
+  border-color: var(--border-strong);
+  border-left-color: var(--text-dim);
   background: var(--bg-elevated);
 }
 
@@ -1836,22 +2029,40 @@ body.resizing .panel-resizer {
   font-size: 11px;
 }
 
+.comment-avatar {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
 .comment-status {
   text-transform: uppercase;
   font-weight: 700;
   letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
 }
 
-.comment-staged {
-  color: var(--accent);
+.comment-head .comment-staged {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 13%, transparent);
 }
 
-.comment-drifted {
+.comment-head .comment-drifted {
   color: var(--attention);
+  background: color-mix(in srgb, var(--attention) 13%, transparent);
 }
 
-.comment-applied {
+.comment-head .comment-applied {
   color: var(--text-dim);
+  background: color-mix(in srgb, var(--text-dim) 18%, transparent);
 }
 
 .comment-range {

@@ -3,13 +3,18 @@ import { AppPageObject } from "./AppPageObject.testHelper";
 
 type Appearance = "dark" | "light";
 
-// Drives the theme picker modal (.theme-modal), reached through the palette
-// command "Theme: Set {dark,light} theme…". Asserts the observable effects:
-// the live-previewed CSS variables on :root and the persisted localStorage prefs
-// (cc-theme-mode / cc-theme-{dark,light} / cc-theme-vars-*).
+// Drives the theme picker popover (.theme-modal / .theme-popover), reached
+// through the palette command "Theme: Set {dark,light} theme…". The popover
+// lists every theme (both appearances) prepended by a "Follow system" row;
+// the resolved active theme carries a ✓ (.theme-modal-check). Asserts the
+// observable effects: the live-previewed CSS variables on :root and the
+// persisted localStorage prefs (cc-theme-mode / cc-theme-{dark,light} /
+// cc-theme-vars-*).
 export class ThemePickerPageObject extends AppPageObject {
   private readonly modal = this.page.locator(".theme-modal");
-  private readonly rows = this.modal.locator(".theme-modal-row");
+  // Theme rows only — excludes the prepended follow-system toggle row, so
+  // indexing/labels reason about concrete themes.
+  private readonly rows = this.modal.locator(".theme-modal-row:not(.theme-follow-row)");
 
   /** Open the picker for an appearance via its palette command. */
   open(appearance: Appearance): Promise<void> {
@@ -54,10 +59,10 @@ export class ThemePickerPageObject extends AppPageObject {
     return this.modal.locator(".theme-modal-row.selected .theme-modal-label").innerText();
   }
 
-  /** Label of the row tagged "current". */
+  /** Label of the row marked active with the ✓ check. */
   currentLabel(): Promise<string> {
     return this.rows
-      .filter({ has: this.page.locator(".theme-modal-current") })
+      .filter({ has: this.page.locator(".theme-modal-check") })
       .locator(".theme-modal-label")
       .innerText();
   }
