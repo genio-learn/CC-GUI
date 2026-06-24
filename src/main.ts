@@ -2281,6 +2281,9 @@ function renderSidebar(): void {
   // dragend may never fire — drop the stale id rather than leave it dangling.
   draggingSessionId = null;
   sessionsEl.innerHTML = "";
+  // In Projects grouping, indent the session rows under their project header so
+  // the hierarchy reads from layout rather than relying on the colour cues alone.
+  sessionsEl.classList.toggle("group-by-project", !sections);
   if (topInput) {
     sessionsEl.appendChild(renderTopInput(topInput));
   }

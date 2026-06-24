@@ -640,6 +640,15 @@ body {
   cursor: pointer;
 }
 
+/* Projects grouping: indent the session rows/stacks under their project header
+   so the grouping reads from layout, easing the colour load of the project
+   squares + status dots. Direct children only, so stack children keep their
+   own single indent. */
+#sessions.group-by-project > .session-row,
+#sessions.group-by-project > .stack {
+  margin-left: 12px;
+}
+
 /* Project sub-header inside a section bucket: indented under the section,
    lighter than a top-level project header. */
 .project-subheader {
