@@ -13,6 +13,7 @@ import { ThemePickerPageObject } from "../../pageObjects/ThemePickerPageObject.t
 import { SettingsModalPageObject } from "../../pageObjects/SettingsModalPageObject.testHelper";
 import { DialogsPageObject } from "../../pageObjects/DialogsPageObject.testHelper";
 import { TerminalPageObject } from "../../pageObjects/TerminalPageObject.testHelper";
+import { BoardPageObject } from "../../pageObjects/BoardPageObject.testHelper";
 
 interface Fixtures {
   /** Override in a test via `test.use({ seed: customSeed })` for bespoke state. */
@@ -31,6 +32,8 @@ interface Fixtures {
   dialogs: DialogsPageObject;
   /** App booted against `seed`, terminal object ready (no tab open yet). */
   terminal: TerminalPageObject;
+  /** App booted against `seed`, board object ready (Console layout; call enter()). */
+  board: BoardPageObject;
 }
 
 export const test = base.extend<Fixtures>({
@@ -66,6 +69,10 @@ export const test = base.extend<Fixtures>({
   terminal: async ({ page, seed }, use) => {
     await launchApp(page, seed);
     await use(new TerminalPageObject(page));
+  },
+  board: async ({ page, seed }, use) => {
+    await launchApp(page, seed);
+    await use(new BoardPageObject(page));
   },
 });
 

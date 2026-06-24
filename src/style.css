@@ -194,7 +194,7 @@ body {
   border-color: var(--border-strong);
 }
 
-/* ------------------------------------------------------------- board (stub) */
+/* ------------------------------------------------------------------- board */
 
 #app.board-mode > #sidebar,
 #app.board-mode > #terminal-pane,
@@ -205,18 +205,378 @@ body {
 
 #board {
   flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
 }
 
 #board.hidden {
   display: none;
 }
 
-#board-placeholder {
+/* ── State-colour mapping (accent bar + state pill), in lockstep with .dot ── */
+.state-running {
+  --state-color: var(--success);
+}
+.state-finished {
+  --state-color: var(--warning);
+}
+.state-idle {
+  --state-color: var(--cyan);
+}
+.state-stopped {
+  --state-color: var(--text-dim);
+}
+.state-transient {
+  --state-color: var(--warning);
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+#board-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.board-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.board-pill {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.board-pill:hover {
+  background: var(--row-hover-bg);
+}
+
+.board-pill.active {
+  background: var(--border);
+  color: var(--text);
+}
+
+.board-search {
+  flex: 1;
+  max-width: 320px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.board-search::placeholder {
   color: var(--text-dim);
-  font-size: 14px;
+}
+
+.board-new {
+  margin-left: auto;
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.board-new:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* ── Columns ─────────────────────────────────────────────────────────────── */
+#board-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  overflow-x: auto;
+}
+
+.board-col {
+  display: flex;
+  flex-direction: column;
+  width: 306px;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.board-col-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-col-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board-col-count {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.board-col-header .proj-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.board-col-header .proj-btn.add {
+  margin-left: auto;
+}
+
+.board-col-header .proj-btn:hover {
+  color: var(--text);
+}
+
+.board-col-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+/* ── Agent card ──────────────────────────────────────────────────────────── */
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.agent-card:hover {
+  border-color: var(--border-strong);
+}
+
+.agent-card.selected {
+  border-color: var(--surface2);
+}
+
+.card-accent {
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--state-color);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px 6px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-state-pill {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  color: var(--state-color);
+  background: color-mix(in srgb, var(--state-color) 13%, transparent);
+  white-space: nowrap;
+}
+
+.card-menu {
+  margin-left: auto;
+  flex-shrink: 0;
+  border-color: transparent;
+}
+
+.card-preview {
+  margin: 0 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-inset);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.card-preview-line {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-preview-line.dim {
+  color: var(--text-dim);
+}
+
+.card-diffstat {
+  margin: 8px 10px 0;
+}
+
+.card-diffstat.hidden {
+  display: none;
+}
+
+.card-diffcounts {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.card-diffcounts .added {
+  color: var(--success);
+}
+
+.card-diffcounts .removed {
+  color: var(--danger);
+}
+
+.card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 9px;
+}
+
+.card-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.card-action {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.card-action.attach {
+  color: var(--success);
+}
+
+.card-action.attach:hover {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.card-action.review {
+  color: var(--info);
+}
+
+.card-action.review:hover {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+/* ── Dock: the active session's terminal is re-parented here in board mode. ── */
+#board-dock {
+  height: 194px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+#board-dock.expanded {
+  height: 420px;
+}
+
+#board-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+#board-dock-attached {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+#board-dock-name {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#board-dock-branch {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#board-dock-header .spacer {
+  flex: 1;
+}
+
+#board-dock-surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+#board-dock-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 /* ---------------------------------------------------------------- sidebar */

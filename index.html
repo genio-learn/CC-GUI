@@ -75,7 +75,21 @@
         </footer>
       </aside>
       <div id="board" class="hidden">
-        <div id="board-placeholder">Board view — coming soon</div>
+        <div id="board-filter"></div>
+        <div id="board-columns"></div>
+        <div id="board-dock">
+          <div id="board-dock-header">
+            <span id="board-dock-attached">▸ attached</span>
+            <span id="board-dock-name"></span>
+            <span id="board-dock-branch"></span>
+            <span class="spacer"></span>
+            <button id="board-dock-expand" class="row-action" title="Expand">⤢</button>
+            <button id="board-dock-close" class="row-action" title="Detach">×</button>
+          </div>
+          <div id="board-dock-surface">
+            <div id="board-dock-placeholder">No session attached. Press ▸ on a card to attach.</div>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
