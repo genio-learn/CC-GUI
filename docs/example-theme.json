@@ -17,7 +17,13 @@
     "warning": "#ffd173",
     "attention": "#ffae57",
     "info": "#baa0f9",
-    "cyan": "#5ccfe6"
+    "cyan": "#5ccfe6",
+    "surface2": "#2a3344",
+    "overlay1": "#5a6273",
+    "subtext1": "#8a93a6",
+    "accent-tool": "#baa0f9",
+    "attn-blocked": "#f07178",
+    "tag-cool": "#5ccfe6"
   },
   "terminal": {
     "foreground": "#bfc7d5",

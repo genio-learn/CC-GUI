@@ -29,11 +29,14 @@
   /* Borders / surfaces */
   --border: #313244;
   --border-strong: #45475a;
+  --surface2: #585b70;
 
   /* Text */
   --text: #cdd6f4;
   --text-muted: #a6adc8;
   --text-dim: #6c7086;
+  --overlay1: #7f849c;
+  --subtext1: #bac2de;
 
   /* Accents */
   --accent: #89b4fa;
@@ -43,6 +46,9 @@
   --attention: #fab387;
   --info: #cba6f7;
   --cyan: #89dceb;
+  --accent-tool: #b4befe;
+  --attn-blocked: #eba0ac;
+  --tag-cool: #94e2d5;
 
   /* Derived roles */
   --file-renamed: var(--accent);
