@@ -74,6 +74,22 @@ export class BoardPageObject extends AppPageObject {
     });
   }
 
+  /** Toggle a section filter pill on/off by its section name. */
+  toggleSectionFilter(name: string): Promise<void> {
+    return this.step(`toggleSectionFilter: ${name}`, () =>
+      this.board
+        .locator("#board-filter .board-pill.section", { hasText: name })
+        .click(),
+    );
+  }
+
+  /** Toggle the "Hide empty" projects switch. */
+  toggleHideEmpty(): Promise<void> {
+    return this.step("toggleHideEmpty", () =>
+      this.board.locator("#board-filter .board-pill.hide-empty").click(),
+    );
+  }
+
   /** Type into the board search field (filters cards by name). */
   search(text: string): Promise<void> {
     return this.step(`search: ${text}`, () => this.searchInput.fill(text));
@@ -84,6 +100,14 @@ export class BoardPageObject extends AppPageObject {
   attachFromCard(title: string): Promise<void> {
     return this.step(`attachFromCard: ${title}`, () =>
       this.card(title).locator(".card-action.attach").click(),
+    );
+  }
+
+  /** Click a card's body (not a quick-action button) — also attaches. The
+   *  card title is a safe non-button region. */
+  clickCard(title: string): Promise<void> {
+    return this.step(`clickCard: ${title}`, () =>
+      this.card(title).locator(".card-title").click(),
     );
   }
 
