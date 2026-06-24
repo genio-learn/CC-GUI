@@ -61,4 +61,4 @@ git tag "v$new"
 git push origin main
 git push origin "v$new"
 
-echo "Pushed v$new → https://github.com/Ed-Barnes937/CC-GUI/actions/workflows/release.yml"
+echo "Pushed v$new → https://github.com/genio-learn/CC-GUI/actions/workflows/release.yml"
