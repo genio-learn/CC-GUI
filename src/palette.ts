@@ -64,6 +64,11 @@ function closePalette(): void {
   overlay.classList.add("hidden");
 }
 
+export function togglePalette(): void {
+  if (overlay.classList.contains("hidden")) openPalette();
+  else closePalette();
+}
+
 function refilter(): void {
   const q = input.value.trim();
   filtered = !q

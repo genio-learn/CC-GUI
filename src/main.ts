@@ -8,11 +8,11 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
-import { openReview } from "./review";
+import { openReview, closeReview } from "./review";
 import { toast, confirmDialog, promptDialog } from "./toast";
 import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
-import { registerPaletteProvider } from "./palette";
+import { registerPaletteProvider, togglePalette } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
 import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
 import { openSettings } from "./settings";
@@ -782,6 +782,7 @@ void listen<{ session: string; ended: boolean }>("pty-exit", (event) => {
 // ----------------------------------------------------------------- sidebar
 
 let groups: ProjectGroup[] = [];
+let layout: "console" | "board" = (localStorage.getItem("cc-layout") as "console" | "board") ?? "console";
 let viewMode = "project";
 let sections: SectionBucket[] | null = null;
 let sectionNames: string[] = [];
@@ -1057,6 +1058,7 @@ function deleteSession(s: SessionRow): void {
   for (const g of groups) g.sessions = g.sessions.filter((row) => row.id !== s.id);
   if (sections) for (const b of sections) b.session_ids = b.session_ids.filter((id) => id !== s.id);
   renderSidebar();
+  updateTitleBarCounts();
   invoke("delete_session", { id: s.id })
     .then(() => refreshNow()) // a fresh snapshot confirms absence and clears the mask
     .catch((e) => {
@@ -1748,6 +1750,46 @@ document.querySelector<HTMLButtonElement>("#sidebar-menu")!.addEventListener("cl
   showContextMenu(e, sidebarMenuItems());
 });
 
+// ----------------------------------------------------------------- title bar
+
+const appEl = document.querySelector<HTMLElement>("#app")!;
+const boardEl = document.querySelector<HTMLElement>("#board")!;
+const tbCount = document.querySelector<HTMLElement>("#tb-count")!;
+const tbConsole = document.querySelector<HTMLButtonElement>("#tb-console")!;
+const tbBoard = document.querySelector<HTMLButtonElement>("#tb-board")!;
+
+function updateTitleBarCounts(): void {
+  const total = groups.reduce((n, g) => n + g.sessions.length, 0);
+  const live = groups.flatMap((g) => g.sessions).filter((s) => s.status === "running").length;
+  tbCount.textContent = `${total} sessions · ${live} live`;
+}
+
+function setLayout(next: "console" | "board"): void {
+  if (next === layout) return;
+  layout = next;
+  localStorage.setItem("cc-layout", next);
+  closeReview();
+  appEl.classList.toggle("board-mode", next === "board");
+  boardEl.classList.toggle("hidden", next !== "board");
+  tbConsole.classList.toggle("active", next === "console");
+  tbBoard.classList.toggle("active", next === "board");
+  refitActive();
+}
+
+tbConsole.addEventListener("click", () => setLayout("console"));
+tbBoard.addEventListener("click", () => setLayout("board"));
+document.querySelector<HTMLButtonElement>("#tb-jump")!.addEventListener("click", () => togglePalette());
+document
+  .querySelector<HTMLButtonElement>("#tb-theme")!
+  .addEventListener("click", () => openThemeModal(currentTheme().appearance));
+document.querySelector<HTMLButtonElement>("#tb-help")!.addEventListener("click", () => toggleHelp());
+
+// Initialize segment + board visibility from persisted layout.
+appEl.classList.toggle("board-mode", layout === "board");
+boardEl.classList.toggle("hidden", layout !== "board");
+tbConsole.classList.toggle("active", layout === "console");
+tbBoard.classList.toggle("active", layout === "board");
+
 // ------------------------------------------------------------ commander chip
 
 const commanderChip = document.querySelector<HTMLElement>("#commander-chip")!;
@@ -1783,6 +1825,7 @@ function applySnapshot(snap: Snapshot): void {
   viewMode = snap.view_mode;
   sections = snap.sections;
   sectionNames = snap.section_names;
+  updateTitleBarCounts();
   renderSidebar();
   updateTabGlyphs();
   renderCommander(snap.commander);

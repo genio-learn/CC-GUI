@@ -6,6 +6,22 @@
     <title>CC-GUI</title>
   </head>
   <body>
+    <div id="titlebar">
+      <div class="tb-left">
+        <span class="tb-mark"></span>
+        <span class="tb-name">claude-commander</span>
+        <span id="tb-count" class="tb-pill"></span>
+      </div>
+      <div class="tb-segment">
+        <button id="tb-console">Console</button>
+        <button id="tb-board">Board</button>
+      </div>
+      <div class="tb-right">
+        <button id="tb-jump">Jump to… ⌘K</button>
+        <button id="tb-theme" title="Theme">◐</button>
+        <button id="tb-help" title="Help">?</button>
+      </div>
+    </div>
     <div id="app">
       <aside id="sidebar">
         <header>
@@ -49,6 +65,9 @@
         </div>
         <div id="detail-summary"></div>
       </aside>
+      <div id="board" class="hidden">
+        <div id="board-placeholder">Board view — coming soon</div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
