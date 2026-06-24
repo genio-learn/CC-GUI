@@ -230,6 +230,9 @@ body {
 .state-stopped {
   --state-color: var(--text-dim);
 }
+.state-waiting {
+  --state-color: var(--warning);
+}
 .state-transient {
   --state-color: var(--warning);
 }
@@ -383,6 +386,7 @@ body {
 .agent-card {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 11px;
@@ -1030,6 +1034,20 @@ body {
   background: var(--warning);
 }
 
+/* Waiting-for-input: a yellow "?" glyph rather than a circle, so it reads
+   distinctly from an in-progress (green) or finished (yellow dot) session.
+   Overrides the .dot circle box + the .glyph.dot font-size:0. */
+.dot.dot-waiting {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 @keyframes dot-pulse {
   0%,
   100% {
@@ -1260,6 +1278,10 @@ body {
 
 .legend-glyph.legend-blocked {
   color: var(--attn-blocked);
+}
+
+.legend-glyph.legend-waiting {
+  color: var(--warning);
 }
 
 /* Static legend dots never pulse — freeze the running swatch. */

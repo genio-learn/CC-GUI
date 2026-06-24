@@ -1224,6 +1224,7 @@ const STATUS_GLYPH_CLASSES = [
   "dot-idle",
   "dot-stopped",
   "dot-transient",
+  "dot-waiting",
 ];
 
 /** Set `el`'s liveness dot (colour/pulse/tooltip) from a session's status.
@@ -1245,7 +1246,9 @@ function applyStatusGlyph(el: HTMLSpanElement, s: SessionRow): void {
       cls = "dot-running";
       title = "running";
     } else if (s.agent_state === "waitingforinput") {
-      cls = "dot-finished";
+      // Distinct from the in-progress dot: a yellow "?" glyph, not a circle.
+      cls = "dot-waiting";
+      el.textContent = "?";
       title = "waiting for input";
     } else if (s.agent_state === "idle") {
       cls = "dot-idle";
@@ -2534,6 +2537,7 @@ function renderStatusLegend(): void {
   const legend = document.querySelector<HTMLElement>("#status-legend")!;
   legend.append(
     legendItem(legendDot("dot-running"), "running"),
+    legendItem(legendGlyph("?", "legend-waiting"), "waiting"),
     legendItem(legendDot("dot-finished"), "finished"),
     legendItem(legendDot("dot-idle"), "idle"),
     legendItem(legendGlyph("✎", "legend-info"), "comments"),
@@ -2854,6 +2858,7 @@ function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
 
   const body = document.createElement("div");
   body.className = "board-col-body";
+  body.dataset.project = g.id;
   for (const s of visible) body.appendChild(renderAgentCard(s));
   col.appendChild(body);
   return col;
@@ -2934,12 +2939,27 @@ function renderBoardFilterBar(): void {
 
 /** Rebuild the columns from the current snapshot + filter + search. */
 function renderBoardColumns(): void {
+  // Columns are rebuilt wholesale on every snapshot tick (~2s); capture the
+  // per-column vertical scroll (keyed by project) + the strip's horizontal
+  // scroll so an in-progress session doesn't yank the view back to the top.
+  const prevScroll = new Map<string, number>();
+  for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
+    if (body.dataset.project) prevScroll.set(body.dataset.project, body.scrollTop);
+  }
+  const prevScrollLeft = boardColumnsEl.scrollLeft;
+
   boardCardRefs.clear();
   boardColumnsEl.innerHTML = "";
   for (const g of groups) {
     if (hideEmptyColumns && g.sessions.length === 0) continue;
     boardColumnsEl.appendChild(renderBoardColumn(g));
   }
+
+  for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
+    const top = body.dataset.project ? prevScroll.get(body.dataset.project) : undefined;
+    if (top) body.scrollTop = top;
+  }
+  boardColumnsEl.scrollLeft = prevScrollLeft;
 }
 
 /** Full board render. The filter bar is rebuilt only when needed (it owns the
