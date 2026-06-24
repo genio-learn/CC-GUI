@@ -2951,7 +2951,9 @@ function renderBoardColumns(): void {
   boardCardRefs.clear();
   boardColumnsEl.innerHTML = "";
   for (const g of groups) {
-    if (hideEmptyColumns && g.sessions.length === 0) continue;
+    // "Hide empty" hides columns with no VISIBLE cards, so a project whose
+    // sessions are all filtered out (e.g. by the section filter) drops too.
+    if (hideEmptyColumns && boardVisibleSessions(g).length === 0) continue;
     boardColumnsEl.appendChild(renderBoardColumn(g));
   }
 

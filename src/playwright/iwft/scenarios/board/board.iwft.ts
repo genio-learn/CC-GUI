@@ -157,6 +157,18 @@ test("the Hide empty toggle omits sessionless project columns", async ({ board }
   await expect(board.columnNames()).toHaveText(["atlas", "beacon", "ember"]);
 });
 
+test("Hide empty drops columns left empty by the section filter", async ({ board }) => {
+  await board.enter();
+  await board.toggleHideEmpty();
+  // Sessionless "ember" is already gone; atlas + beacon remain.
+  await expect(board.columnNames()).toHaveText(["atlas", "beacon"]);
+
+  // Only atlas has "Review" sessions; beacon's lone session is in "Build", so
+  // once filtered it has no visible cards and must also drop.
+  await board.toggleSectionFilter("Review");
+  await expect(board.columnNames()).toHaveText(["atlas"]);
+});
+
 test("a custom-section pill narrows cards to that section and composes with search", async ({
   board,
 }) => {
