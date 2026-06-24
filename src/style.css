@@ -1341,6 +1341,9 @@ body.resizing .panel-resizer {
 
 #tabs {
   display: flex;
+  align-items: stretch;
+  height: 40px;
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   flex-shrink: 0;
@@ -1350,22 +1353,44 @@ body.resizing .panel-resizer {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 6px 7px 14px;
+  padding: 0 6px 0 14px;
   font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--text-muted);
   cursor: pointer;
   border-right: 1px solid var(--border);
+  /* Reserve the active tab's 2px accent so switching tabs doesn't shift them. */
+  border-top: 2px solid transparent;
   white-space: nowrap;
 }
 
 .tab.active {
   color: var(--text);
-  background: var(--border);
+  background: var(--bg-base);
+  border-top: 2px solid var(--accent);
 }
 
 .tab.dead {
   color: var(--text-dim);
   font-style: italic;
+}
+
+/* "+" new-terminal button, pinned to the end of the strip. */
+.tab-new {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-top: 2px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 12px;
+}
+
+.tab-new:hover {
+  color: var(--text);
+  background: var(--row-hover-bg);
 }
 
 .tab.dragging {
@@ -1406,18 +1431,129 @@ body.resizing .panel-resizer {
   min-height: 0;
 }
 
+/* Framed terminal: rounded surface with a title bar above and a powerline
+   below the real xterm surface. Flex column so the fixed-height chrome
+   (title bar / powerline, flex-shrink:0) leaves the rest to .term-surface,
+   which is what the FitAddon measures. */
 .term-container {
   position: absolute;
   inset: 4px;
   display: none;
+  flex-direction: column;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.term-container.active {
+  display: flex;
+}
+
+.term-titlebar {
+  flex-shrink: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.term-traffic {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.term-traffic-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.term-traffic-dot.close {
+  background: var(--danger);
+}
+.term-traffic-dot.min {
+  background: var(--warning);
+}
+.term-traffic-dot.max {
+  background: var(--success);
+}
+
+.term-frame-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.term-surface {
+  flex: 1;
+  min-height: 0;
   /* xterm's DOM renderer measures the cell a hair narrower than the glyph's
      true advance, so a full-width line can paint a couple px past the screen
      edge. The bleed is sub-cell, so trimming width won't drop it — clip it. */
   overflow: hidden;
 }
 
-.term-container.active {
-  display: block;
+.term-powerline {
+  flex-shrink: 0;
+  height: 27px;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+}
+
+.term-powerline.empty {
+  border-top-color: transparent;
+}
+
+.pl-seg {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pl-glyph {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.pl-seg.proj {
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success);
+}
+
+.pl-seg.proj .pl-glyph {
+  color: var(--success);
+}
+
+.pl-seg.branch {
+  background: var(--border);
+  color: var(--text);
+}
+
+.pl-seg.state {
+  color: var(--text-dim);
+}
+
+/* Right-align the trailing state segment. */
+.pl-seg.right {
+  margin-left: auto;
 }
 
 #placeholder {
@@ -1853,6 +1989,7 @@ body.resizing .panel-resizer {
   width: 360px;
   flex-shrink: 0;
   border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1865,12 +2002,14 @@ body.resizing .panel-resizer {
 #detail header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 #detail-title {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -1878,6 +2017,7 @@ body.resizing .panel-resizer {
   text-overflow: ellipsis;
 }
 
+#detail-collapse,
 #detail-close {
   background: none;
   border: none;
@@ -1885,6 +2025,14 @@ body.resizing .panel-resizer {
   cursor: pointer;
   font-size: 15px;
   padding: 0 4px;
+}
+
+#detail-collapse {
+  font-size: 12px;
+}
+
+#detail-collapse:hover {
+  color: var(--text);
 }
 
 #detail-close:hover {
@@ -1954,6 +2102,79 @@ body.resizing .panel-resizer {
 
 #detail-summary.error {
   color: var(--danger);
+}
+
+.diffstat-bar {
+  display: flex;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.diffstat-bar .added {
+  background: var(--success);
+}
+
+.diffstat-bar .removed {
+  background: var(--danger);
+}
+
+#detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px;
+}
+
+#detail-tags:empty {
+  display: none;
+}
+
+.detail-tag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--chip-faint-bg);
+  color: var(--text-muted);
+}
+
+#detail-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.detail-action {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.detail-action:hover:not(:disabled) {
+  background: var(--row-hover-bg);
+}
+
+.detail-action.primary {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.detail-action.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.detail-action:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* --------------------------------------------------------------- scrollbars */

@@ -37,7 +37,7 @@
       <main id="terminal-pane">
         <div id="tabs"></div>
         <div id="terminals">
-          <div id="placeholder">Select a session to attach</div>
+          <div id="placeholder">Select a session to attach.</div>
         </div>
       </main>
       <div id="review" class="hidden">
@@ -57,6 +57,7 @@
       </div>
       <aside id="detail" class="hidden">
         <header>
+          <button id="detail-collapse" title="Collapse">◀</button>
           <span id="detail-title"></span>
           <button id="detail-close" title="Close">×</button>
         </header>
@@ -64,9 +65,14 @@
         <div id="detail-diffstat"></div>
         <div id="detail-summary-label">
           <span>AI summary</span>
-          <button id="summary-gen" class="row-action">Generate</button>
+          <button id="summary-gen" class="row-action">↻ Generate</button>
         </div>
         <div id="detail-summary"></div>
+        <div id="detail-tags"></div>
+        <footer id="detail-footer">
+          <button id="detail-review" class="detail-action primary">± Review diff</button>
+          <button id="detail-pr" class="detail-action">Open PR</button>
+        </footer>
       </aside>
       <div id="board" class="hidden">
         <div id="board-placeholder">Board view — coming soon</div>
