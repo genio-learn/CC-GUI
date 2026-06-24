@@ -456,7 +456,7 @@ async function attachTerminal(
     clearDropMarker();
   });
   const glyph = document.createElement("span");
-  glyph.className = "tab-glyph";
+  glyph.className = "tab-glyph dot";
   glyph.hidden = true; // shown once a matching session status is known
   const label = document.createElement("span");
   label.className = "tab-label";
@@ -792,6 +792,9 @@ let sectionNames: string[] = [];
 let newSessionProject: string | null = null;
 let renamingId: string | null = null; // session id being renamed inline
 let topInput: "add" | "scan" | null = null; // sidebar-top path input mode
+// Project the session list is filtered to (toggled from the projects rail), or
+// null for "all projects". Composes with whichever grouping is active.
+let projectFilter: string | null = null;
 
 const SECTION_VIEW = (): boolean => sections !== null;
 
@@ -889,46 +892,90 @@ function groupOf(sessionId: string): ProjectGroup | undefined {
   return groups.find((g) => g.sessions.some((s) => s.id === sessionId));
 }
 
-const AGENT_GLYPHS: Record<string, [string, string]> = {
-  working: ["●", "agent-working"],
-  waitingforinput: ["?", "agent-waiting"],
-  idle: ["●", "agent-idle"],
-};
-
+/** Liveness-dot state classes set by applyStatusGlyph. `dot-running` carries
+ *  the pulse; the rest are static colour. Removed wholesale before re-applying. */
 const STATUS_GLYPH_CLASSES = [
-  "agent-working",
-  "agent-waiting",
-  "agent-idle",
-  "agent-unknown",
-  "status-stopped",
-  "status-transient",
+  "dot-running",
+  "dot-finished",
+  "dot-idle",
+  "dot-stopped",
+  "dot-transient",
 ];
 
-/** Set `el`'s glyph/colour/tooltip from a session's status. Shared by the
- *  sidebar rows and the terminal tabs so they stay in lockstep. */
+/** Set `el`'s liveness dot (colour/pulse/tooltip) from a session's status.
+ *  Shared by the sidebar rows and the terminal tabs so they stay in lockstep.
+ *  The element renders as an 8px circle (see `.dot`/.glyph/.tab-glyph CSS); the
+ *  state class drives its colour and the running pulse. */
 function applyStatusGlyph(el: HTMLSpanElement, s: SessionRow): void {
   el.classList.remove(...STATUS_GLYPH_CLASSES);
+  el.textContent = "";
   let cls: string;
-  if (s.status === "running") {
-    const [glyph, c] = AGENT_GLYPHS[s.agent_state] ?? ["●", "agent-unknown"];
-    el.textContent = glyph;
-    cls = c;
+  let title: string;
+  if (s.unread) {
+    // Finished while away — surface as the "finished" colour regardless of the
+    // underlying agent state.
+    cls = "dot-finished";
+    title = "finished — needs attention";
+  } else if (s.status === "running") {
+    if (s.agent_state === "working") {
+      cls = "dot-running";
+      title = "running";
+    } else if (s.agent_state === "waitingforinput") {
+      cls = "dot-finished";
+      title = "waiting for input";
+    } else if (s.agent_state === "idle") {
+      cls = "dot-idle";
+      title = "idle";
+    } else {
+      cls = "dot-idle";
+      title = s.agent_state;
+    }
   } else if (s.status === "stopped") {
-    el.textContent = "○";
-    cls = "status-stopped";
+    cls = "dot-stopped";
+    title = "stopped";
   } else {
-    el.textContent = "⧖"; // creating / merging / pushing
-    cls = "status-transient";
+    cls = "dot-transient"; // creating / merging / pushing / cascade_paused
+    title = s.status;
   }
   el.classList.add(cls);
-  el.title = s.status === "running" ? s.agent_state : s.status;
+  el.title = title;
 }
 
 function statusGlyph(s: SessionRow): HTMLSpanElement {
   const el = document.createElement("span");
-  el.className = "glyph";
+  el.className = "glyph dot";
   applyStatusGlyph(el, s);
   return el;
+}
+
+/** Number of project-identity palette slots (--proj-0..--proj-7 in :root). */
+const PROJ_COLORS = 8;
+
+/** Deterministically hash a project_id to one of the PROJ_COLORS palette slots.
+ *  FNV-1a over the id so the same project always maps to the same colour. */
+function projIndex(projectId: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < projectId.length; i++) {
+    h ^= projectId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) % PROJ_COLORS;
+}
+
+/** CSS class (`proj-N`) carrying a project's identity colour via `--proj-color`.
+ *  Consumers read `var(--proj-color)` — never an inline hex. */
+function projClass(projectId: string): string {
+  return `proj-${projIndex(projectId)}`;
+}
+
+/** Faint project tag chip (project-color text on a faint bg). Hidden when the
+ *  list is already grouped by project (caller decides). */
+function projTag(s: SessionRow): HTMLSpanElement {
+  const tag = document.createElement("span");
+  tag.className = `proj-tag ${projClass(s.project_id)}`;
+  tag.textContent = s.project_name;
+  tag.title = s.project_name;
+  return tag;
 }
 
 /** Mirror each open tab's status glyph from the latest session snapshot. Tabs
@@ -1123,42 +1170,78 @@ function branchMatchesTitle(title: string, branch: string): boolean {
   return slug(title) === slug(branch);
 }
 
+/** Humanized liveness for the row sub-line. Mirrors renderDetail's
+ *  `running · <agent_state>` shape. NOTE: the brief's sub-line also wants a
+ *  diffstat ("+adds −dels · state"), but diff_stat lives only on SessionDetail
+ *  (fetched per-session), not on SessionRow — so the list row shows state only.
+ *  See ui-overhaul.md watch-items. */
+function humanState(s: SessionRow): string {
+  if (s.status === "running") return `running · ${s.agent_state}`;
+  return s.status.replace(/_/g, " ");
+}
+
 /** Rebuild the inner content of a row's main span (cheap; no input state). */
 function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   main.innerHTML = "";
+
+  // Top line: liveness dot · name · project tag · PR badge · right-side chips.
+  const line = document.createElement("div");
+  line.className = "row-line";
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = s.title;
   title.title = `Branch: ${s.branch}`;
-  main.append(statusGlyph(s), title);
-  // Only surface the branch when it has diverged from the title; otherwise the
-  // two columns just repeat each other. (Always available via the hover title
-  // above and the detail panel.) The project is shown by its header/sub-header,
-  // so the row never needs to repeat it.
-  const showBranch = !branchMatchesTitle(s.title, s.branch);
-  const meta = showBranch ? s.branch : "";
-  if (meta) {
-    const branch = document.createElement("span");
-    branch.className = "meta";
-    branch.textContent = meta;
-    main.append(branch);
+  line.append(statusGlyph(s), title);
+
+  // Project tag chip — redundant when the list is already grouped by project,
+  // so hide it in that grouping.
+  if (viewMode !== "project") {
+    line.append(projTag(s));
   }
+
   const badge = prBadge(s);
-  if (badge) main.appendChild(badge);
+  if (badge) line.appendChild(badge);
+
+  // Right-side chips: ✎ pending comments (mauve), ⚠ blocked (maroon, project
+  // -level auto-pull block). Pushed right by .row-chips margin-left:auto.
+  const chips = document.createElement("span");
+  chips.className = "row-chips";
   if (s.has_pending_comments) {
     const c = document.createElement("span");
     c.className = "comment-badge";
-    c.textContent = "🗨";
+    c.textContent = "✎";
     c.title = "Has pending review comments";
-    main.appendChild(c);
+    chips.appendChild(c);
   }
-  if (s.unread) {
-    const dot = document.createElement("span");
-    dot.className = "unread-dot";
-    dot.textContent = "●";
-    dot.title = "Finished while you were away";
-    main.appendChild(dot);
+  // pull_blocked is a project-level field; surface ⚠ on rows of a blocked
+  // project. (No session-level blocked flag exists — see recon risks.)
+  const blocked = groupOf(s.id)?.pull_blocked;
+  if (blocked) {
+    const b = document.createElement("span");
+    b.className = "blocked-badge";
+    b.textContent = "⚠";
+    b.title = `Auto-pull blocked: ${blocked}`;
+    chips.appendChild(b);
   }
+  if (chips.childElementCount) line.appendChild(chips);
+
+  // Sub-line: humanized state. (Branch shown here only when it diverges from
+  // the title — otherwise it just repeats the name; always in the hover title.)
+  const sub = document.createElement("div");
+  sub.className = "row-sub";
+  const showBranch = !branchMatchesTitle(s.title, s.branch);
+  if (showBranch) {
+    const branch = document.createElement("span");
+    branch.className = "meta";
+    branch.textContent = s.branch;
+    sub.append(branch);
+  }
+  const state = document.createElement("span");
+  state.className = "row-state";
+  state.textContent = humanState(s);
+  sub.append(state);
+
+  main.append(line, sub);
 }
 
 function sessionMenuItems(refs: RowRefs): MenuItem[] {
@@ -1319,6 +1402,80 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
   });
   updateRow(refs, s);
   return row;
+}
+
+type StackUnit =
+  | { kind: "single"; session: SessionRow }
+  | { kind: "stack"; parent: SessionRow; children: SessionRow[] };
+
+/** Infer cascade stacks from an ordered row list: a non-stacked parent followed
+ *  by its consecutive `stacked_child` rows forms one stack (the backend keeps a
+ *  stack root + its children contiguous). Children with no preceding parent
+ *  (can't happen within one project, but guard anyway) fall back to singles. */
+function groupStacks(rows: SessionRow[]): StackUnit[] {
+  const units: StackUnit[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const s = rows[i];
+    if (s.stacked_child) {
+      units.push({ kind: "single", session: s }); // orphan child — render flat
+      continue;
+    }
+    const children: SessionRow[] = [];
+    while (i + 1 < rows.length && rows[i + 1].stacked_child) {
+      children.push(rows[++i]);
+    }
+    units.push(children.length ? { kind: "stack", parent: s, children } : { kind: "single", session: s });
+  }
+  return units;
+}
+
+/** A cascade stack: bordered group (faint mauve tint) with a header carrying the
+ *  stack name (parent title), project tag, and merge/push/⋯ actions, then the
+ *  parent + indented child rows (each child gets a project-color left border). */
+function renderStack(parent: SessionRow, children: SessionRow[]): HTMLDivElement {
+  const wrap = document.createElement("div");
+  wrap.className = `stack ${projClass(parent.project_id)}`;
+
+  const header = document.createElement("div");
+  header.className = "stack-header";
+  const glyph = document.createElement("span");
+  glyph.className = "stack-glyph";
+  glyph.textContent = "⌗";
+  glyph.title = "Cascade stack";
+  const name = document.createElement("span");
+  name.className = "stack-name";
+  name.textContent = parent.title;
+  name.title = parent.title;
+  header.append(glyph, name);
+  if (viewMode !== "project") header.append(projTag(parent));
+
+  const actions = document.createElement("span");
+  actions.className = "stack-actions";
+  const merge = actionButton("⛙", "Cascade-merge main → stack", () =>
+    void invokeToast("cascade_merge", { id: parent.id }),
+  );
+  merge.classList.add("stack-merge");
+  const push = actionButton("↑", "Push stack to origin", () =>
+    void invokeToast("push_stack", { id: parent.id }),
+  );
+  push.classList.add("stack-push");
+  // ⋯ opens the session menu (resume/abandon live there, gated on cascade_paused)
+  // positioned at the click; can't reuse actionButton, which swallows the event.
+  const more = document.createElement("button");
+  more.className = "row-action";
+  more.textContent = "⋯";
+  more.title = "Stack actions";
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const refs = rowRefs.get(parent.id);
+    if (refs) showContextMenu(e, sessionMenuItems(refs));
+  });
+  actions.append(merge, push, more);
+  header.append(actions);
+
+  wrap.append(header, renderSessionRow(parent));
+  for (const c of children) wrap.append(renderSessionRow(c));
+  return wrap;
 }
 
 /** Drop the section-header highlight from any header still showing it. */
@@ -1514,12 +1671,6 @@ async function createSessionInProject(group: ProjectGroup): Promise<void> {
     .finally(() => void refreshNow());
 }
 
-const VIEW_LABELS: Record<string, string> = {
-  project: "Project",
-  sections: "Sections",
-  section_stacks: "Section Stacks",
-};
-
 function cycleViewMode(): void {
   const order = ["project", "sections", "section_stacks"];
   const next = order[(order.indexOf(viewMode) + 1) % order.length];
@@ -1528,17 +1679,153 @@ function cycleViewMode(): void {
     .catch((e) => toast(`${e}`, "error"));
 }
 
+/** Switch grouping to an explicit mode (the GROUP BY segmented control).
+ *  viewMode is backend-owned — never set locally — so we round-trip through
+ *  set_view_mode and let the next snapshot reflect it (mirror cycleViewMode). */
+function setViewMode(mode: string): void {
+  if (mode === viewMode) return;
+  invoke("set_view_mode", { mode })
+    .then(() => refreshNow())
+    .catch((e) => toast(`${e}`, "error"));
+}
+
+/** The persistent projects rail: a fixed project axis above the session list,
+ *  shown in every grouping. Lists ALL projects (incl. sessionless ones, dimmed);
+ *  a row click toggles the project filter, "+"/"$" create a session / open the
+ *  project shell. */
+function renderProjectsRail(): HTMLElement {
+  const rail = document.createElement("div");
+  rail.className = "projects-rail";
+
+  const header = document.createElement("div");
+  header.className = "rail-header";
+  const label = document.createElement("span");
+  label.className = "rail-label";
+  label.textContent = "PROJECTS";
+  const addBtn = document.createElement("button");
+  addBtn.className = "row-action";
+  addBtn.textContent = "＋ add";
+  addBtn.title = "Add or scan projects";
+  addBtn.addEventListener("click", () => {
+    topInput = topInput === "add" ? null : "add";
+    renderSidebar();
+  });
+  header.append(label, addBtn);
+  rail.appendChild(header);
+
+  for (const g of groups) {
+    const row = document.createElement("div");
+    row.className = "proj-row";
+    if (!g.sessions.length) row.classList.add("empty");
+    if (projectFilter === g.id) row.classList.add("active");
+
+    const square = document.createElement("span");
+    square.className = `proj-square ${projClass(g.id)}`;
+
+    const name = document.createElement("span");
+    name.className = "proj-name";
+    name.textContent = g.name;
+    name.title = g.name;
+
+    const count = document.createElement("span");
+    count.className = "proj-count";
+    count.textContent = String(g.sessions.length);
+
+    const add = document.createElement("button");
+    add.className = "proj-btn add";
+    add.textContent = "+";
+    add.title = "New session in this project";
+    add.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void createSessionInProject(g);
+    });
+
+    const shell = document.createElement("button");
+    shell.className = "proj-btn shell";
+    shell.textContent = "$";
+    shell.title = "Project shell";
+    shell.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void openProjectShell(g);
+    });
+
+    row.append(square, name, count, add, shell);
+    row.addEventListener("click", () => {
+      projectFilter = projectFilter === g.id ? null : g.id;
+      renderSidebar();
+    });
+    rail.appendChild(row);
+  }
+  return rail;
+}
+
+/** GROUP BY segmented control. Binary [Sections | Projects], bound to viewMode
+ *  (Projects→"project", Sections→"sections"). "section_stacks" still counts as
+ *  the Sections side and stays reachable via the palette's cycleViewMode. */
+function renderGroupByBar(): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "group-by-bar";
+  const label = document.createElement("span");
+  label.className = "group-by-label";
+  label.textContent = "GROUP BY";
+
+  const seg = document.createElement("div");
+  seg.className = "segmented";
+  const sectionsActive = viewMode === "sections" || viewMode === "section_stacks";
+
+  const sectionsBtn = document.createElement("button");
+  sectionsBtn.className = "segment";
+  sectionsBtn.textContent = "Sections";
+  sectionsBtn.classList.toggle("active", sectionsActive);
+  sectionsBtn.addEventListener("click", () => setViewMode("sections"));
+
+  const projectsBtn = document.createElement("button");
+  projectsBtn.className = "segment";
+  projectsBtn.textContent = "Projects";
+  projectsBtn.classList.toggle("active", !sectionsActive);
+  projectsBtn.addEventListener("click", () => setViewMode("project"));
+
+  seg.append(sectionsBtn, projectsBtn);
+  bar.append(label, seg);
+  return bar;
+}
+
+/** Banner shown when a project filter is active, with a clear affordance. */
+function renderFilterBanner(group: ProjectGroup): HTMLElement {
+  const banner = document.createElement("div");
+  banner.className = "filter-banner";
+  const square = document.createElement("span");
+  square.className = `proj-square ${projClass(group.id)}`;
+  const text = document.createElement("span");
+  text.className = "filter-text";
+  text.textContent = `filtered to ${group.name}`;
+  const clear = document.createElement("button");
+  clear.className = "row-action";
+  clear.textContent = "✕";
+  clear.title = "Clear project filter";
+  clear.addEventListener("click", () => {
+    projectFilter = null;
+    renderSidebar();
+  });
+  banner.append(square, text, clear);
+  return banner;
+}
+
 /** Render section-grouped views: section headers with rows looked up by id. */
 function renderSections(buckets: SectionBucket[]): void {
   const projById = new Map(groups.map((g) => [g.id, g]));
   buckets.forEach((bucket, bucketIndex) => {
+    // Compose with the project filter: only the filtered project's ids survive.
+    const ids = projectFilter
+      ? bucket.session_ids.filter((id) => findSession(id)?.project_id === projectFilter)
+      : bucket.session_ids;
     const header = document.createElement("div");
     header.className = "project-header";
     const name = document.createElement("span");
     name.textContent = bucket.name;
     const count = document.createElement("span");
     count.className = "meta";
-    count.textContent = String(bucket.session_ids.length);
+    count.textContent = String(ids.length);
     header.append(name, count);
     const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
     makeSectionDropTarget(header, bucket, bucketIndex);
@@ -1550,7 +1837,7 @@ function renderSections(buckets: SectionBucket[]): void {
     // root and indented children stay contiguous.
     const order: string[] = [];
     const byProject = new Map<string, SessionRow[]>();
-    for (const id of bucket.session_ids) {
+    for (const id of ids) {
       const s = findSession(id);
       if (!s) continue;
       let rows = byProject.get(s.project_id);
@@ -1571,7 +1858,7 @@ function renderSections(buckets: SectionBucket[]): void {
           sessionsEl.appendChild(renderCreateInput(group));
         }
       }
-      for (const s of rows) sessionsEl.appendChild(renderSessionRow(s));
+      renderRows(rows);
       visibleGroups.push(rows.map((s) => s.id));
     }
   });
@@ -1640,7 +1927,7 @@ function renderSidebar(): void {
     groups
       .map((g) => `${g.id}@${g.pull_blocked}:${g.sessions.map((s) => s.id).join(",")}`)
       .join("|") +
-    `#${newSessionProject}#${renamingId}#${topInput}#${viewMode}` +
+    `#${newSessionProject}#${renamingId}#${topInput}#${viewMode}#${projectFilter}` +
     `#${sections?.map((b) => `${b.name}=${b.session_ids.join(",")}`).join("|") ?? ""}` +
     `#${[...collapsed].sort().join(",")}`;
 
@@ -1665,18 +1952,15 @@ function renderSidebar(): void {
     sessionsEl.appendChild(renderTopInput(topInput));
   }
 
-  // View-mode heading with cycle toggle.
-  const viewBar = document.createElement("div");
-  viewBar.className = "view-bar";
-  const viewLabel = document.createElement("span");
-  viewLabel.textContent = `View: ${VIEW_LABELS[viewMode] ?? viewMode}`;
-  const cycle = document.createElement("button");
-  cycle.className = "row-action";
-  cycle.textContent = "⇄";
-  cycle.title = "Cycle view mode (project / sections / section stacks)";
-  cycle.addEventListener("click", cycleViewMode);
-  viewBar.append(viewLabel, cycle);
-  sessionsEl.appendChild(viewBar);
+  // Persistent project axis + grouping control, shown in every view.
+  sessionsEl.appendChild(renderProjectsRail());
+  sessionsEl.appendChild(renderGroupByBar());
+
+  // When a project filter is active, show a banner with a clear affordance.
+  const filterGroup = projectFilter ? groups.find((g) => g.id === projectFilter) : undefined;
+  if (filterGroup) {
+    sessionsEl.appendChild(renderFilterBanner(filterGroup));
+  }
 
   if (sections) {
     // Section views group by section, so an empty project has no sub-header to
@@ -1692,6 +1976,7 @@ function renderSidebar(): void {
   }
 
   for (const group of groups) {
+    if (projectFilter && group.id !== projectFilter) continue;
     const header = document.createElement("div");
     header.className = "project-header";
     const name = document.createElement("span");
@@ -1739,11 +2024,52 @@ function renderSidebar(): void {
     if (newSessionProject === group.id) {
       sessionsEl.appendChild(renderCreateInput(group));
     }
-    for (const s of group.sessions) {
-      sessionsEl.appendChild(renderSessionRow(s));
+    if (!group.sessions.length && projectFilter === group.id) {
+      sessionsEl.appendChild(renderEmptyProject(group));
+      continue;
     }
+    renderRows(group.sessions);
     visibleGroups.push(group.sessions.map((s) => s.id));
   }
+}
+
+/** Render an ordered row list, folding consecutive stacked_child rows into a
+ *  bordered stack group. Shared by both groupings. */
+function renderRows(rows: SessionRow[]): void {
+  for (const unit of groupStacks(rows)) {
+    if (unit.kind === "stack") {
+      sessionsEl.appendChild(renderStack(unit.parent, unit.children));
+    } else {
+      sessionsEl.appendChild(renderSessionRow(unit.session));
+    }
+  }
+}
+
+/** Empty-project state shown when filtered to a project with no sessions: a
+ *  dashed "＋" tile plus new-session / shell affordances (reusing the rail's
+ *  backend wiring). */
+function renderEmptyProject(group: ProjectGroup): HTMLDivElement {
+  const block = document.createElement("div");
+  block.className = "empty-project";
+  const tile = document.createElement("div");
+  tile.className = "empty-tile";
+  tile.textContent = "＋";
+  const msg = document.createElement("div");
+  msg.className = "empty-msg";
+  msg.textContent = `No sessions in ${group.name} yet`;
+  const actions = document.createElement("div");
+  actions.className = "empty-actions";
+  const create = document.createElement("button");
+  create.className = "row-action";
+  create.textContent = "＋ New session";
+  create.addEventListener("click", () => void createSessionInProject(group));
+  const shell = document.createElement("button");
+  shell.className = "row-action";
+  shell.textContent = "$ Shell";
+  shell.addEventListener("click", () => void openProjectShell(group));
+  actions.append(create, shell);
+  block.append(tile, msg, actions);
+  return block;
 }
 
 document.querySelector<HTMLButtonElement>("#sidebar-menu")!.addEventListener("click", (e) => {
@@ -1794,16 +2120,57 @@ tbBoard.classList.toggle("active", layout === "board");
 
 const commanderChip = document.querySelector<HTMLElement>("#commander-chip")!;
 
+/** Build one legend entry: a swatch (dot or glyph) + label. */
+function legendItem(swatch: HTMLElement, label: string): HTMLSpanElement {
+  const item = document.createElement("span");
+  item.className = "legend-item";
+  const text = document.createElement("span");
+  text.textContent = label;
+  item.append(swatch, text);
+  return item;
+}
+
+function legendDot(cls: string): HTMLSpanElement {
+  const dot = document.createElement("span");
+  dot.className = `dot ${cls}`;
+  return dot;
+}
+
+function legendGlyph(text: string, cls: string): HTMLSpanElement {
+  const g = document.createElement("span");
+  g.className = `legend-glyph ${cls}`;
+  g.textContent = text;
+  return g;
+}
+
+/** Static status legend in the sidebar footer (built once at boot). */
+function renderStatusLegend(): void {
+  const legend = document.querySelector<HTMLElement>("#status-legend")!;
+  legend.append(
+    legendItem(legendDot("dot-running"), "running"),
+    legendItem(legendDot("dot-finished"), "finished"),
+    legendItem(legendDot("dot-idle"), "idle"),
+    legendItem(legendGlyph("✎", "legend-info"), "comments"),
+    legendItem(legendGlyph("⚠", "legend-blocked"), "blocked"),
+    legendItem(legendGlyph("⌗", "legend-info"), "stack"),
+  );
+}
+renderStatusLegend();
+
 function renderCommander(c: Snapshot["commander"]): void {
   commanderChip.classList.toggle("hidden", !c.enabled);
   if (!c.enabled) return;
   commanderChip.innerHTML = "";
-  const dot = document.createElement("span");
-  dot.className = c.running ? "chip-dot running" : "chip-dot";
-  dot.textContent = "●";
+  const square = document.createElement("span");
+  square.className = "commander-square";
+  square.title = c.running ? "running" : "stopped";
   const label = document.createElement("span");
-  label.textContent = `commander · ${c.running ? "running" : "stopped"}`;
-  commanderChip.append(dot, label);
+  label.className = "commander-label";
+  label.textContent = "commander";
+  const attach = document.createElement("span");
+  attach.className = "commander-attach";
+  attach.textContent = "attach ⏎";
+  commanderChip.append(square, label, attach);
 }
 
 commanderChip.addEventListener("click", () => {
