@@ -76,3 +76,43 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Bump the Homebrew cask in genio-learn/homebrew-tap to this release: hash the
+  # just-built macOS DMG and push version + sha256 into Casks/cc-gui.rb. Requires
+  # a HOMEBREW_TAP_TOKEN repo secret — a PAT (or fine-grained token) with write
+  # access to genio-learn/homebrew-tap, since the default GITHUB_TOKEN can't push
+  # to another repo. If the secret is absent the step no-ops (release still ships).
+  update-cask:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bump the Homebrew cask
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping cask bump." && exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+
+          # Hash the macOS DMG attached to this release.
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*aarch64.dmg' --dir /tmp
+          sha=$(shasum -a 256 /tmp/CC-GUI_*_aarch64.dmg | cut -d' ' -f1)
+
+          # Clone the tap with a token that can push, rewrite the two version-
+          # specific lines (the url derives the rest from #{version}), push back.
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/genio-learn/homebrew-tap.git" tap
+          cd tap
+          sed -i "s/^  version \".*\"/  version \"${version}\"/" Casks/cc-gui.rb
+          sed -i "s/^  sha256 \".*\"/  sha256 \"${sha}\"/"      Casks/cc-gui.rb
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Cask already at ${version} — nothing to push."
+          else
+            git commit -aqm "cc-gui ${version}"
+            git push
+          fi
