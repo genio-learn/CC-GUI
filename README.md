@@ -20,13 +20,15 @@ It embeds `claude-commander` directly (as a library) and drives the same tmux-ba
 ### Homebrew (macOS, Apple Silicon)
 
 ```sh
-brew install --cask --no-quarantine genio-learn/tap/cc-gui
+brew install --cask genio-learn/tap/cc-gui
 ```
 
-`--no-quarantine` skips macOS's Gatekeeper quarantine so the unsigned app opens
-straight away. Omit it and macOS may report the app as *"damaged"* — if so, clear
-the flag once: `xattr -dr com.apple.quarantine /Applications/CC-GUI.app`. Upgrade
-later with `brew upgrade --cask cc-gui`.
+The app is unsigned, so macOS quarantines it — but the cask clears the quarantine
+flag automatically on install, so it opens straight away. (Homebrew removed the
+old `--no-quarantine` flag in 5.x, with no replacement.) If macOS still reports
+the app as *"damaged"*, clear the flag manually:
+`xattr -dr com.apple.quarantine /Applications/CC-GUI.app`. Upgrade later with
+`brew upgrade --cask cc-gui`.
 
 ### Manual download
 
