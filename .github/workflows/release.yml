@@ -84,6 +84,9 @@ jobs:
   # to another repo. If the secret is absent the step no-ops (release still ships).
   update-cask:
     needs: release
+    # Disabled: the Homebrew cask is bumped manually for now. Re-enable by
+    # removing this guard to restore automatic tap updates on release.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Bump the Homebrew cask
