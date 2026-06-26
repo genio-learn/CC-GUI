@@ -83,6 +83,7 @@ export function makeReview(over: Partial<ReviewSnapshot> = {}): ReviewSnapshot {
       ],
     },
     comments: [],
+    reviewed: [],
     ...over,
   };
 }

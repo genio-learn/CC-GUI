@@ -204,6 +204,9 @@ let sessionId: string | null = null;
 let snapshot: ReviewSnapshot | null = null;
 let selectedFile: string | null = null;
 
+// Display paths of files marked reviewed (read); mirrors the persisted store.
+let reviewed = new Set<string>();
+
 // Line selection for a new comment: inclusive index range into the rendered
 // (selectable) lines of the current file, in click order.
 let selection: { anchor: number; head: number } | null = null;
@@ -238,6 +241,7 @@ async function refresh(): Promise<void> {
   }
   if (sessionId !== id) return; // closed or switched while loading
   snapshot = snap;
+  reviewed = new Set(snap.reviewed);
   tokenCache.clear();
   imageCache.clear();
   baseEl.textContent = `vs ${snap.base}`;
@@ -289,6 +293,39 @@ function currentFile(): FileDiff | undefined {
   return snapshot?.diff.files.find((f) => displayPath(f) === selectedFile);
 }
 
+/** Toggle the reviewed mark for a file (persisted via the backend) and reflect
+ *  it in the local mirror + file list. */
+async function toggleReviewed(path: string): Promise<void> {
+  if (!sessionId) return;
+  let now: boolean;
+  try {
+    now = await invoke<boolean>("toggle_file_reviewed", { id: sessionId, path });
+  } catch (e) {
+    statusEl.textContent = `mark failed: ${e}`;
+    return;
+  }
+  if (now) reviewed.add(path);
+  else reviewed.delete(path);
+  renderFiles();
+}
+
+/** Move the file selection by `delta` (clamped at the ends, no wrap) and keep
+ *  the newly selected row visible. Backs the Ctrl-N/P and arrow navigation. */
+function selectFileByOffset(delta: number): void {
+  const files = snapshot?.diff.files;
+  if (!files || !files.length) return;
+  const cur = files.findIndex((f) => displayPath(f) === selectedFile);
+  const next = Math.min(files.length - 1, Math.max(0, (cur === -1 ? 0 : cur) + delta));
+  const path = displayPath(files[next]);
+  if (path === selectedFile) return;
+  selectedFile = path;
+  clearSelection();
+  renderFiles();
+  renderDiff();
+  highlightCurrentFile();
+  filesEl.querySelector(".review-file.active")?.scrollIntoView({ block: "nearest" });
+}
+
 // ------------------------------------------------------------------- files
 
 function renderFiles(): void {
@@ -317,6 +354,17 @@ function renderFiles(): void {
     const row = document.createElement("div");
     row.className = "review-file";
     row.classList.toggle("active", path === selectedFile);
+    const isReviewed = reviewed.has(path);
+    row.classList.toggle("reviewed", isReviewed);
+
+    const tick = document.createElement("span");
+    tick.className = "file-reviewed-toggle";
+    tick.textContent = isReviewed ? "✓" : "○";
+    tick.title = isReviewed ? "Mark as not reviewed" : "Mark as reviewed";
+    tick.addEventListener("click", (e) => {
+      e.stopPropagation(); // toggling reviewed shouldn't also open the diff
+      void toggleReviewed(path);
+    });
 
     const status = document.createElement("span");
     status.className = `file-status file-${f.status}`;
@@ -344,7 +392,7 @@ function renderFiles(): void {
     removed.textContent = `-${f.removed}`;
     counts.append(added, removed);
 
-    row.append(status, name, counts);
+    row.append(tick, status, name, counts);
     row.addEventListener("click", () => {
       selectedFile = path;
       clearSelection();
@@ -779,4 +827,18 @@ document.addEventListener("keydown", (e) => {
   } else {
     closeReview();
   }
+});
+
+// File navigation: ↑/↓ and Ctrl-P/Ctrl-N move between files (matching the TUI's
+// review aliases). Skipped while typing in the comment editor.
+document.addEventListener("keydown", (e) => {
+  if (reviewEl.classList.contains("hidden")) return;
+  const t = e.target as HTMLElement;
+  if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) return;
+  let delta: number;
+  if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) delta = 1;
+  else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) delta = -1;
+  else return;
+  e.preventDefault();
+  selectFileByOffset(delta);
 });

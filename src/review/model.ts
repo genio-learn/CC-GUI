@@ -65,6 +65,8 @@ export type ReviewSnapshot = {
   base: string;
   diff: { files: FileDiff[] };
   comments: Comment[];
+  /** Display paths of files marked reviewed (read); their row is banded. */
+  reviewed: string[];
 };
 
 export type ApplyOutcome =

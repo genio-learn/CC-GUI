@@ -2061,10 +2061,16 @@ body.resizing .panel-resizer {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 8px 4px 16px;
+  padding: 4px 8px 4px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
+}
+
+/* A subtle band marks reviewed (read) files so done rows stand out beyond the
+   ✓ alone. Listed before :hover/.active so those still win on the focused row. */
+.review-file.reviewed {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
 }
 
 .review-file:hover {
@@ -2073,6 +2079,22 @@ body.resizing .panel-resizer {
 
 .review-file.active {
   background: var(--border-strong);
+}
+
+.file-reviewed-toggle {
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.file-reviewed-toggle:hover {
+  color: var(--text);
+}
+
+.review-file.reviewed .file-reviewed-toggle {
+  color: var(--success);
 }
 
 .file-status {

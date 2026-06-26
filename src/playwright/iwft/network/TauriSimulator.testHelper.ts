@@ -23,6 +23,7 @@ class TauriSimulator {
   private snapshot: Snapshot;
   private reviews: Record<string, ReviewSnapshot>;
   private comments: Record<string, Comment[]>; // by session id
+  private reviewed: Record<string, Set<string>>; // reviewed file paths, by session id
   private config: Record<string, unknown>;
   private keybindings: Record<string, string[]>;
   private customThemes: unknown[];
@@ -43,8 +44,10 @@ class TauriSimulator {
     this.keybindings = seed.keybindings ?? {};
     this.customThemes = seed.customThemes ?? [];
     this.comments = {};
+    this.reviewed = {};
     for (const [id, review] of Object.entries(seed.reviews)) {
       this.comments[id] = [...review.comments];
+      this.reviewed[id] = new Set(review.reviewed);
     }
     this.handle = this.handle.bind(this);
   }
@@ -57,6 +60,12 @@ class TauriSimulator {
   // ----- assertion getters (called from tests via page.evaluate) -----
   getComments(sessionId: string): Comment[] {
     return this.comments[sessionId] ?? [];
+  }
+
+  /** Reviewed file paths the fake now holds for a session — the state a
+   *  reviewed-toggle test asserts against. */
+  getReviewed(sessionId: string): string[] {
+    return [...(this.reviewed[sessionId] ?? [])];
   }
 
   /** Flattened live sessions across all groups — the state a sidebar test asserts. */
@@ -170,8 +179,14 @@ class TauriSimulator {
         return this.createComment(args as unknown as CreateCommentArgs);
       case "delete_comment":
         return this.deleteComment(args.id as string, args.commentId as string);
+      case "toggle_file_reviewed":
+        return this.toggleFileReviewed(args.id as string, args.path as string);
       case "apply_comments":
         return this.applyComments(args.id as string);
+      case "refresh_pr_status":
+        // The native command kicks the PR-poll loop; the fake has no live PR
+        // state to refresh, so it's a no-op (matches the UI: a background nudge).
+        return null;
       default:
         // Unhandled commands resolve to null rather than throwing, so an
         // unstubbed call surfaces as a UI no-op, not a crashed boot.
@@ -272,7 +287,24 @@ class TauriSimulator {
 
   private openReview(id: string): ReviewSnapshot {
     const review = this.reviews[id];
-    return { base: review.base, diff: review.diff, comments: this.comments[id] ?? [] };
+    return {
+      base: review.base,
+      diff: review.diff,
+      comments: this.comments[id] ?? [],
+      reviewed: [...(this.reviewed[id] ?? [])],
+    };
+  }
+
+  /** Toggle a file's reviewed mark and return its new state, mirroring the
+   *  backend's persisted toggle. */
+  private toggleFileReviewed(id: string, path: string): boolean {
+    const marks = this.reviewed[id] ?? (this.reviewed[id] = new Set());
+    if (marks.has(path)) {
+      marks.delete(path);
+      return false;
+    }
+    marks.add(path);
+    return true;
   }
 
   private createComment(a: CreateCommentArgs): null {
