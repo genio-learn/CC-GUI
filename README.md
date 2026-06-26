@@ -127,6 +127,8 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Cycle sidebar view (project / sections / stacks) | `⇄` |
 | Move a session to a section | drag its row onto a section header (drop on *In Progress* to unpin) |
 | Save a review comment | `Cmd/Ctrl+Enter` |
+| Review: previous / next file | `↑` / `↓` or `Ctrl-P` / `Ctrl-N` |
+| Review: toggle a file reviewed (bands the row) | click `○` / `✓` on the file row |
 
 ## Platform notes
 
@@ -135,3 +137,20 @@ The packaging scripts (`app:install`) and the login-shell PATH fix are macOS-spe
 ## Theming
 
 CC-GUI owns its own theming (independent of `claude-commander` config). Ten themes ship built in, and you can drop your own JSON themes into the app's config folder without rebuilding. Full authoring guide: [`docs/theming.md`](docs/theming.md).
+
+## Usage telemetry
+
+CC-GUI embeds `claude-commander`, which reports anonymous **feature-usage** telemetry so the maintainers can see which features are used. It is **on by default** and **opt-out**, identifying itself as `cc-gui` so GUI usage is distinguishable from the terminal app.
+
+**What is sent:** the name of each feature used (e.g. `review.open`), a coarse environment fingerprint (OS, architecture, shell name, terminal colour mode), a non-sensitive config snapshot (theme preset, view mode, which optional features are enabled), the app name + version, and a random, resettable install id.
+
+**What is never sent:** typed text, prompts, Claude session content, comment bodies, branch/session names, repository paths, or command arguments. The event schema is a fixed set of typed fields with no path that forwards free-form text.
+
+**To opt out**, either uncheck **telemetry (send anonymous usage)** in Settings (`Cmd/Ctrl+K` → "Settings"), set the config flag, or export the standard [`DO_NOT_TRACK`](https://consoledonottrack.com/) variable:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+See [`claude-commander`'s configuration docs](https://github.com/sizeak/claude-commander/blob/main/docs/configuration.md#usage-telemetry) for the full detail (and self-hosting the ingest endpoint).

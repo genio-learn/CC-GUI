@@ -85,6 +85,29 @@ pub async fn read_review_image(id: String, path: String, side: String) -> Result
     .await
 }
 
+/// Toggle the "reviewed" (read) mark on a file in a session's review, returning
+/// the file's new reviewed state. The mark is persisted and shared with the TUI,
+/// and is keyed on the file's content so it self-invalidates if the file later
+/// changes. Re-opens the snapshot to resolve the live `FileDiff` for `path`
+/// (a display path) since the mark store hashes the diff.
+#[tauri::command]
+pub async fn toggle_file_reviewed(id: String, path: String) -> Result<bool, String> {
+    let id = parse_session_id(&id)?;
+    with_service(move |svc| async move {
+        let snapshot = svc.open_review(&id).await.map_err(|e| e.to_string())?;
+        let file = snapshot
+            .diff
+            .files
+            .iter()
+            .find(|f| f.display_path() == path.as_str())
+            .ok_or_else(|| format!("file not in review diff: {path}"))?;
+        svc.toggle_file_reviewed(&id, file)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
 /// Apply staged comments: composes the markdown brief and injects a pointer
 /// prompt into the session's pane (delivery gated on agent state). May block
 /// up to the library's hold timeout while a permission prompt clears.

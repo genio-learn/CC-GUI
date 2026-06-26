@@ -2762,6 +2762,14 @@ registerPaletteProvider(() => [
     action: () => void deleteMergedSessions(),
   },
   {
+    label: "Refresh PR status",
+    hint: "command",
+    action: () => {
+      toast("Refreshing PR status…");
+      void invoke("refresh_pr_status").catch((e) => toast(`${e}`, "error"));
+    },
+  },
+  {
     label: "Attach commander session",
     hint: "command",
     action: () => commanderChip.click(),

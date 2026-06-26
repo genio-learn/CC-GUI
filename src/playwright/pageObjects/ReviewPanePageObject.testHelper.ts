@@ -6,6 +6,7 @@ import type { Comment } from "../../review/model";
 // review surface is well-identified, so no data-test attributes are needed yet.
 export class ReviewPanePageObject extends AppPageObject {
   private readonly pane = this.page.locator("#review");
+  private readonly files = this.page.locator("#review-files");
   private readonly diff = this.page.locator("#review-diff");
   private readonly applyButton = this.page.locator("#review-apply");
   private readonly status = this.page.locator("#review-status");
@@ -75,6 +76,43 @@ export class ReviewPanePageObject extends AppPageObject {
   storedComments(sessionId: string): Promise<Comment[]> {
     return this.page.evaluate(
       (id) => (window as unknown as { __CC_SIM__: { getComments(i: string): Comment[] } }).__CC_SIM__.getComments(id),
+      sessionId,
+    );
+  }
+
+  // ----- file tree: navigation + reviewed marks -----
+
+  /** A file-tree row by its basename (the `.file-path` label). */
+  fileRow(basename: string): Locator {
+    return this.files.locator(".review-file", { hasText: basename });
+  }
+
+  /** Toggle a file's reviewed mark via its ○/✓ control. */
+  toggleReviewed(basename: string): Promise<void> {
+    return this.step(`toggleReviewed: ${basename}`, () =>
+      this.fileRow(basename).locator(".file-reviewed-toggle").click(),
+    );
+  }
+
+  /** Rows currently banded as reviewed. */
+  reviewedRows(): Locator {
+    return this.files.locator(".review-file.reviewed");
+  }
+
+  /** Basename of the active (selected) file row. */
+  activeFileName(): Promise<string> {
+    return this.files.locator(".review-file.active .file-path").innerText();
+  }
+
+  /** Press a file-navigation key (e.g. "ArrowDown", "Control+n"). */
+  pressFileNav(key: string): Promise<void> {
+    return this.step(`pressFileNav: ${key}`, () => this.page.keyboard.press(key));
+  }
+
+  /** Reviewed file paths the fake now holds for this session. */
+  storedReviewed(sessionId: string): Promise<string[]> {
+    return this.page.evaluate(
+      (id) => (window as unknown as { __CC_SIM__: { getReviewed(i: string): string[] } }).__CC_SIM__.getReviewed(id),
       sessionId,
     );
   }

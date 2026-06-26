@@ -20,7 +20,7 @@ uuid = "1"
 # Pinned to a published claude-commander release for reproducible builds. To
 # develop against a local checkout instead, add a gitignored `.cargo/config.toml`
 # with `paths = ["../claude-commander"]` — see CONTRIBUTING.md.
-claude-commander = { git = "https://github.com/sizeak/claude-commander", tag = "v0.17.0" }
+claude-commander = { git = "https://github.com/sizeak/claude-commander", tag = "v0.21.0" }
 futures = "0.3.32"
 tracing = "0.1.44"
 chrono = "0.4.45"

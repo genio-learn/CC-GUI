@@ -52,6 +52,19 @@ function fieldInput(key: string, value: ConfigValue): HTMLElement {
   return area;
 }
 
+/** A friendly on/off control for the `telemetry` object, surfacing its
+ *  `enabled` flag as a checkbox instead of a raw JSON blob. Endpoint/token
+ *  (self-hoster fields) are left to the config file and preserved on save. */
+function telemetryToggle(): HTMLElement {
+  const tel = (current.telemetry ?? {}) as Record<string, unknown>;
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = tel.enabled !== false; // on by default
+  input.dataset.key = "telemetry";
+  input.dataset.kind = "telemetry-enabled";
+  return input;
+}
+
 function collect(): Record<string, ConfigValue> | null {
   const out: Record<string, ConfigValue> = { ...current };
   for (const el of box.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-key]")) {
@@ -75,6 +88,12 @@ function collect(): Record<string, ConfigValue> | null {
       case "string":
         out[key] = el.value;
         break;
+      case "telemetry-enabled": {
+        // Update only `enabled`, preserving any endpoint/token already set.
+        const prev = (current.telemetry ?? {}) as Record<string, unknown>;
+        out["telemetry"] = { ...prev, enabled: (el as HTMLInputElement).checked };
+        break;
+      }
       case "json":
         try {
           out[key] = JSON.parse(el.value);
@@ -103,6 +122,12 @@ function render(): void {
   grid.className = "settings-grid";
   for (const key of Object.keys(current).sort()) {
     const label = document.createElement("label");
+    if (key === "telemetry") {
+      label.textContent = "telemetry (send anonymous usage)";
+      grid.appendChild(label);
+      grid.appendChild(telemetryToggle());
+      continue;
+    }
     label.textContent = key;
     grid.appendChild(label);
     grid.appendChild(fieldInput(key, current[key]));

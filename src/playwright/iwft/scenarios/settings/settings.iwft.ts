@@ -61,3 +61,30 @@ test("valid edits round-trip through save_config", async ({ settings }) => {
 // NB: the data-kind="number" branch's NaN→toast path is unreachable from the UI —
 // <input type=number> sanitizes non-numeric input, so collect() never sees NaN.
 // Invalid-number abort is therefore not exercised here (it can't happen in-browser).
+
+test.describe("telemetry opt-out", () => {
+  test.use({
+    seed: {
+      snapshot: makeSnapshot(),
+      reviews: {},
+      config: { telemetry: { enabled: true, endpoint: null, token: null } },
+    },
+  });
+
+  test("renders a checkbox; opting out persists enabled:false and keeps endpoint/token", async ({
+    settings,
+  }) => {
+    await settings.open();
+
+    // The telemetry object surfaces as a friendly checkbox, not a JSON blob.
+    expect(await settings.fieldKind("telemetry")).toBe("telemetry-enabled");
+    expect(await settings.fieldInputType("telemetry")).toBe("checkbox");
+
+    await settings.setChecked("telemetry", false);
+    await settings.save();
+
+    expect(await settings.savedConfig()).toEqual({
+      telemetry: { enabled: false, endpoint: null, token: null },
+    });
+  });
+});

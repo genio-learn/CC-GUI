@@ -3,6 +3,7 @@
 //! branches (blocked reasons surfaced on project headers).
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
@@ -26,6 +27,33 @@ pub static PULL_BLOCKED: LazyLock<Mutex<HashMap<String, String>>> =
 pub fn spawn_polling_loops() {
     spawn_pr_loop();
     spawn_project_pull_loop();
+}
+
+/// True while a manual PR-status refresh is running, so a second trigger is a
+/// no-op rather than stacking another `gh` fan-out (e.g. a double-Enter on the
+/// palette command). Mirrors claude-commander's debounce of the same action.
+static MANUAL_PR_REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Palette "Refresh PR status": run one PR-status sweep immediately instead of
+/// waiting for the periodic loop. Debounced — returns early if a manual refresh
+/// is already in flight. The sidebar reflects the result on its next loop tick.
+#[tauri::command]
+pub async fn refresh_pr_status() -> Result<(), String> {
+    if MANUAL_PR_REFRESH_IN_FLIGHT.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let outcome = run_manual_pr_refresh().await;
+    MANUAL_PR_REFRESH_IN_FLIGHT.store(false, Ordering::SeqCst);
+    outcome
+}
+
+async fn run_manual_pr_refresh() -> Result<(), String> {
+    if !is_gh_available().await {
+        return Err("gh CLI not available".to_string());
+    }
+    let svc = service().await?;
+    poll_prs_once(svc).await;
+    Ok(())
 }
 
 /// Every `pr_check_interval_secs`: check the PR for each session's branch via
