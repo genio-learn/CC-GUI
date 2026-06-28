@@ -1123,6 +1123,48 @@ body {
   outline: none;
 }
 
+.path-input-row {
+  display: flex;
+  gap: 4px;
+}
+
+.path-browse {
+  flex: none;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.path-browse:hover {
+  border-color: var(--accent);
+}
+
+.path-completions {
+  margin-top: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.path-completion {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-completion.selected,
+.path-completion:hover {
+  background: var(--border);
+}
+
 .error {
   padding: 12px;
   color: var(--danger);

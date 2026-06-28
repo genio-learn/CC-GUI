@@ -138,6 +138,60 @@ export class SidebarPageObject extends AppPageObject {
     });
   }
 
+  // ----- add project (sidebar menu → path input with autocomplete) -----
+  private readonly pathInput = this.sessions.locator(".path-input input");
+
+  /** Open the sidebar menu and choose "Add project…" — leaves the path input
+   *  focused and pre-seeded with `~/`. */
+  openAddProject(): Promise<void> {
+    return this.step("openAddProject", async () => {
+      await this.page.locator("#sidebar-menu").click();
+      await this.menuItem("Add project…").click();
+      await expect(this.pathInput).toBeVisible();
+    });
+  }
+
+  /** Replace the path input's value and let the debounced completion settle. */
+  typePath(value: string): Promise<void> {
+    return this.step(`typePath: ${value}`, async () => {
+      await this.pathInput.fill(value);
+      // Debounce is 100ms; press a no-op key so `fill` still triggers `input`.
+      await this.page.waitForTimeout(150);
+    });
+  }
+
+  /** The visible autocomplete completion rows, top to bottom. */
+  pathCompletions(): Locator {
+    return this.sessions.locator(".path-completion");
+  }
+
+  /** Press a key in the focused path input (e.g. "Tab", "ArrowDown", "Enter"). */
+  pressInPath(key: string): Promise<void> {
+    return this.step(`pressInPath: ${key}`, () => this.pathInput.press(key));
+  }
+
+  /** The current text in the path input. */
+  pathValue(): Promise<string> {
+    return this.pathInput.inputValue();
+  }
+
+  /** Click the native folder-picker button. */
+  clickBrowse(): Promise<void> {
+    return this.step("clickBrowse", () => this.sessions.locator(".path-browse").click());
+  }
+
+  /** Projects the fake holds (name + repo_path) — assert an add landed. */
+  storedProjects(): Promise<{ id: string; name: string; repo_path: string }[]> {
+    return this.page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __CC_SIM__: { getProjects(): { id: string; name: string; repo_path: string }[] };
+          }
+        ).__CC_SIM__.getProjects(),
+    );
+  }
+
   // ----- rename (via row context menu → inline input) -----
   rename(title: string, newTitle: string): Promise<void> {
     return this.step(`rename: ${title} → ${newTitle}`, async () => {

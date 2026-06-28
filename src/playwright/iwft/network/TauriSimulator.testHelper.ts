@@ -32,6 +32,9 @@ class TauriSimulator {
   private ptyChannels: Record<string, { channel: { id: number }; index: number }> = {};
   private nextComment = 1;
   private nextSession = 1;
+  private nextProject = 1;
+  private dirs: string[];
+  private browsePath: string | null;
   private openedUrls: string[] = [];
   // Section moves the frontend actually dispatched (a no-op drop short-circuits
   // before invoke, so this stays empty — how a negative test tells them apart).
@@ -43,6 +46,8 @@ class TauriSimulator {
     this.config = seed.config ?? {};
     this.keybindings = seed.keybindings ?? {};
     this.customThemes = seed.customThemes ?? [];
+    this.dirs = seed.dirs ?? [];
+    this.browsePath = seed.browsePath ?? null;
     this.comments = {};
     this.reviewed = {};
     for (const [id, review] of Object.entries(seed.reviews)) {
@@ -71,6 +76,12 @@ class TauriSimulator {
   /** Flattened live sessions across all groups — the state a sidebar test asserts. */
   getSessions(): SessionRow[] {
     return this.snapshot.groups.flatMap((g) => g.sessions);
+  }
+
+  /** Projects the fake now holds (name + repo_path) — what an add-project test
+   *  asserts against. */
+  getProjects(): { id: string; name: string; repo_path: string }[] {
+    return this.snapshot.groups.map((g) => ({ id: g.id, name: g.name, repo_path: g.repo_path }));
   }
 
   /** Current section buckets (null in project view) — what a move-to-section
@@ -136,6 +147,16 @@ class TauriSimulator {
         return this.moveToSection(args.id as string, (args.section as string | null) ?? null);
       case "merged_pr_sessions":
         return this.mergedPrSessions();
+      // ----- add project / scan / path autocomplete -----
+      case "complete_path":
+        return this.completePath(args.partial as string);
+      case "add_project":
+        return this.addProject(args.path as string);
+      case "scan_directory":
+        return this.scanDirectory(args.path as string);
+      // ----- dialog plugin (native folder picker behind "Browse…") -----
+      case "plugin:dialog|open":
+        return this.browsePath;
       // ----- PTY lifecycle (terminal tabs) -----
       case "prepare_attach":
         return null;
@@ -276,6 +297,39 @@ class TauriSimulator {
       buckets[i].session_ids.push(s.id);
     }
     this.snapshot.sections = buckets;
+  }
+
+  /** Directories that are direct children of `partial`'s parent and whose
+   *  basename starts with its trailing segment — mirrors the backend's
+   *  list_matching_dirs over the seeded `dirs` (no real filesystem). */
+  private completePath(partial: string): string[] {
+    const slash = partial.lastIndexOf("/");
+    const parent = slash >= 0 ? partial.slice(0, slash + 1) : "";
+    const name = slash >= 0 ? partial.slice(slash + 1) : partial;
+    const results = new Set<string>();
+    for (const d of this.dirs) {
+      if (parent && !d.startsWith(parent)) continue;
+      const rest = parent ? d.slice(parent.length) : d;
+      const seg = rest.split("/")[0];
+      if (seg && seg.startsWith(name)) results.add(`${parent}${seg}`);
+    }
+    return [...results].sort();
+  }
+
+  /** Add a project group (no sessions) keyed off the path's basename, mirroring
+   *  the backend add_project; returns the new id like the real command. */
+  private addProject(path: string): string {
+    const id = `proj-add-${this.nextProject++}`;
+    const name = path.replace(/\/+$/, "").split("/").pop() || path;
+    this.snapshot.groups.push({ id, name, repo_path: path, pull_blocked: null, sessions: [] });
+    return id;
+  }
+
+  /** Count seeded dirs nested under `path` as the "added" repos. */
+  private scanDirectory(path: string): { added: number; skipped: number } {
+    const prefix = path.endsWith("/") ? path : `${path}/`;
+    const added = this.dirs.filter((d) => d.startsWith(prefix)).length;
+    return { added, skipped: 0 };
   }
 
   /** [id, label] pairs for sessions whose PR has merged — the merged-PR sweep source. */

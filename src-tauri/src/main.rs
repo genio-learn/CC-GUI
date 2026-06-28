@@ -72,6 +72,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState::default())
         .setup(|app| {
             groups::spawn_sessions_loop(app.handle().clone());
@@ -105,6 +106,7 @@ fn main() {
             cascade::cascade_abandon,
             cascade::push_stack,
             projects::add_project,
+            projects::complete_path,
             projects::scan_directory,
             projects::remove_project,
             projects::prepare_project_shell,
