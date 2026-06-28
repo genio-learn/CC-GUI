@@ -123,6 +123,9 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Attach / recreate a session | click its row |
 | Full session menu (shell, review, rename, editor, PR, lifecycle) | right-click row |
 | New session in a project | `+` on the project |
+| Add-project path: complete to common prefix | `Tab` |
+| Add-project path: pick / drill into a directory | `↑` / `↓`, then `Enter` |
+| Add-project path: native folder picker | `Browse…` |
 | Project shell | `$` on the project |
 | Cycle sidebar view (project / sections / stacks) | `⇄` |
 | Move a session to a section | drag its row onto a section header (drop on *In Progress* to unpin) |

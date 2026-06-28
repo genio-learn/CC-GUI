@@ -17,6 +17,7 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     "Sidebar",
     [
       ["⋯ menu", "Add project, scan directory, delete merged-PR sessions"],
+      ["Path input", "Type to autocomplete dirs (Tab completes, ↑/↓ pick, Enter drills in/commits, Browse… opens picker)"],
       ["⇄", "Cycle view: project / sections / section stacks"],
       ["Drag row → section", "Move a session to a section (drop on In Progress to unpin)"],
       ["● (yellow)", "Unread: agent finished while you were away"],

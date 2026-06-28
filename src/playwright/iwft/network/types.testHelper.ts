@@ -52,4 +52,9 @@ export type Seed = {
   config?: Record<string, unknown>;
   /** Raw custom themes answered to list_custom_themes (validated by theme.ts). */
   customThemes?: unknown[];
+  /** Absolute directory paths the fake filesystem "contains" — the source for
+   *  complete_path autocomplete. */
+  dirs?: string[];
+  /** Path the native folder picker (Browse…) returns; null models a cancel. */
+  browsePath?: string | null;
 };

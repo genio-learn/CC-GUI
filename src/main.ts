@@ -2,6 +2,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText, readText } from "@tauri-apps/plugin-clipboard-manager";
+import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -1738,35 +1739,152 @@ function projectMenuItems(group: ProjectGroup, createKey: string = group.id): Me
   ];
 }
 
-/** Path input at the top of the sidebar for add-project / scan-directory. */
+/** Longest common prefix of a list of strings (drives Tab completion). */
+function longestCommonPrefix(strings: string[]): string {
+  if (!strings.length) return "";
+  let prefix = strings[0];
+  for (const s of strings.slice(1)) {
+    while (prefix && !s.startsWith(prefix)) prefix = prefix.slice(0, -1);
+    if (!prefix) break;
+  }
+  return prefix;
+}
+
+/** Path input at the top of the sidebar for add-project / scan-directory, with
+ *  a live directory-completion dropdown (Tab → common prefix, ↑/↓ to pick,
+ *  Enter on a match drills in, Enter on free text commits) and a native folder
+ *  picker via "Browse…". Seeded with `~/` so the first listing shows $HOME. */
 function renderTopInput(mode: "add" | "scan"): HTMLDivElement {
   const wrap = document.createElement("div");
-  wrap.className = "create-input";
+  wrap.className = "create-input path-input";
+  const row = document.createElement("div");
+  row.className = "path-input-row";
   const input = noTextAssist(document.createElement("input"));
   input.placeholder = mode === "add" ? "path to git repo…" : "directory to scan for repos…";
+  input.value = "~/";
+  const browse = document.createElement("button");
+  browse.className = "path-browse";
+  browse.textContent = "Browse…";
+  const listEl = document.createElement("div");
+  listEl.className = "path-completions";
+  row.append(input, browse);
+  wrap.append(row, listEl);
+
+  let completions: string[] = [];
+  let selected = -1; // -1 = nothing highlighted (Enter commits the typed value)
+  let debounce: number | undefined;
+
+  function renderCompletions(): void {
+    listEl.innerHTML = "";
+    completions.forEach((c, i) => {
+      const r = document.createElement("div");
+      r.className = "path-completion";
+      r.classList.toggle("selected", i === selected);
+      r.textContent = c;
+      // mousedown (not click) so the pick lands before the input's blur.
+      r.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        input.value = `${c}/`;
+        selected = -1;
+        void refresh();
+        input.focus();
+      });
+      listEl.appendChild(r);
+    });
+  }
+
+  async function refresh(): Promise<void> {
+    let next: string[];
+    try {
+      next = await invoke<string[]>("complete_path", { partial: input.value });
+    } catch {
+      next = [];
+    }
+    completions = next;
+    selected = completions.length ? Math.min(selected, completions.length - 1) : -1;
+    renderCompletions();
+  }
+
+  function commit(path: string): void {
+    topInput = null;
+    input.disabled = true;
+    const call =
+      mode === "add"
+        ? invoke("add_project", { path })
+        : invoke<{ added: number; skipped: number }>("scan_directory", { path }).then((r) =>
+            toast(`Scan complete: ${r.added} added, ${r.skipped} already present`),
+          );
+    call
+      .catch((err) => toast(`${mode === "add" ? "add project" : "scan"} failed: ${err}`, "error"))
+      .finally(() => void refreshNow());
+    renderSidebar();
+  }
+
+  input.addEventListener("input", () => {
+    selected = -1;
+    clearTimeout(debounce);
+    debounce = window.setTimeout(() => void refresh(), 100);
+  });
+
   input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
     if (e.key === "Escape") {
       topInput = null;
       renderSidebar();
+      return;
     }
-    if (e.key === "Enter" && input.value.trim()) {
-      const path = input.value.trim();
-      topInput = null;
-      input.disabled = true;
-      const call =
-        mode === "add"
-          ? invoke("add_project", { path })
-          : invoke<{ added: number; skipped: number }>("scan_directory", { path }).then((r) =>
-              toast(`Scan complete: ${r.added} added, ${r.skipped} already present`),
-            );
-      call
-        .catch((err) => toast(`${mode === "add" ? "add project" : "scan"} failed: ${err}`, "error"))
-        .finally(() => void refreshNow());
-      renderSidebar();
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (completions.length) {
+        selected = (selected + 1) % completions.length;
+        renderCompletions();
+      }
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (completions.length) {
+        selected = selected <= 0 ? completions.length - 1 : selected - 1;
+        renderCompletions();
+      }
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const lcp = longestCommonPrefix(completions);
+      if (lcp && lcp.length > input.value.length) {
+        input.value = lcp;
+        void refresh();
+      }
+      return;
+    }
+    if (e.key === "Enter") {
+      // A highlighted row drills into that directory; otherwise commit the
+      // typed path (the "I typed the full path, just add it" case).
+      if (selected >= 0 && completions[selected]) {
+        input.value = `${completions[selected]}/`;
+        selected = -1;
+        void refresh();
+      } else if (input.value.trim()) {
+        commit(input.value.trim());
+      }
     }
   });
-  wrap.appendChild(input);
-  setTimeout(() => input.focus(), 0);
+
+  browse.addEventListener("click", () => {
+    void openFolderDialog({ directory: true }).then((picked) => {
+      if (typeof picked === "string") {
+        input.value = picked;
+        input.focus();
+        void refresh();
+      }
+    });
+  });
+
+  setTimeout(() => {
+    input.focus();
+    void refresh();
+  }, 0);
   return wrap;
 }
 
