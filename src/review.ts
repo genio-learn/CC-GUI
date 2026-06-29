@@ -245,7 +245,12 @@ async function refresh(): Promise<void> {
   tokenCache.clear();
   imageCache.clear();
   baseEl.textContent = `vs ${snap.base}`;
-  if (!snap.diff.files.some((f) => displayPath(f) === selectedFile)) {
+  // Keep the selection if it still points at a diff file or a stranded file
+  // that still has comments; otherwise fall back to the first diff file.
+  const stillSelectable =
+    snap.diff.files.some((f) => displayPath(f) === selectedFile) ||
+    snap.comments.some((c) => c.file === selectedFile);
+  if (!stillSelectable) {
     selectedFile = snap.diff.files.length ? displayPath(snap.diff.files[0]) : null;
     clearSelection();
   }
@@ -291,6 +296,12 @@ function clearSelection(): void {
 
 function currentFile(): FileDiff | undefined {
   return snapshot?.diff.files.find((f) => displayPath(f) === selectedFile);
+}
+
+/** All comments anchored to `path`, regardless of whether that file (or their
+ *  line) is still in the diff. */
+function commentsForFile(path: string): Comment[] {
+  return snapshot?.comments.filter((c) => c.file === path) ?? [];
 }
 
 /** Toggle the reviewed mark for a file (persisted via the backend) and reflect
@@ -402,12 +413,68 @@ function renderFiles(): void {
     });
     filesEl.appendChild(row);
   }
-  if (!snapshot.diff.files.length) {
+
+  // Files that have comments but are no longer in the diff (their change was
+  // reverted) never get a row above, so their comments would be unreachable.
+  // List them in a trailing section, keeping them selectable and deletable.
+  const diffPaths = new Set(snapshot.diff.files.map(displayPath));
+  const strandedFiles = [...new Set(snapshot.comments.map((c) => c.file))]
+    .filter((p) => !diffPaths.has(p))
+    .sort();
+  if (strandedFiles.length) {
+    const header = document.createElement("div");
+    header.className = "review-dir stranded-dir";
+    header.textContent = "no longer in the diff";
+    header.title = "Files with comments whose change is no longer in the diff";
+    filesEl.appendChild(header);
+    for (const path of strandedFiles) {
+      filesEl.appendChild(strandedFileRow(path, commentCounts.get(path) ?? 0));
+    }
+  }
+
+  if (!snapshot.diff.files.length && !strandedFiles.length) {
     const empty = document.createElement("div");
     empty.className = "review-empty";
     empty.textContent = "No changes";
     filesEl.appendChild(empty);
   }
+}
+
+/** A file-list row for a path that has comments but is no longer in the diff:
+ *  no reviewed toggle or +/- stats (there's no diff), just a marker, the name,
+ *  and the comment count. Selecting it renders the stranded comments. */
+function strandedFileRow(path: string, count: number): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "review-file stranded";
+  row.classList.toggle("active", path === selectedFile);
+  const slash = path.lastIndexOf("/");
+
+  const status = document.createElement("span");
+  status.className = "file-status file-stranded";
+  status.textContent = "!";
+
+  const name = document.createElement("span");
+  name.className = "file-path";
+  name.textContent = path.slice(slash + 1);
+  name.title = path;
+
+  const counts = document.createElement("span");
+  counts.className = "file-counts";
+  if (count) {
+    const c = document.createElement("span");
+    c.className = "file-comments";
+    c.textContent = `🗨${count}`;
+    counts.appendChild(c);
+  }
+
+  row.append(status, name, counts);
+  row.addEventListener("click", () => {
+    selectedFile = path;
+    clearSelection();
+    renderFiles();
+    renderDiff();
+  });
+  return row;
 }
 
 // ---------------------------------------------------------------- comments
@@ -529,15 +596,35 @@ function renderCommentEditor(lines: DiffLine[]): HTMLDivElement {
 
 // -------------------------------------------------------------------- diff
 
+/** Append a trailing section to the diff for comments that don't anchor to any
+ *  rendered line — their anchor line, or whole file, has left the diff. Keeps
+ *  them visible and deletable instead of silently dropping them. Mirrors
+ *  claude-commander's TUI orphan handling. */
+function renderOrphanComments(orphans: Comment[]): void {
+  if (!orphans.length) return;
+  const header = document.createElement("div");
+  header.className = "hunk-header orphan-header";
+  header.textContent = "Unanchored comments — lines no longer in the diff";
+  diffEl.appendChild(header);
+  for (const c of orphans) diffEl.appendChild(renderCommentBlock(c));
+}
+
 function renderDiff(): void {
   diffEl.innerHTML = "";
   if (!snapshot) return;
   const file = currentFile();
   if (!file) {
-    const empty = document.createElement("div");
-    empty.className = "review-empty";
-    empty.textContent = "No changes";
-    diffEl.appendChild(empty);
+    // The selected path has no diff (its change was reverted) but may still
+    // carry comments; render them so they stay visible and deletable.
+    const stranded = selectedFile ? commentsForFile(selectedFile) : [];
+    if (stranded.length) {
+      renderOrphanComments(stranded);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "review-empty";
+      empty.textContent = "No changes";
+      diffEl.appendChild(empty);
+    }
     return;
   }
   const mime = imageMime(file);
@@ -627,18 +714,8 @@ function renderDiff(): void {
   // Comments whose anchor line is no longer present in any hunk (the file
   // changed under them) match no rendered line, so they'd silently vanish —
   // and with them their delete button, stranding a drifted comment that blocks
-  // apply with no way to clear it. Pin them to a trailing section so they stay
-  // visible and deletable. Mirrors claude-commander's TUI orphan handling.
-  const orphans = snapshot.comments.filter(
-    (c) => c.file === displayPath(file) && !rendered.has(c.id),
-  );
-  if (orphans.length) {
-    const header = document.createElement("div");
-    header.className = "hunk-header orphan-header";
-    header.textContent = "Unanchored comments — lines no longer in the diff";
-    diffEl.appendChild(header);
-    for (const c of orphans) diffEl.appendChild(renderCommentBlock(c));
-  }
+  // apply with no way to clear it.
+  renderOrphanComments(commentsForFile(displayPath(file)).filter((c) => !rendered.has(c.id)));
 
   if (selection && editorAnchorRow) {
     const selLines = flatLines.slice(selStart, selEnd + 1);

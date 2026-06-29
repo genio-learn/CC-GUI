@@ -91,6 +91,41 @@ test.describe("with an orphaned comment", () => {
   });
 });
 
+test.describe("with a comment on a file no longer in the diff", () => {
+  // The change to gone.txt was reverted, so it isn't in the diff at all — but
+  // its comment persists in the session's comment store.
+  const stranded: Comment = {
+    id: "c-stranded",
+    file: "gone.txt",
+    side: "new",
+    line_range: [3, 3],
+    snippet: "reverted line",
+    comment: "was here",
+    status: "drifted",
+    created_at: "2026-01-01T00:00:00Z",
+  };
+  test.use({
+    seed: {
+      ...defaultSeed(),
+      reviews: { [SESSION_ID]: makeReview({ comments: [stranded] }) },
+    },
+  });
+
+  test("is listed in a stranded section and stays deletable", async ({ review }) => {
+    // gone.txt has no diff row, so it surfaces only in the stranded section.
+    await expect(review.strandedRow("gone.txt")).toBeVisible();
+
+    await review.selectFile("gone.txt");
+    await expect(review.orphanHeader()).toBeVisible();
+    await expect(review.commentBodies()).toHaveText(["was here"]);
+
+    await review.deleteFirstComment();
+    await expect(review.commentBodies()).toHaveCount(0);
+    await expect(review.strandedRow("gone.txt")).toBeHidden();
+    expect(await review.storedComments(SESSION_ID)).toHaveLength(0);
+  });
+});
+
 test.describe("with two files", () => {
   const emptyFile = (name: string): FileDiff => ({
     old_path: name,

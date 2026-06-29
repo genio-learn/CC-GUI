@@ -93,6 +93,16 @@ export class ReviewPanePageObject extends AppPageObject {
     return this.files.locator(".review-file", { hasText: basename });
   }
 
+  /** A stranded-file row — comments on a file no longer in the diff — by basename. */
+  strandedRow(basename: string): Locator {
+    return this.files.locator(".review-file.stranded", { hasText: basename });
+  }
+
+  /** Click a file-tree row (diff or stranded) to select it. */
+  selectFile(basename: string): Promise<void> {
+    return this.step(`selectFile: ${basename}`, () => this.fileRow(basename).click());
+  }
+
   /** Toggle a file's reviewed mark via its ○/✓ control. */
   toggleReviewed(basename: string): Promise<void> {
     return this.step(`toggleReviewed: ${basename}`, () =>
