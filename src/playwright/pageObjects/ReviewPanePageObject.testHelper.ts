@@ -48,6 +48,12 @@ export class ReviewPanePageObject extends AppPageObject {
     return this.diff.locator(".review-comment:not(.editor) .comment-body");
   }
 
+  /** The trailing "unanchored comments" section header — present only when a
+   *  comment's anchor line has left the current diff. */
+  orphanHeader(): Locator {
+    return this.diff.locator(".hunk-header.orphan-header");
+  }
+
   deleteFirstComment(): Promise<void> {
     return this.step("deleteFirstComment", async () => {
       await this.diff.locator(".review-comment .comment-delete").first().click();

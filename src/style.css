@@ -2236,6 +2236,12 @@ body.resizing .panel-resizer {
   background: var(--bg-elevated);
 }
 
+/* Header for the trailing section of comments whose anchor line left the diff;
+   tinted with the same attention tone as a drifted comment. */
+.hunk-header.orphan-header {
+  color: var(--attention);
+}
+
 .diff-line {
   display: flex;
   white-space: pre;
