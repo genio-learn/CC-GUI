@@ -2193,6 +2193,12 @@ body.resizing .panel-resizer {
   color: var(--file-renamed);
 }
 
+/* File-list section + marker for comments whose file is no longer in the diff. */
+.review-dir.stranded-dir,
+.file-status.file-stranded {
+  color: var(--attention);
+}
+
 .file-path {
   flex: 1;
   min-width: 0;
