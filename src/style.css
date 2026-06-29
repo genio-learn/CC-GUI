@@ -338,6 +338,19 @@ body {
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
+  cursor: grab;
+}
+
+.board-col.dragging {
+  opacity: 0.5;
+}
+
+.board-col.drop-before {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.board-col.drop-after {
+  box-shadow: inset -3px 0 0 var(--accent);
 }
 
 .board-col-name {
@@ -424,41 +437,32 @@ body {
   text-overflow: ellipsis;
 }
 
-.card-state-pill {
-  flex-shrink: 0;
-  font-size: 10px;
-  padding: 1px 7px;
-  border-radius: 8px;
-  color: var(--state-color);
-  background: color-mix(in srgb, var(--state-color) 13%, transparent);
-  white-space: nowrap;
-}
-
 .card-menu {
   margin-left: auto;
   flex-shrink: 0;
   border-color: transparent;
 }
 
-.card-preview {
-  margin: 0 10px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: var(--bg-inset);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.card-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 10px 2px;
+  padding-bottom: 4px;
   font-size: 11px;
-  line-height: 1.45;
+  color: var(--text-dim);
 }
 
-.card-preview-line {
-  color: var(--text-muted);
+.card-branch {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.card-preview-line.dim {
-  color: var(--text-dim);
+.card-branch::before {
+  content: "⎇ ";
+  opacity: 0.7;
 }
 
 .card-diffstat {
@@ -539,8 +543,29 @@ body {
   background: var(--bg-elevated);
 }
 
-#board-dock.expanded {
-  height: 420px;
+/* Fullscreen overlay: float the dock into a centred ~85% dialog over a dimmed
+   backdrop. `inset` of 7.5vh/7.5vw leaves an even margin all round so the dialog
+   reads as dismissable, not as a panel that swallowed the window. */
+#board-dock.dock-fullscreen {
+  position: fixed;
+  inset: 7.5vh 7.5vw;
+  height: auto;
+  z-index: 50;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+#board-dock-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+#board-dock-backdrop.hidden {
+  display: none;
 }
 
 #board-dock-header {
@@ -552,6 +577,13 @@ body {
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
+}
+
+/* Larger glyphs so the ⤢ / × fill their buttons in the dock top bar. */
+#board-dock-header .row-action {
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 8px;
 }
 
 #board-dock-attached {
