@@ -2357,6 +2357,7 @@ function setLayout(next: "console" | "board"): void {
     dockDetached = false; // a fresh board entry re-docks the active terminal
     dockActiveTerminal();
   } else {
+    setDockFullscreen(false);
     undockTerminal();
   }
 }
@@ -2379,20 +2380,38 @@ if (layout === "board") dockActiveTerminal();
 
 // Dock "×" detaches: undock the terminal back to #terminals and show the dock
 // placeholder. It does NOT kill the PTY — the session stays attached and the
-// terminal reappears in Console (or on the next card ▸).
+// terminal reappears in Console (or on the next card ▸). Also drops out of the
+// fullscreen overlay if it was open (nothing left to show fullscreen).
 document.querySelector<HTMLButtonElement>("#board-dock-close")!.addEventListener("click", () => {
+  setDockFullscreen(false);
   undockTerminal();
   dockDetached = true;
   updateDockHeader();
 });
-// Dock "⤢" expand: toggle a taller dock preset. Clear any drag-set inline
-// height so the `.expanded` CSS height wins; on collapse, restore the CSS
-// default by clearing the inline height too (the next drag re-establishes one).
-document.querySelector<HTMLButtonElement>("#board-dock-expand")!.addEventListener("click", () => {
-  boardDockEl.style.height = "";
-  boardDockEl.classList.toggle("expanded");
+// Dock "⤢": float the docked terminal into a centred ~85% overlay over a dimmed
+// backdrop — obviously a dismissable dialog, not a panel that ate the window.
+// Toggling clears any drag-set inline height so the overlay's CSS size wins, and
+// re-fits the xterm into the new surface.
+const boardDockBackdropEl = document.querySelector<HTMLDivElement>("#board-dock-backdrop")!;
+function setDockFullscreen(on: boolean): void {
+  boardDockEl.classList.toggle("dock-fullscreen", on);
+  boardDockBackdropEl.classList.toggle("hidden", !on);
+  // makeResizable sets an inline `position: relative` (+ height) on the dock, and
+  // inline styles beat the overlay's stylesheet rule — so toggle them directly.
+  if (on) {
+    boardDockEl.style.position = "fixed";
+    boardDockEl.style.height = ""; // let the overlay's CSS inset size win
+  } else {
+    boardDockEl.style.position = "relative";
+    const saved = Number(localStorage.getItem("cc-dock-height"));
+    boardDockEl.style.height = saved ? `${saved}px` : ""; // restore the resized height
+  }
   if (layout === "board") dockActiveTerminal();
+}
+document.querySelector<HTMLButtonElement>("#board-dock-expand")!.addEventListener("click", () => {
+  setDockFullscreen(!boardDockEl.classList.contains("dock-fullscreen"));
 });
+boardDockBackdropEl.addEventListener("click", () => setDockFullscreen(false));
 
 // Dock vertical resize: drag the separator between the columns and the dock to
 // set the dock height. Re-fits the docked xterm on each frame.
@@ -2573,16 +2592,14 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   accent.className = `card-accent ${boardStateClass(s)}`;
   card.appendChild(accent);
 
-  // Header: liveness dot + name + state pill + ⋯ menu.
+  // Header: liveness dot + name + ⋯ menu. The dot (and the accent bar) already
+  // convey the state, so no textual state pill is repeated here.
   const header = document.createElement("div");
   header.className = "card-header";
   const name = document.createElement("span");
   name.className = "card-title";
   name.textContent = s.title;
   name.title = `Branch: ${s.branch}`;
-  const pill = document.createElement("span");
-  pill.className = `card-state-pill ${boardStateClass(s)}`;
-  pill.textContent = humanState(s);
   const menu = document.createElement("button");
   menu.className = "row-action card-menu";
   menu.textContent = "⋯";
@@ -2591,21 +2608,22 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     e.stopPropagation();
     showContextMenu(e, sessionMenuItems(cardRefs(s)));
   });
-  header.append(statusGlyph(s), name, pill, menu);
+  header.append(statusGlyph(s), name, menu);
   card.appendChild(header);
 
-  // 2-line mini preview: concise REAL status (state + branch), monospace on the
-  // crust background. Not fabricated terminal output.
-  const preview = document.createElement("div");
-  preview.className = "card-preview";
-  const line1 = document.createElement("div");
-  line1.className = "card-preview-line";
-  line1.textContent = humanState(s);
-  const line2 = document.createElement("div");
-  line2.className = "card-preview-line dim";
-  line2.textContent = s.branch;
-  preview.append(line1, line2);
-  card.appendChild(preview);
+  // Branch line under the title — only when it diverges from the title (it's
+  // usually just a slug of the name), mirroring the sidebar row. Omitted
+  // otherwise to keep cards compact. The PR badge lives in the footer.
+  if (!branchMatchesTitle(s.title, s.branch)) {
+    const sub = document.createElement("div");
+    sub.className = "card-subtitle";
+    const branch = document.createElement("span");
+    branch.className = "card-branch";
+    branch.textContent = s.branch;
+    branch.title = `Branch: ${s.branch}`;
+    sub.appendChild(branch);
+    card.appendChild(sub);
+  }
 
   // Diffstat bar (lazy; hidden until a diff lands).
   const diff = document.createElement("div");
@@ -2613,11 +2631,15 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   card.appendChild(diff);
   ensureBoardDiffStat(s.id, diff);
 
-  // Footer: ✎/⚠ chips + quick actions ▸ attach (success) / ± review (info).
+  // Footer: PR badge + ✎/⚠ chips + quick actions ▸ attach (success) / ± review
+  // (info). Keeping the PR badge on this always-present row keeps cards a
+  // consistent shape rather than adding a variable extra line above.
   const footer = document.createElement("div");
   footer.className = "card-footer";
   const chips = document.createElement("span");
   chips.className = "card-chips";
+  const prChip = prBadge(s);
+  if (prChip) chips.appendChild(prChip);
   if (s.has_pending_comments) {
     const c = document.createElement("span");
     c.className = "comment-badge";
@@ -2681,14 +2703,81 @@ function cardRefs(s: SessionRow): RowRefs {
   };
 }
 
+// Board column order is GUI-owned (like theme/layout prefs): the backend always
+// returns projects alphabetically, and we re-sort client-side from a persisted
+// id list so drag-to-reorder sticks across reloads without touching CC config.
+const BOARD_ORDER_KEY = "cc-board-col-order";
+function loadBoardOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(BOARD_ORDER_KEY);
+    return Array.isArray(JSON.parse(raw ?? "")) ? (JSON.parse(raw!) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+let boardColOrder = loadBoardOrder();
+
+/** `groups` re-sorted by the persisted column order. Projects absent from the
+ *  saved order (new ones) keep their backend alphabetical position, after the
+ *  ranked ones — Array.sort is stable, so unranked relative order is preserved. */
+function orderedGroups(): ProjectGroup[] {
+  const rank = new Map(boardColOrder.map((id, i) => [id, i] as const));
+  return [...groups].sort(
+    (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity),
+  );
+}
+
+/** The column to drop before, given the pointer's x (null = past the last). */
+let draggingColId: string | null = null;
+function colBeforeX(x: number): HTMLElement | null {
+  const cols = [...boardColumnsEl.querySelectorAll<HTMLElement>(".board-col:not(.dragging)")];
+  for (const c of cols) {
+    const r = c.getBoundingClientRect();
+    if (x < r.left + r.width / 2) return c;
+  }
+  return null;
+}
+
+/** Insertion marker, mirroring the tab strip: an accent line on the edge where
+ *  the dragged column will land (left for "before", right of the last for end). */
+function showColDropMarker(target: HTMLElement | null): void {
+  clearColDropMarker();
+  if (target) {
+    target.classList.add("drop-before");
+  } else {
+    const cols = boardColumnsEl.querySelectorAll<HTMLElement>(".board-col:not(.dragging)");
+    cols[cols.length - 1]?.classList.add("drop-after");
+  }
+}
+function clearColDropMarker(): void {
+  for (const c of boardColumnsEl.querySelectorAll(".board-col.drop-before, .board-col.drop-after")) {
+    c.classList.remove("drop-before", "drop-after");
+  }
+}
+
 /** One project column: header (color square + name + visible count + +/$) over
  *  a body of stacked agent cards. Rendered for every project incl. sessionless. */
 function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
   const col = document.createElement("div");
   col.className = "board-col";
+  col.dataset.project = g.id;
 
   const header = document.createElement("div");
   header.className = "board-col-header";
+  // Drag the header to reorder columns. Commit lands on `drop` (see the
+  // boardColumnsEl listeners), so an Esc-cancelled drag leaves the order intact.
+  header.draggable = true;
+  header.addEventListener("dragstart", (e) => {
+    draggingColId = g.id;
+    col.classList.add("dragging");
+    e.dataTransfer?.setData("text/plain", g.id);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  });
+  header.addEventListener("dragend", () => {
+    draggingColId = null;
+    col.classList.remove("dragging");
+    clearColDropMarker(); // in case the drop landed outside the strip
+  });
   const square = document.createElement("span");
   square.className = `proj-square ${projClass(g.id)}`;
   const name = document.createElement("span");
@@ -2814,7 +2903,7 @@ function renderBoardColumns(): void {
 
   boardCardRefs.clear();
   boardColumnsEl.innerHTML = "";
-  for (const g of groups) {
+  for (const g of orderedGroups()) {
     // "Hide empty" hides columns with no VISIBLE cards, so a project whose
     // sessions are all filtered out (e.g. by the section filter) drops too.
     if (hideEmptyColumns && boardVisibleSessions(g).length === 0) continue;
@@ -2827,6 +2916,32 @@ function renderBoardColumns(): void {
   }
   boardColumnsEl.scrollLeft = prevScrollLeft;
 }
+
+// Column drag-to-reorder: only the strip calls preventDefault on dragover (so it
+// is the drop target), and the new order is committed on `drop` against the full
+// ordered group list — inserting before a visible column is well-defined even
+// when "Hide empty" omits some columns, and a dropped-at-end column lands last.
+boardColumnsEl.addEventListener("dragover", (e) => {
+  if (!draggingColId) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  showColDropMarker(colBeforeX(e.clientX));
+});
+boardColumnsEl.addEventListener("drop", (e) => {
+  if (!draggingColId) return;
+  e.preventDefault();
+  clearColDropMarker();
+  const beforeId = colBeforeX(e.clientX)?.dataset.project ?? null;
+  const order = orderedGroups()
+    .map((g) => g.id)
+    .filter((id) => id !== draggingColId);
+  const idx = beforeId ? order.indexOf(beforeId) : order.length;
+  order.splice(idx, 0, draggingColId);
+  boardColOrder = order;
+  localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(order));
+  draggingColId = null;
+  renderBoardColumns();
+});
 
 /** Full board render. The filter bar is rebuilt only when needed (it owns the
  *  live search input); columns rebuild on every snapshot tick. Preserving the
