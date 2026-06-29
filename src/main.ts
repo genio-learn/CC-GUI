@@ -448,6 +448,19 @@ async function attachTerminal(
   // other modifiers (e.g. Cmd+W) must fall through to their own handlers.
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
+    // Ctrl+\ — switch to this session's shell, mirroring claude-commander's
+    // attach-mode shell toggle (it intercepts the same key while attached).
+    // Handled here so it fires while the terminal is focused, where the
+    // config-driven keybindings (including select_shell) are suppressed. A
+    // no-op on shell/project-shell terminals, whose name matches no session.
+    if (e.ctrlKey && e.key === "\\" && !e.metaKey && !e.altKey && !e.shiftKey) {
+      const s = groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === name);
+      if (s) {
+        e.preventDefault();
+        void openShell(s);
+        return false;
+      }
+    }
     // Shift+Enter: insert a newline instead of submitting. xterm.js sends a
     // plain CR (\r) for Enter regardless of Shift, which submits. Send LF (\n,
     // i.e. Ctrl+J) instead — the TUI's "insert newline" byte; in a plain shell

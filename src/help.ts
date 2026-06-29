@@ -49,8 +49,9 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     ],
   ],
   [
-    "Terminal (macOS line editing)",
+    "Terminal",
     [
+      ["Ctrl+\\", "Switch to this session's shell"],
       ["Cmd+←/→", "Cursor to line start / end"],
       ["Cmd+Backspace", "Delete to line start"],
       ["Shift+Enter", "Insert a newline without submitting"],

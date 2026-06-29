@@ -114,6 +114,7 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Jump to terminal tab by number | `Cmd+1`–`Cmd+9` |
 | Previous / next terminal tab | `Cmd+Opt+←` / `Cmd+Opt+→` |
 | Previous / next session (attaches it) | `Cmd+Opt+↑` / `Cmd+Opt+↓` |
+| Terminal: switch to this session's shell | `Ctrl+\` |
 | Terminal: cursor to line start / end | `Cmd+←` / `Cmd+→` |
 | Terminal: delete to line start | `Cmd+Backspace` |
 | Terminal: newline without submitting | `Shift+Enter` |
