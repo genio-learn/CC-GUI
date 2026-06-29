@@ -546,6 +546,9 @@ function renderDiff(): void {
     return;
   }
   const anchors = commentsByAnchor(snapshot.comments, displayPath(file));
+  // Ids of comments rendered inline against a present line; the rest are
+  // orphaned (their anchor line left the diff) and pinned in a trailing section.
+  const rendered = new Set<string>();
 
   const selStart = selection ? Math.min(selection.anchor, selection.head) : -1;
   const selEnd = selection ? Math.max(selection.anchor, selection.head) : -1;
@@ -615,9 +618,26 @@ function renderDiff(): void {
         ...(line.old_lineno ? (anchors.get(`old:${line.old_lineno}`) ?? []) : []),
       ];
       for (const c of lineComments) {
+        rendered.add(c.id);
         diffEl.appendChild(renderCommentBlock(c));
       }
     }
+  }
+
+  // Comments whose anchor line is no longer present in any hunk (the file
+  // changed under them) match no rendered line, so they'd silently vanish —
+  // and with them their delete button, stranding a drifted comment that blocks
+  // apply with no way to clear it. Pin them to a trailing section so they stay
+  // visible and deletable. Mirrors claude-commander's TUI orphan handling.
+  const orphans = snapshot.comments.filter(
+    (c) => c.file === displayPath(file) && !rendered.has(c.id),
+  );
+  if (orphans.length) {
+    const header = document.createElement("div");
+    header.className = "hunk-header orphan-header";
+    header.textContent = "Unanchored comments — lines no longer in the diff";
+    diffEl.appendChild(header);
+    for (const c of orphans) diffEl.appendChild(renderCommentBlock(c));
   }
 
   if (selection && editorAnchorRow) {
