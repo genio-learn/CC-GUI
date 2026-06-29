@@ -1030,13 +1030,19 @@ function moveSelection(delta: number): void {
   selectRow(flat[Math.min(flat.length - 1, Math.max(0, next))]);
 }
 
-/** Jump to the first row of the next/previous group. */
+/** Jump to the first row of the next/previous group and show its terminal. */
 function moveGroup(dir: 1 | -1): void {
   const nonEmpty = visibleGroups.filter((g) => g.length);
   if (!nonEmpty.length) return;
   const cur = nonEmpty.findIndex((g) => selectedId !== null && g.includes(selectedId));
   const next = cur === -1 ? 0 : (cur + dir + nonEmpty.length) % nonEmpty.length;
-  selectRow(nonEmpty[next][0]);
+  const id = nonEmpty[next][0];
+  selectRow(id);
+  // Switching groups attaches the target session so the displayed terminal (and
+  // its `.active` highlight) follows the cursor, rather than leaving the old
+  // session shown/highlighted.
+  const s = findSession(id);
+  if (s) void openTerminal(s);
 }
 
 /** The session keyboard actions operate on: cursor first, attached tab second. */
