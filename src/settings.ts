@@ -1,10 +1,203 @@
-// Settings modal: a generic form over claude-commander's Config JSON.
-// Scalars get typed inputs; arrays/objects get JSON textareas. Saving
-// round-trips the whole object through save_config (serde-validated).
+// Settings modal: a categorized, typed editor.
+//
+// Two tabs: "claude-commander" (the shared Config, round-tripped through
+// `save_config`) and "CC-GUI" (GUI-only preferences — currently theming, which
+// applies live to localStorage and never touches `save_config`).
+//
+// The commander tab is schema-driven: each field declares a control (toggle,
+// number, select, string-list, …) and a dot-path into the config. On save we
+// deep-clone the loaded config and overwrite only the edited leaves, so keys we
+// don't render (keybindings, theme overrides) survive untouched.
 
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "./toast";
 import { noTextAssist } from "./dom";
+import { getMode, setMode, type Mode } from "./theme";
+import { openThemeModal } from "./themeModal";
+
+type Config = Record<string, unknown>;
+
+// ----------------------------------------------------------------- schema
+
+type SelectOption = { value: string; label: string };
+
+type Control =
+  | { kind: "toggle" }
+  | { kind: "number"; min?: number; max?: number; step?: number; unit?: string }
+  | { kind: "number-nullable"; min?: number; max?: number; unit?: string }
+  | { kind: "text"; placeholder?: string }
+  | { kind: "path"; placeholder?: string }
+  | { kind: "nullable"; placeholder?: string }
+  | { kind: "select"; options: SelectOption[] }
+  | { kind: "tristate-null"; auto: string; on: string; off: string }
+  | { kind: "string-list"; placeholder?: string };
+
+type Field = {
+  path: string;
+  label: string;
+  desc?: string;
+  control: Control;
+  /** Only editable when this boolean path is `true` (master-toggle gating). */
+  enabledBy?: string;
+};
+
+type Category =
+  | { id: string; label: string; fields: Field[]; note?: string }
+  | { id: string; label: string; custom: "sections"; note?: string }
+  | { id: string; label: string; custom: "theme"; note?: string };
+
+const COMMANDER_CATEGORIES: Category[] = [
+  {
+    id: "general",
+    label: "General",
+    fields: [
+      { path: "default_program", label: "Default program", desc: "Program launched in new sessions.", control: { kind: "text" } },
+      { path: "branch_prefix", label: "Branch prefix", desc: "Prefix for new session branch names (blank = none).", control: { kind: "text", placeholder: "(none)" } },
+      { path: "shell_program", label: "Shell program", desc: "Shell used for shell sessions.", control: { kind: "text" } },
+      { path: "editor", label: "Editor command", desc: "Editor/IDE for opening sessions (e.g. code, zed, nvim). Blank falls back to $VISUAL / $EDITOR.", control: { kind: "nullable", placeholder: "$VISUAL / $EDITOR" } },
+      { path: "editor_gui", label: "Editor type", desc: "Whether the editor is a GUI app. Auto-detects from a known list when unset.", control: { kind: "tristate-null", auto: "Auto-detect", on: "GUI", off: "Terminal" } },
+      { path: "leader_key", label: "Leader key", desc: 'Quick-switch leader key (e.g. " ", ctrl+k, f1).', control: { kind: "text" } },
+    ],
+  },
+  {
+    id: "sessions",
+    label: "Sessions & Worktrees",
+    fields: [
+      { path: "worktrees_dir", label: "Worktrees directory", desc: "Where session worktrees are created. Blank uses the default data dir.", control: { kind: "path", placeholder: "(default)" } },
+      { path: "per_repo_worktree_dirs", label: "Per-repo worktree dirs", desc: "Organize worktrees into per-repository subdirectories.", control: { kind: "toggle" } },
+      { path: "fetch_before_create", label: "Fetch before create", desc: "Fetch latest from origin before creating a new session.", control: { kind: "toggle" } },
+      { path: "resume_session", label: "Resume sessions", desc: "Pass --resume when restarting/recreating a session so the agent picks up where it left off.", control: { kind: "toggle" } },
+      { path: "nix_develop", label: "Use nix develop", desc: "Launch sessions inside `nix develop` when the project has a flake.nix and nix is on PATH.", control: { kind: "toggle" } },
+      { path: "in_progress_limit", label: "In-progress WIP limit", desc: "Advisory limit for the catch-all section. Blank = no limit.", control: { kind: "number-nullable", min: 1 } },
+    ],
+  },
+  {
+    id: "git",
+    label: "Git & PRs",
+    fields: [
+      { path: "pr_check_interval_secs", label: "PR check interval", desc: "Seconds between GitHub PR checks (0 = disabled).", control: { kind: "number", min: 0, unit: "s" } },
+      { path: "project_pull_enabled", label: "Project pull", desc: "Periodically fast-forward each project's main branch from origin.", control: { kind: "toggle" } },
+      { path: "project_pull_interval_secs", label: "Project pull interval", desc: "Seconds between project-branch pulls (minimum 60).", control: { kind: "number", min: 60, unit: "s" }, enabledBy: "project_pull_enabled" },
+      { path: "pr_review_labels", label: "Review-needed labels", desc: "PR labels (one per line) that colour a PR badge as awaiting reviewer action.", control: { kind: "string-list", placeholder: "ready-for-test" } },
+    ],
+  },
+  {
+    id: "ai",
+    label: "AI summaries",
+    fields: [
+      { path: "ai_summary_enabled", label: "AI branch summaries", desc: "Generate AI summaries of branch changes in the Info pane.", control: { kind: "toggle" } },
+      { path: "ai_summary_model", label: "Summary model", desc: "Claude model for AI summaries (Haiku recommended for cost).", control: { kind: "text" }, enabledBy: "ai_summary_enabled" },
+    ],
+  },
+  {
+    id: "commander",
+    label: "Commander",
+    note: "The persistent top-level Claude session that coordinates other sessions.",
+    fields: [
+      { path: "commander_enabled", label: "Enable commander", desc: "Run the persistent commander session.", control: { kind: "toggle" } },
+      { path: "commander_program", label: "Commander program", desc: "Program (with flags) for the commander session. Blank uses the default program.", control: { kind: "nullable", placeholder: "(default program)" }, enabledBy: "commander_enabled" },
+      { path: "commander_dir", label: "Commander directory", desc: "Working directory for the commander session. Blank uses <data dir>/commander.", control: { kind: "path", placeholder: "(default)" }, enabledBy: "commander_enabled" },
+    ],
+  },
+  {
+    id: "conversation",
+    label: "Conversation (TTS)",
+    note: "Speak the commander's replies aloud via an OpenAI-compatible TTS engine.",
+    fields: [
+      { path: "conversation.enabled", label: "Enable conversation mode", desc: "Master switch for the Alt-c overlay and spoken replies.", control: { kind: "toggle" } },
+      { path: "conversation.name", label: "Assistant name", desc: "Display name / nickname for the assistant.", control: { kind: "text" }, enabledBy: "conversation.enabled" },
+      { path: "conversation.command", label: "Command", desc: "Binary to run for the headless conversation session.", control: { kind: "text" }, enabledBy: "conversation.enabled" },
+      { path: "conversation.permission_mode", label: "Permission mode", desc: "--permission-mode for the conversation agent.", control: { kind: "text" }, enabledBy: "conversation.enabled" },
+      { path: "conversation.base_url", label: "TTS base URL", desc: "OpenAI-compatible TTS API base URL (include /v1).", control: { kind: "text" }, enabledBy: "conversation.enabled" },
+      { path: "conversation.model", label: "Model", desc: "Model name sent with each request.", control: { kind: "text" }, enabledBy: "conversation.enabled" },
+      { path: "conversation.voice", label: "Voice", desc: "Voice name. Blank uses the server default.", control: { kind: "nullable", placeholder: "(server default)" }, enabledBy: "conversation.enabled" },
+      { path: "conversation.response_format", label: "Response format", desc: "Audio container requested per chunk.", control: { kind: "select", options: [{ value: "wav", label: "wav" }, { value: "mp3", label: "mp3" }] }, enabledBy: "conversation.enabled" },
+      { path: "conversation.speed", label: "Speed", desc: "Playback speed (0.25–4.0).", control: { kind: "number", min: 0.25, max: 4, step: 0.05 }, enabledBy: "conversation.enabled" },
+      { path: "conversation.speak_scope", label: "Speak scope", desc: "How much of each reply to speak.", control: { kind: "select", options: [{ value: "prose_only", label: "Prose only" }, { value: "final_summary", label: "Final summary" }, { value: "verbatim", label: "Verbatim" }] }, enabledBy: "conversation.enabled" },
+      { path: "conversation.volume", label: "Volume", desc: "Playback volume (0.0–2.0; 1.0 = unchanged).", control: { kind: "number", min: 0, max: 2, step: 0.05 }, enabledBy: "conversation.enabled" },
+    ],
+  },
+  {
+    id: "stt",
+    label: "Voice input (STT)",
+    note: "Transcribe the microphone via an OpenAI-compatible engine (Alt-V). Useful with conversation mode running.",
+    fields: [
+      { path: "stt.enabled", label: "Enable voice input", desc: "Master switch for voice input.", control: { kind: "toggle" } },
+      { path: "stt.base_url", label: "STT base URL", desc: "OpenAI-compatible transcription API base URL (include /v1).", control: { kind: "text" }, enabledBy: "stt.enabled" },
+      { path: "stt.model", label: "Model", desc: "Model name sent with each request.", control: { kind: "text" }, enabledBy: "stt.enabled" },
+      { path: "stt.language", label: "Language", desc: "ISO-639-1 language hint. Blank auto-detects.", control: { kind: "nullable", placeholder: "(auto)" }, enabledBy: "stt.enabled" },
+      { path: "stt.prompt", label: "Decoding prompt", desc: "Optional domain vocabulary / spelling hints.", control: { kind: "nullable", placeholder: "(none)" }, enabledBy: "stt.enabled" },
+      { path: "stt.api_key", label: "API key", desc: "Bearer token, sent when set. Blank for local servers.", control: { kind: "nullable", placeholder: "(none)" }, enabledBy: "stt.enabled" },
+      { path: "stt.pause_media", label: "Pause media while recording", desc: "Pause other players while recording, resuming when the reply finishes.", control: { kind: "toggle" }, enabledBy: "stt.enabled" },
+    ],
+  },
+  {
+    id: "telemetry",
+    label: "Telemetry",
+    note: "Anonymous feature-usage only — never typed text, prompts, session content, or paths.",
+    fields: [
+      { path: "telemetry.enabled", label: "Send anonymous usage", desc: "On by default; opt out here or set DO_NOT_TRACK.", control: { kind: "toggle" } },
+      { path: "telemetry.endpoint", label: "Ingest endpoint", desc: "Override endpoint (self-hosters). Blank uses the built-in.", control: { kind: "nullable", placeholder: "(built-in)" } },
+      { path: "telemetry.token", label: "Ingest token", desc: "Override credential (base64 email:token). Blank uses the built-in.", control: { kind: "nullable", placeholder: "(built-in)" } },
+    ],
+  },
+  { id: "sections", label: "Sections", custom: "sections", note: "Group sessions in the list. Rules are evaluated top-to-bottom; the first match wins. Unmatched sessions fall into the built-in catch-all. Renaming or removing a section moves any manually-pinned sessions back to In Progress." },
+  {
+    id: "tui",
+    label: "Terminal UI",
+    note: "These affect the claude-commander terminal UI, not this GUI.",
+    fields: [
+      { path: "invert_pr_label_color", label: "Plain PR labels", desc: "Render PR labels as coloured text instead of pills.", control: { kind: "toggle" } },
+      { path: "show_session_program", label: "Show session program", desc: "Show each session's program as a (program) suffix.", control: { kind: "toggle" } },
+      { path: "dim_unfocused_preview", label: "Dim unfocused preview", desc: "Dim the right pane when the session list is focused.", control: { kind: "toggle" } },
+      { path: "dim_unfocused_opacity", label: "Dim opacity", desc: "0.0 = fully dimmed, 1.0 = no dimming.", control: { kind: "number", min: 0, max: 1, step: 0.05 }, enabledBy: "dim_unfocused_preview" },
+      { path: "rounded_borders", label: "Rounded borders", desc: "Use rounded border corners.", control: { kind: "toggle" } },
+      { path: "ui_refresh_fps", label: "UI refresh rate", desc: "TUI refresh rate.", control: { kind: "number", min: 1, unit: "fps" } },
+      { path: "precompute_review_caches", label: "Precompute review caches", desc: "Build every file's diff/highlight cache up front when opening review.", control: { kind: "toggle" } },
+    ],
+  },
+  {
+    id: "advanced",
+    label: "Advanced",
+    fields: [
+      { path: "max_concurrent_tmux", label: "Max concurrent tmux", desc: "Maximum concurrent tmux commands.", control: { kind: "number", min: 1 } },
+      { path: "capture_cache_ttl_ms", label: "Capture cache TTL", desc: "Content capture cache TTL.", control: { kind: "number", min: 0, unit: "ms" } },
+      { path: "diff_cache_ttl_ms", label: "Diff cache TTL", desc: "Diff cache TTL.", control: { kind: "number", min: 0, unit: "ms" } },
+      { path: "state_sync_interval_ms", label: "State sync interval", desc: "Polling interval for state changes from other instances (0 = disabled).", control: { kind: "number", min: 0, unit: "ms" } },
+      { path: "agent_state_poll_interval_ms", label: "Agent state poll interval", desc: "Polling interval for agent Working/Idle/Waiting state (0 = disabled).", control: { kind: "number", min: 0, unit: "ms" } },
+      { path: "session_number_debounce_ms", label: "Session-number debounce", desc: "Debounce when typing multi-digit session numbers.", control: { kind: "number", min: 0, unit: "ms" } },
+      { path: "debug", label: "Debug logging", desc: "Enable debug logging.", control: { kind: "toggle" } },
+      { path: "log_file", label: "Log file", desc: "Log to this file instead of stderr. Blank logs to stderr.", control: { kind: "path", placeholder: "(stderr)" } },
+    ],
+  },
+];
+
+const GUI_CATEGORIES: Category[] = [
+  { id: "theme", label: "Theme", custom: "theme", note: "Theme preferences are stored locally for this GUI and don't affect the claude-commander config." },
+];
+
+// ----------------------------------------------------------------- state
+
+let working: Config = {};
+let activeTab: "commander" | "gui" = "commander";
+let activeCat = "general";
+
+// Section rows held as UI-friendly drafts; encoded to SectionConfig on save.
+type Tri = "any" | "yes" | "no";
+type SectionDraft = {
+  name: string;
+  prState: Set<string>;
+  isDraft: Tri;
+  hasLabel: string; // comma-separated
+  hasPr: Tri;
+  reviewDecision: Set<string>;
+  reviewer: "any" | "yes" | "no" | "specific";
+  reviewerLogins: string; // comma-separated, only when reviewer === "specific"
+  maxSessions: string;
+};
+let sectionDrafts: SectionDraft[] = [];
+
+// ----------------------------------------------------------------- dom shell
 
 const overlay = document.createElement("div");
 overlay.id = "settings-overlay";
@@ -14,128 +207,208 @@ box.className = "settings-box";
 overlay.appendChild(box);
 document.body.appendChild(overlay);
 
-type ConfigValue = string | number | boolean | null | unknown[] | Record<string, unknown>;
+// ----------------------------------------------------------------- path helpers
 
-let current: Record<string, ConfigValue> = {};
-
-function fieldInput(key: string, value: ConfigValue): HTMLElement {
-  if (typeof value === "boolean") {
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = value;
-    input.dataset.key = key;
-    input.dataset.kind = "bool";
-    return input;
-  }
-  if (typeof value === "number") {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.value = String(value);
-    input.dataset.key = key;
-    input.dataset.kind = "number";
-    return input;
-  }
-  if (value === null || typeof value === "string") {
-    const input = noTextAssist(document.createElement("input"));
-    input.type = "text";
-    input.value = value ?? "";
-    input.placeholder = value === null ? "(unset)" : "";
-    input.dataset.key = key;
-    input.dataset.kind = value === null ? "nullable" : "string";
-    return input;
-  }
-  const area = noTextAssist(document.createElement("textarea"));
-  area.value = JSON.stringify(value, null, 2);
-  area.rows = Math.min(8, Math.max(2, JSON.stringify(value, null, 2).split("\n").length));
-  area.dataset.key = key;
-  area.dataset.kind = "json";
-  return area;
+function getPath(obj: Config, path: string): unknown {
+  return path.split(".").reduce<unknown>((o, k) => {
+    if (o && typeof o === "object") return (o as Record<string, unknown>)[k];
+    return undefined;
+  }, obj);
 }
 
-/** A friendly on/off control for the `telemetry` object, surfacing its
- *  `enabled` flag as a checkbox instead of a raw JSON blob. Endpoint/token
- *  (self-hoster fields) are left to the config file and preserved on save. */
-function telemetryToggle(): HTMLElement {
-  const tel = (current.telemetry ?? {}) as Record<string, unknown>;
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  input.checked = tel.enabled !== false; // on by default
-  input.dataset.key = "telemetry";
-  input.dataset.kind = "telemetry-enabled";
-  return input;
+function setPath(obj: Config, path: string, value: unknown): void {
+  const keys = path.split(".");
+  const last = keys.pop()!;
+  let o = obj as Record<string, unknown>;
+  for (const k of keys) {
+    if (o[k] == null || typeof o[k] !== "object") o[k] = {};
+    o = o[k] as Record<string, unknown>;
+  }
+  o[last] = value;
 }
 
-function collect(): Record<string, ConfigValue> | null {
-  const out: Record<string, ConfigValue> = { ...current };
-  for (const el of box.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-key]")) {
-    const key = el.dataset.key!;
-    switch (el.dataset.kind) {
-      case "bool":
-        out[key] = (el as HTMLInputElement).checked;
-        break;
-      case "number": {
-        const n = Number(el.value);
-        if (Number.isNaN(n)) {
-          toast(`${key}: not a number`, "error");
-          return null;
+// ----------------------------------------------------------------- controls
+
+/** Build the control element for a schema field, wiring change → `working`. */
+function makeControl(field: Field): HTMLElement {
+  const { path, control } = field;
+  const value = getPath(working, path);
+  let el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+  switch (control.kind) {
+    case "toggle": {
+      const wrap = document.createElement("label");
+      wrap.className = "switch";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = value === true;
+      input.dataset.key = path;
+      input.dataset.kind = "toggle";
+      input.addEventListener("change", () => {
+        setPath(working, path, input.checked);
+        // Master toggles gate other fields — re-render so they enable/disable.
+        if (categoryGatesOn(path)) renderPanel();
+      });
+      const slider = document.createElement("span");
+      slider.className = "slider";
+      wrap.append(input, slider);
+      return wrap;
+    }
+    case "number":
+    case "number-nullable": {
+      const input = document.createElement("input");
+      input.type = "number";
+      if (control.min !== undefined) input.min = String(control.min);
+      if (control.max !== undefined) input.max = String(control.max);
+      if ("step" in control && control.step !== undefined) input.step = String(control.step);
+      input.value = value == null ? "" : String(value);
+      input.dataset.key = path;
+      input.dataset.kind = control.kind;
+      input.addEventListener("input", () => {
+        const raw = input.value.trim();
+        if (raw === "") {
+          if (control.kind === "number-nullable") setPath(working, path, null);
+          return; // required numbers keep their last value when blanked
         }
-        out[key] = n;
-        break;
+        const n = Number(raw);
+        if (!Number.isNaN(n)) setPath(working, path, n);
+      });
+      el = input;
+      break;
+    }
+    case "select": {
+      const select = document.createElement("select");
+      for (const opt of control.options) {
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        select.appendChild(o);
       }
-      case "nullable":
-        out[key] = el.value.trim() === "" ? null : el.value;
-        break;
-      case "string":
-        out[key] = el.value;
-        break;
-      case "telemetry-enabled": {
-        // Update only `enabled`, preserving any endpoint/token already set.
-        const prev = (current.telemetry ?? {}) as Record<string, unknown>;
-        out["telemetry"] = { ...prev, enabled: (el as HTMLInputElement).checked };
-        break;
+      select.value = value == null ? "" : String(value);
+      select.dataset.key = path;
+      select.dataset.kind = "select";
+      select.addEventListener("change", () => setPath(working, path, select.value));
+      el = select;
+      break;
+    }
+    case "tristate-null": {
+      const select = document.createElement("select");
+      const opts: { v: string; l: string }[] = [
+        { v: "auto", l: control.auto },
+        { v: "on", l: control.on },
+        { v: "off", l: control.off },
+      ];
+      for (const { v, l } of opts) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = l;
+        select.appendChild(o);
       }
-      case "json":
-        try {
-          out[key] = JSON.parse(el.value);
-        } catch (e) {
-          toast(`${key}: invalid JSON — ${e}`, "error");
-          return null;
-        }
-        break;
+      select.value = value === true ? "on" : value === false ? "off" : "auto";
+      select.dataset.key = path;
+      select.dataset.kind = "select";
+      select.addEventListener("change", () => {
+        setPath(working, path, select.value === "on" ? true : select.value === "off" ? false : null);
+      });
+      el = select;
+      break;
+    }
+    case "string-list": {
+      const area = noTextAssist(document.createElement("textarea"));
+      area.value = Array.isArray(value) ? (value as unknown[]).map(String).join("\n") : "";
+      area.rows = Math.min(6, Math.max(2, (Array.isArray(value) ? value.length : 0) + 1));
+      area.placeholder = control.placeholder ?? "";
+      area.dataset.key = path;
+      area.dataset.kind = "string-list";
+      area.addEventListener("input", () => {
+        const list = area.value.split("\n").map((s) => s.trim()).filter(Boolean);
+        setPath(working, path, list);
+      });
+      el = area;
+      break;
+    }
+    default: {
+      // text | path | nullable
+      const input = noTextAssist(document.createElement("input"));
+      input.type = "text";
+      input.value = value == null ? "" : String(value);
+      input.placeholder = control.placeholder ?? "";
+      input.dataset.key = path;
+      input.dataset.kind = control.kind;
+      input.addEventListener("input", () => {
+        const v = input.value;
+        if (control.kind === "text") setPath(working, path, v);
+        else setPath(working, path, v.trim() === "" ? null : v);
+      });
+      el = input;
     }
   }
-  return out;
+
+  if (field.enabledBy && getPath(working, field.enabledBy) !== true) {
+    el.disabled = true;
+  }
+  return el;
+}
+
+/** Whether toggling `path` should re-render (because some field is gated by it). */
+function categoryGatesOn(path: string): boolean {
+  const cat = activeCategories().find((c) => c.id === activeCat);
+  if (!cat || !("fields" in cat)) return false;
+  return cat.fields.some((f) => f.enabledBy === path);
+}
+
+// ----------------------------------------------------------------- render
+
+function activeCategories(): Category[] {
+  return activeTab === "gui" ? GUI_CATEGORIES : COMMANDER_CATEGORIES;
 }
 
 function render(): void {
   box.innerHTML = "";
-  const title = document.createElement("h2");
-  title.textContent = "Settings (claude-commander config)";
-  box.appendChild(title);
-  const note = document.createElement("p");
-  note.className = "settings-note";
-  note.textContent =
-    "Shared with the TUI and CLI. Some changes need an app restart to take effect.";
-  box.appendChild(note);
 
-  const grid = document.createElement("div");
-  grid.className = "settings-grid";
-  for (const key of Object.keys(current).sort()) {
-    const label = document.createElement("label");
-    if (key === "telemetry") {
-      label.textContent = "telemetry (send anonymous usage)";
-      grid.appendChild(label);
-      grid.appendChild(telemetryToggle());
-      continue;
-    }
-    label.textContent = key;
-    grid.appendChild(label);
-    grid.appendChild(fieldInput(key, current[key]));
+  const tabs = document.createElement("div");
+  tabs.className = "settings-tabs";
+  for (const [id, label] of [["gui", "CC-GUI"], ["commander", "claude-commander"]] as const) {
+    const btn = document.createElement("button");
+    btn.className = "settings-tab";
+    btn.classList.toggle("active", activeTab === id);
+    btn.textContent = label;
+    btn.dataset.tab = id;
+    btn.addEventListener("click", () => {
+      if (activeTab === id) return;
+      activeTab = id;
+      activeCat = activeCategories()[0].id;
+      render();
+    });
+    tabs.appendChild(btn);
   }
-  box.appendChild(grid);
+  box.appendChild(tabs);
 
-  const buttons = document.createElement("div");
-  buttons.className = "editor-buttons";
+  const body = document.createElement("div");
+  body.className = "settings-body";
+
+  const nav = document.createElement("div");
+  nav.className = "settings-nav";
+  for (const cat of activeCategories()) {
+    const item = document.createElement("button");
+    item.className = "settings-nav-item";
+    item.classList.toggle("active", cat.id === activeCat);
+    item.textContent = cat.label;
+    item.dataset.cat = cat.id;
+    item.addEventListener("click", () => {
+      activeCat = cat.id;
+      render();
+    });
+    nav.appendChild(item);
+  }
+
+  const panel = document.createElement("div");
+  panel.className = "settings-panel";
+  body.append(nav, panel);
+  box.appendChild(body);
+
+  const footer = document.createElement("div");
+  footer.className = "editor-buttons";
   const cancel = document.createElement("button");
   cancel.className = "row-action";
   cancel.textContent = "Cancel";
@@ -144,15 +417,388 @@ function render(): void {
   save.className = "row-action";
   save.textContent = "Save";
   save.addEventListener("click", () => void saveSettings());
-  buttons.append(cancel, save);
-  box.appendChild(buttons);
+  footer.append(cancel, save);
+  box.appendChild(footer);
+
+  renderPanel();
 }
 
+/** Re-render just the content panel (nav/tabs/footer stay). */
+function renderPanel(): void {
+  const panel = box.querySelector<HTMLElement>(".settings-panel");
+  if (!panel) return;
+  panel.innerHTML = "";
+  const cat = activeCategories().find((c) => c.id === activeCat);
+  if (!cat) return;
+
+  if (cat.note) {
+    const note = document.createElement("p");
+    note.className = "settings-note";
+    note.textContent = cat.note;
+    panel.appendChild(note);
+  }
+
+  if ("custom" in cat) {
+    if (cat.custom === "sections") renderSections(panel);
+    else renderTheme(panel);
+    return;
+  }
+
+  for (const field of cat.fields) {
+    const row = document.createElement("div");
+    row.className = "settings-field";
+    if (field.enabledBy && getPath(working, field.enabledBy) !== true) {
+      row.classList.add("disabled");
+    }
+    const head = document.createElement("div");
+    head.className = "settings-field-head";
+    const label = document.createElement("label");
+    label.className = "settings-field-label";
+    label.textContent = field.label;
+    head.appendChild(label);
+    if (field.desc) {
+      const desc = document.createElement("div");
+      desc.className = "settings-field-desc";
+      desc.textContent = field.desc;
+      head.appendChild(desc);
+    }
+    const control = makeControl(field);
+    row.append(head, control);
+    panel.appendChild(row);
+  }
+}
+
+// ----------------------------------------------------------------- theme tab
+
+function renderTheme(panel: HTMLElement): void {
+  const row = document.createElement("div");
+  row.className = "settings-field";
+  const head = document.createElement("div");
+  head.className = "settings-field-head";
+  const label = document.createElement("label");
+  label.className = "settings-field-label";
+  label.textContent = "Appearance";
+  head.appendChild(label);
+  const desc = document.createElement("div");
+  desc.className = "settings-field-desc";
+  desc.textContent = "Follow the OS, or force light/dark.";
+  head.appendChild(desc);
+
+  const seg = document.createElement("div");
+  seg.className = "settings-segment";
+  const modes: { v: Mode; l: string }[] = [
+    { v: "system", l: "System" },
+    { v: "light", l: "Light" },
+    { v: "dark", l: "Dark" },
+  ];
+  for (const { v, l } of modes) {
+    const b = document.createElement("button");
+    b.textContent = l;
+    b.dataset.mode = v;
+    b.classList.toggle("active", getMode() === v);
+    b.addEventListener("click", () => {
+      setMode(v);
+      for (const sib of seg.querySelectorAll("button")) {
+        sib.classList.toggle("active", sib === b);
+      }
+    });
+    seg.appendChild(b);
+  }
+  row.append(head, seg);
+  panel.appendChild(row);
+
+  const themesRow = document.createElement("div");
+  themesRow.className = "settings-field";
+  const th = document.createElement("div");
+  th.className = "settings-field-head";
+  const tl = document.createElement("label");
+  tl.className = "settings-field-label";
+  tl.textContent = "Themes";
+  th.appendChild(tl);
+  const td = document.createElement("div");
+  td.className = "settings-field-desc";
+  td.textContent = "Pick the theme used for each appearance, with live preview.";
+  th.appendChild(td);
+
+  const actions = document.createElement("div");
+  actions.className = "settings-theme-actions";
+  const dark = document.createElement("button");
+  dark.className = "row-action";
+  dark.textContent = "Dark theme…";
+  dark.addEventListener("click", () => {
+    closeSettings();
+    openThemeModal("dark");
+  });
+  const light = document.createElement("button");
+  light.className = "row-action";
+  light.textContent = "Light theme…";
+  light.addEventListener("click", () => {
+    closeSettings();
+    openThemeModal("light");
+  });
+  const folder = document.createElement("button");
+  folder.className = "row-action";
+  folder.textContent = "Open themes folder…";
+  folder.addEventListener("click", () => void invoke("open_themes_dir").catch((e) => toast(`${e}`, "error")));
+  actions.append(dark, light, folder);
+  themesRow.append(th, actions);
+  panel.appendChild(themesRow);
+}
+
+// ----------------------------------------------------------------- sections editor
+
+const PR_STATES = ["open", "closed", "merged"];
+const REVIEW_DECISIONS = ["review_required", "approved", "changes_requested"];
+
+function blankSection(): SectionDraft {
+  return {
+    name: "",
+    prState: new Set(),
+    isDraft: "any",
+    hasLabel: "",
+    hasPr: "any",
+    reviewDecision: new Set(),
+    reviewer: "any",
+    reviewerLogins: "",
+    maxSessions: "",
+  };
+}
+
+/** A list value from config: `"x"` → ["x"], `["x","y"]` → [...], else []. */
+function asList(v: unknown): string[] {
+  if (typeof v === "string") return [v];
+  if (Array.isArray(v)) return (v as unknown[]).map(String);
+  return [];
+}
+
+function triFromBool(v: unknown): Tri {
+  return v === true ? "yes" : v === false ? "no" : "any";
+}
+
+function decodeSections(sections: unknown): SectionDraft[] {
+  if (!Array.isArray(sections)) return [];
+  return (sections as Record<string, unknown>[]).map((s) => {
+    const reviewer = s.has_reviewer;
+    const reviewerLogins = asList(reviewer);
+    return {
+      name: typeof s.name === "string" ? s.name : "",
+      prState: new Set(asList(s.pr_state)),
+      isDraft: triFromBool(s.is_draft),
+      hasLabel: asList(s.has_label).join(", "),
+      hasPr: triFromBool(s.has_pr),
+      reviewDecision: new Set(asList(s.review_decision)),
+      reviewer: reviewer === true ? "yes" : reviewer === false ? "no" : reviewerLogins.length ? "specific" : "any",
+      reviewerLogins: reviewerLogins.join(", "),
+      maxSessions: typeof s.max_sessions === "number" ? String(s.max_sessions) : "",
+    };
+  });
+}
+
+/** Single value → scalar, many → array, none → omit. */
+function packList(list: string[]): unknown {
+  if (list.length === 0) return undefined;
+  if (list.length === 1) return list[0];
+  return list;
+}
+
+function parseCsv(s: string): string[] {
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+function encodeSections(drafts: SectionDraft[]): Record<string, unknown>[] {
+  return drafts.map((d) => {
+    const out: Record<string, unknown> = { name: d.name.trim() };
+    const prState = packList([...d.prState]);
+    if (prState !== undefined) out.pr_state = prState;
+    if (d.isDraft !== "any") out.is_draft = d.isDraft === "yes";
+    const label = packList(parseCsv(d.hasLabel));
+    if (label !== undefined) out.has_label = label;
+    if (d.hasPr !== "any") out.has_pr = d.hasPr === "yes";
+    const decision = packList([...d.reviewDecision]);
+    if (decision !== undefined) out.review_decision = decision;
+    if (d.reviewer === "yes") out.has_reviewer = true;
+    else if (d.reviewer === "no") out.has_reviewer = false;
+    else if (d.reviewer === "specific") {
+      const logins = packList(parseCsv(d.reviewerLogins));
+      if (logins !== undefined) out.has_reviewer = logins;
+    }
+    const max = Number(d.maxSessions.trim());
+    if (d.maxSessions.trim() !== "" && !Number.isNaN(max)) out.max_sessions = max;
+    return out;
+  });
+}
+
+function renderSections(panel: HTMLElement): void {
+  const list = document.createElement("div");
+  list.className = "section-list";
+
+  sectionDrafts.forEach((draft, i) => list.appendChild(sectionCard(draft, i)));
+
+  const add = document.createElement("button");
+  add.className = "row-action section-add";
+  add.textContent = "+ Add section";
+  add.addEventListener("click", () => {
+    sectionDrafts.push(blankSection());
+    renderPanel();
+  });
+
+  panel.append(list, add);
+}
+
+function sectionCard(draft: SectionDraft, index: number): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "section-card";
+  card.dataset.sectionIndex = String(index);
+
+  const header = document.createElement("div");
+  header.className = "section-card-header";
+  const name = noTextAssist(document.createElement("input"));
+  name.type = "text";
+  name.className = "section-name";
+  name.placeholder = "Section name";
+  name.value = draft.name;
+  name.dataset.sectionField = "name";
+  name.addEventListener("input", () => (draft.name = name.value));
+
+  const tools = document.createElement("div");
+  tools.className = "section-tools";
+  const up = iconBtn("↑", index === 0, () => moveSection(index, -1));
+  const down = iconBtn("↓", index === sectionDrafts.length - 1, () => moveSection(index, 1));
+  const del = iconBtn("✕", false, () => {
+    sectionDrafts.splice(index, 1);
+    renderPanel();
+  });
+  tools.append(up, down, del);
+  header.append(name, tools);
+  card.appendChild(header);
+
+  const grid = document.createElement("div");
+  grid.className = "section-grid";
+
+  grid.append(
+    fieldLabel("PR state"),
+    checkboxSet(PR_STATES, draft.prState),
+    fieldLabel("Draft"),
+    triSelect(draft.isDraft, (v) => (draft.isDraft = v)),
+    fieldLabel("Has label"),
+    csvInput(draft.hasLabel, "ready-for-review, blocked", (v) => (draft.hasLabel = v), "has_label"),
+    fieldLabel("Has PR"),
+    triSelect(draft.hasPr, (v) => (draft.hasPr = v)),
+    fieldLabel("Review decision"),
+    checkboxSet(REVIEW_DECISIONS, draft.reviewDecision),
+    fieldLabel("Reviewer"),
+    reviewerControl(draft),
+    fieldLabel("WIP limit"),
+    maxSessionsInput(draft),
+  );
+
+  card.appendChild(grid);
+  return card;
+}
+
+function moveSection(index: number, delta: number): void {
+  const j = index + delta;
+  if (j < 0 || j >= sectionDrafts.length) return;
+  [sectionDrafts[index], sectionDrafts[j]] = [sectionDrafts[j], sectionDrafts[index]];
+  renderPanel();
+}
+
+function iconBtn(glyph: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "section-icon";
+  b.textContent = glyph;
+  b.disabled = disabled;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function fieldLabel(text: string): HTMLElement {
+  const l = document.createElement("span");
+  l.className = "section-field-label";
+  l.textContent = text;
+  return l;
+}
+
+function checkboxSet(values: string[], selected: Set<string>): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "section-checks";
+  for (const v of values) {
+    const lab = document.createElement("label");
+    lab.className = "section-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = selected.has(v);
+    cb.addEventListener("change", () => {
+      if (cb.checked) selected.add(v);
+      else selected.delete(v);
+    });
+    lab.append(cb, document.createTextNode(v));
+    wrap.appendChild(lab);
+  }
+  return wrap;
+}
+
+function triSelect(value: Tri, onChange: (v: Tri) => void): HTMLSelectElement {
+  const sel = document.createElement("select");
+  for (const [v, l] of [["any", "Any"], ["yes", "Yes"], ["no", "No"]] as const) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    sel.appendChild(o);
+  }
+  sel.value = value;
+  sel.addEventListener("change", () => onChange(sel.value as Tri));
+  return sel;
+}
+
+function csvInput(value: string, placeholder: string, onChange: (v: string) => void, field: string): HTMLInputElement {
+  const input = noTextAssist(document.createElement("input"));
+  input.type = "text";
+  input.value = value;
+  input.placeholder = placeholder;
+  input.dataset.sectionField = field;
+  input.addEventListener("input", () => onChange(input.value));
+  return input;
+}
+
+function reviewerControl(draft: SectionDraft): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "section-reviewer";
+  const sel = document.createElement("select");
+  for (const [v, l] of [["any", "Any"], ["yes", "Has reviewer"], ["no", "No reviewer"], ["specific", "Specific…"]] as const) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = l;
+    sel.appendChild(o);
+  }
+  sel.value = draft.reviewer;
+  const logins = csvInput(draft.reviewerLogins, "login1, login2", (v) => (draft.reviewerLogins = v), "reviewer_logins");
+  logins.hidden = draft.reviewer !== "specific";
+  sel.addEventListener("change", () => {
+    draft.reviewer = sel.value as SectionDraft["reviewer"];
+    logins.hidden = draft.reviewer !== "specific";
+  });
+  wrap.append(sel, logins);
+  return wrap;
+}
+
+function maxSessionsInput(draft: SectionDraft): HTMLInputElement {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "1";
+  input.value = draft.maxSessions;
+  input.placeholder = "(none)";
+  input.dataset.sectionField = "max_sessions";
+  input.addEventListener("input", () => (draft.maxSessions = input.value));
+  return input;
+}
+
+// ----------------------------------------------------------------- save / open
+
 async function saveSettings(): Promise<void> {
-  const config = collect();
-  if (!config) return;
+  working.sections = encodeSections(sectionDrafts);
   try {
-    const restartRequired = await invoke<boolean>("save_config", { config });
+    const restartRequired = await invoke<boolean>("save_config", { config: working });
     closeSettings();
     if (restartRequired) {
       toast("Saved. Some changes take effect after restarting the app.");
@@ -163,12 +809,17 @@ async function saveSettings(): Promise<void> {
 }
 
 export async function openSettings(): Promise<void> {
+  let config: Config;
   try {
-    current = await invoke<Record<string, ConfigValue>>("get_config");
+    config = await invoke<Config>("get_config");
   } catch (e) {
     toast(`failed to load config: ${e}`, "error");
     return;
   }
+  working = structuredClone(config);
+  sectionDrafts = decodeSections(working.sections);
+  activeTab = "commander";
+  activeCat = COMMANDER_CATEGORIES[0].id;
   render();
   overlay.classList.remove("hidden");
 }

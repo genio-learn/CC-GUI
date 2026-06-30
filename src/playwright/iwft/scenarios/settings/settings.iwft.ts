@@ -1,90 +1,107 @@
 import { test, expect } from "../../support/fixture.testHelper";
 import { makeSnapshot } from "../../network/seed.testHelper";
 
-// One config covering every field kind the modal renders.
+// A realistic partial claude-commander Config covering the field kinds the pane
+// renders, plus keys the pane intentionally does NOT render (keybindings, theme)
+// to prove they survive a save untouched.
 test.use({
   seed: {
     snapshot: makeSnapshot(),
     reviews: {},
     config: {
-      autoStart: true,
-      maxAgents: 4,
-      model: "claude",
-      extraArgs: ["--verbose"],
-      note: null,
+      default_program: "claude",
+      resume_session: true,
+      editor: null,
+      conversation: { enabled: true, speed: 1.0, model: "kokoro" },
+      telemetry: { enabled: true, endpoint: null, token: null },
+      sections: [{ name: "Review", has_label: "ready-for-review" }],
+      keybindings: { quit: ["q"] },
+      theme: { accent: "#89b4fa" },
     },
   },
 });
 
-test("renders a typed control per config kind", async ({ settings }) => {
+test("renders typed controls keyed by kind", async ({ settings }) => {
   await settings.open();
-
-  expect(await settings.fieldKind("autoStart")).toBe("bool");
-  expect(await settings.fieldInputType("autoStart")).toBe("checkbox");
-
-  expect(await settings.fieldKind("maxAgents")).toBe("number");
-  expect(await settings.fieldInputType("maxAgents")).toBe("number");
-
-  expect(await settings.fieldKind("model")).toBe("string");
-  expect(await settings.fieldKind("note")).toBe("nullable");
-
-  expect(await settings.fieldKind("extraArgs")).toBe("json");
-  expect(await settings.fieldTag("extraArgs")).toBe("textarea");
+  // General is the default category.
+  expect(await settings.fieldKind("default_program")).toBe("text");
+  expect(await settings.fieldKind("editor")).toBe("nullable");
+  expect(await settings.fieldKind("editor_gui")).toBe("select");
+  expect(await settings.fieldTag("editor_gui")).toBe("select");
+  // A boolean in another category renders as a toggle.
+  await settings.selectCategory("sessions");
+  expect(await settings.fieldKind("resume_session")).toBe("toggle");
 });
 
-test("invalid JSON aborts the save (toast, modal stays open, nothing persisted)", async ({
+test("a boolean renders as a toggle and persists", async ({ settings }) => {
+  await settings.open();
+  await settings.selectCategory("sessions");
+  await settings.toggle("resume_session", false);
+  await settings.save();
+
+  const saved = await settings.savedConfig();
+  expect(saved?.resume_session).toBe(false);
+});
+
+test("a nested field round-trips into its sub-object", async ({ settings }) => {
+  await settings.open();
+  await settings.selectCategory("conversation");
+  await settings.setText("conversation.speed", "1.5");
+  await settings.save();
+
+  const saved = await settings.savedConfig();
+  expect((saved?.conversation as { speed: number }).speed).toBe(1.5);
+  // Sibling field is preserved, not reset to default.
+  expect((saved?.conversation as { model: string }).model).toBe("kokoro");
+});
+
+test("editing a section persists a proper SectionConfig", async ({ settings }) => {
+  await settings.open();
+  await settings.selectCategory("sections");
+  await settings.setSectionField(0, "name", "Needs Review");
+  await settings.save();
+
+  const saved = await settings.savedConfig();
+  const sections = saved?.sections as { name: string; has_label: string }[];
+  expect(sections[0].name).toBe("Needs Review");
+  // A single label round-trips as a scalar (matches the untagged enum).
+  expect(sections[0].has_label).toBe("ready-for-review");
+});
+
+test("adding a section appends a new SectionConfig", async ({ settings }) => {
+  await settings.open();
+  await settings.selectCategory("sections");
+  await settings.addSection();
+  await settings.setSectionField(1, "name", "Blocked");
+  await settings.save();
+
+  const saved = await settings.savedConfig();
+  const sections = saved?.sections as { name: string }[];
+  expect(sections).toHaveLength(2);
+  expect(sections[1].name).toBe("Blocked");
+});
+
+test("unrendered keys (keybindings, theme) survive the save untouched", async ({
   settings,
 }) => {
   await settings.open();
-  await settings.setText("extraArgs", "not json [");
-  await settings.saveExpectingError();
-
-  expect(await settings.savedConfig()).toBeNull();
-});
-
-test("valid edits round-trip through save_config", async ({ settings }) => {
-  await settings.open();
-  await settings.setText("model", "claude-opus");
-  await settings.setChecked("autoStart", false);
-  await settings.setText("note", "hello");
+  await settings.selectCategory("general");
+  await settings.setText("default_program", "claude --model opus");
   await settings.save();
 
-  expect(await settings.savedConfig()).toEqual({
-    autoStart: false,
-    maxAgents: 4, // untouched
-    model: "claude-opus",
-    extraArgs: ["--verbose"], // untouched JSON field re-parses to its value
-    note: "hello", // nullable text, now set
-  });
+  const saved = await settings.savedConfig();
+  expect(saved?.default_program).toBe("claude --model opus");
+  expect(saved?.keybindings).toEqual({ quit: ["q"] });
+  expect(saved?.theme).toEqual({ accent: "#89b4fa" });
 });
 
-// NB: the data-kind="number" branch's NaN→toast path is unreachable from the UI —
-// <input type=number> sanitizes non-numeric input, so collect() never sees NaN.
-// Invalid-number abort is therefore not exercised here (it can't happen in-browser).
-
-test.describe("telemetry opt-out", () => {
-  test.use({
-    seed: {
-      snapshot: makeSnapshot(),
-      reviews: {},
-      config: { telemetry: { enabled: true, endpoint: null, token: null } },
-    },
-  });
-
-  test("renders a checkbox; opting out persists enabled:false and keeps endpoint/token", async ({
-    settings,
-  }) => {
-    await settings.open();
-
-    // The telemetry object surfaces as a friendly checkbox, not a JSON blob.
-    expect(await settings.fieldKind("telemetry")).toBe("telemetry-enabled");
-    expect(await settings.fieldInputType("telemetry")).toBe("checkbox");
-
-    await settings.setChecked("telemetry", false);
-    await settings.save();
-
-    expect(await settings.savedConfig()).toEqual({
-      telemetry: { enabled: false, endpoint: null, token: null },
-    });
-  });
+test("the CC-GUI tab switches theme mode (localStorage, not save_config)", async ({
+  settings,
+}) => {
+  await settings.open();
+  await settings.selectTab("gui");
+  await settings.setThemeMode("dark");
+  expect(await settings.themeMode()).toBe("dark");
+  // Theme prefs never go through save_config.
+  expect(await settings.savedConfig()).toBeNull();
 });
