@@ -1077,19 +1077,6 @@ body {
   background: var(--proj-color);
 }
 
-.proj-tag {
-  font-size: 10px;
-  padding: 0 5px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  color: var(--proj-color);
-  background: var(--chip-faint-bg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 90px;
-}
-
 .row-actions {
   display: none;
   gap: 4px;

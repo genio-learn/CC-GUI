@@ -1156,16 +1156,6 @@ function projClass(projectId: string): string {
   return `proj-${projIndex(projectId)}`;
 }
 
-/** Faint project tag chip (project-color text on a faint bg). Hidden when the
- *  list is already grouped by project (caller decides). */
-function projTag(s: SessionRow): HTMLSpanElement {
-  const tag = document.createElement("span");
-  tag.className = `proj-tag ${projClass(s.project_id)}`;
-  tag.textContent = s.project_name;
-  tag.title = s.project_name;
-  return tag;
-}
-
 /** Mirror each open tab's status glyph from the latest session snapshot. Tabs
  *  with no matching session (e.g. commander) keep their glyph hidden. */
 function updateTabGlyphs(): void {
@@ -1379,12 +1369,6 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   title.textContent = s.title;
   title.title = `Branch: ${s.branch}`;
   line.append(statusGlyph(s), title);
-
-  // Project tag chip — redundant when the list is already grouped by project,
-  // so hide it in that grouping.
-  if (viewMode !== "project") {
-    line.append(projTag(s));
-  }
 
   const badge = prBadge(s);
   if (badge) line.appendChild(badge);
@@ -1630,8 +1614,8 @@ function groupStacks(rows: SessionRow[]): StackUnit[] {
 }
 
 /** A cascade stack: bordered group (faint mauve tint) with a header carrying the
- *  stack name (parent title), project tag, and merge/push/⋯ actions, then the
- *  parent + indented child rows (each child gets a project-color left border). */
+ *  stack name (parent title) and merge/push/⋯ actions, then the parent +
+ *  indented child rows (each child gets a project-color left border). */
 function renderStack(parent: SessionRow, children: SessionRow[]): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = `stack ${projClass(parent.project_id)}`;
@@ -1647,7 +1631,6 @@ function renderStack(parent: SessionRow, children: SessionRow[]): HTMLDivElement
   name.textContent = parent.title;
   name.title = parent.title;
   header.append(glyph, name);
-  if (viewMode !== "project") header.append(projTag(parent));
 
   const actions = document.createElement("span");
   actions.className = "stack-actions";
