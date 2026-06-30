@@ -141,7 +141,7 @@ const COMMANDER_CATEGORIES: Category[] = [
       { path: "telemetry.token", label: "Ingest token", desc: "Override credential (base64 email:token). Blank uses the built-in.", control: { kind: "nullable", placeholder: "(built-in)" } },
     ],
   },
-  { id: "sections", label: "Sections", custom: "sections", note: "Group sessions in the list. Rules are evaluated top-to-bottom; the first match wins. Unmatched sessions fall into the built-in catch-all." },
+  { id: "sections", label: "Sections", custom: "sections", note: "Group sessions in the list. Rules are evaluated top-to-bottom; the first match wins. Unmatched sessions fall into the built-in catch-all. Renaming or removing a section moves any manually-pinned sessions back to In Progress." },
   {
     id: "tui",
     label: "Terminal UI",
