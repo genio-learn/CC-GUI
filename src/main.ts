@@ -3245,12 +3245,19 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
   show_settings: { label: "Open settings", run: () => void openSettings() },
 };
 
+// A single-char key's glyph already implies Shift (e.g. "?" is Shift+/), and the
+// GUI dispatch ignores the Shift bit for single chars — so the commander default
+// binding both "Shift-?" and "?" lists the same physical key twice. Drop the
+// redundant "Shift-" prefix and de-dupe so each key shows once.
+function helpKeyLabel(keys: string[]): string {
+  const seen = new Set(keys.map((k) => k.replace(/^Shift-(?=\S$)/, "")));
+  return [...seen].join(", ");
+}
+
 function applyHelpKeybindings(): void {
   setHelpKeybindings(
     Object.entries(KEY_ACTIONS)
-      .map(
-        ([action, a]) => [loadedBindings[action]?.join(", ") ?? "", a.label] as [string, string],
-      )
+      .map(([action, a]) => [helpKeyLabel(loadedBindings[action] ?? []), a.label] as [string, string])
       .filter(([keys]) => keys.length > 0),
   );
 }
