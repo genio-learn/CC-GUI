@@ -59,6 +59,9 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
       ["Select text", "Copies to clipboard and clears the highlight"],
       ["Cmd+Click link", "Open the URL in your browser"],
       ["Drag tab", "Reorder the open terminal tabs"],
+      ["Drag tab → corner", "Split the view (up to 4 panes); drag over a quadrant to preview"],
+      ["Pane ✕", "Remove a pane from the split (session stays open)"],
+      ["Drag pane border", "Resize split panes"],
     ],
   ],
 ];

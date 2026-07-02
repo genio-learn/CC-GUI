@@ -147,3 +147,185 @@ test.describe("tab reorder", () => {
     await expect(page.locator("#tabs .tab.active .tab-label")).toHaveText("beta");
   });
 });
+
+test.describe("split panes", () => {
+  test.use({
+    seed: {
+      snapshot: makeSnapshot({
+        groups: [
+          {
+            id: "proj-1",
+            name: "acme",
+            repo_path: "/repos/acme",
+            pull_blocked: null,
+            sessions: [
+              makeSession({ id: "s-a", title: "alpha", tmux_session_name: "cc-s-a" }),
+              makeSession({ id: "s-b", title: "beta", tmux_session_name: "cc-s-b" }),
+              makeSession({ id: "s-c", title: "gamma", tmux_session_name: "cc-s-c" }),
+            ],
+          },
+        ],
+      }),
+      reviews: {},
+      keybindings: {},
+      config: {},
+    },
+  });
+
+  // Attach a session by clicking its row (the shared-tab-bar list).
+  const attach = (page: import("@playwright/test").Page, title: string, count: number) =>
+    page
+      .locator(".session-row")
+      .filter({ has: page.locator(".title", { hasText: title }) })
+      .locator(".row-main")
+      .click()
+      .then(() => expect(page.locator("#tabs .tab")).toHaveCount(count));
+
+  // Dispatch the DnD sequence the handlers listen for, dropping the tab for
+  // `tmux` into a quadrant of #terminals ("TL"|"TR"|"BL"|"BR"). Playwright can't
+  // fire trusted native HTML5 DnD, so we synthesise dragstart→dragover→drop→dragend.
+  const dropIntoQuadrant = (page: import("@playwright/test").Page, tmux: string, q: string) =>
+    page.evaluate(
+      ([name, quad]) => {
+        const tab = document.querySelector<HTMLElement>(`#tabs .tab[data-term="${name}"]`)!;
+        const terms = document.querySelector<HTMLElement>("#terminals")!;
+        const r = terms.getBoundingClientRect();
+        const fx = quad[1] === "L" ? 0.25 : 0.75;
+        const fy = quad[0] === "T" ? 0.25 : 0.75;
+        const at = { bubbles: true, clientX: r.left + r.width * fx, clientY: r.top + r.height * fy };
+        tab.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
+        terms.dispatchEvent(new DragEvent("dragover", at));
+        terms.dispatchEvent(new DragEvent("drop", at));
+        tab.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+      },
+      [tmux, q] as const,
+    );
+
+  test("dragging a tab into a corner creates a two-pane vertical split", async ({ sidebar, page }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2); // beta is now the active single terminal
+
+    // Drag the non-active tab (alpha) into the top-right corner. From single
+    // mode this seeds a vertical split: the on-screen session (beta) takes the
+    // opposite column (TL), alpha lands in TR.
+    await dropIntoQuadrant(page, "cc-s-a", "TR");
+
+    await expect(page.locator("#terminals")).toHaveClass(/split/);
+    await expect(page.locator("#terminals .pane")).toHaveCount(2);
+    await expect(page.locator('#terminals .pane[data-slot="TL"]')).toHaveAttribute("data-term", "cc-s-b");
+    await expect(page.locator('#terminals .pane[data-slot="TR"]')).toHaveAttribute("data-term", "cc-s-a");
+    // Both on-screen tabs are tagged with their quadrant colour.
+    await expect(page.locator("#tabs .tab.in-pane")).toHaveCount(2);
+  });
+
+  test("building a third pane subdivides a column (columns-of-stacks)", async ({ sidebar, page }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2);
+    await dropIntoQuadrant(page, "cc-s-a", "TR"); // TL=beta, TR=alpha (focused TR)
+    await attach(page, "gamma", 3); // loads into the focused pane → TR=gamma, alpha parked
+    await dropIntoQuadrant(page, "cc-s-a", "BR"); // drag parked alpha into BR: right column splits
+
+    await expect(page.locator("#terminals .pane")).toHaveCount(3);
+    // Left column: one pane (beta) full height. Right column: two stacked panes.
+    const cols = page.locator("#terminals .split-col");
+    await expect(cols).toHaveCount(2);
+    await expect(cols.nth(0).locator(".pane")).toHaveCount(1);
+    await expect(cols.nth(1).locator(".pane")).toHaveCount(2);
+  });
+
+  test("loading a session into the focused pane replaces it (displaced stays alive)", async ({
+    sidebar,
+    page,
+  }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2);
+    await dropIntoQuadrant(page, "cc-s-a", "TR"); // TL=beta, TR=alpha (focused TR)
+    await attach(page, "gamma", 3); // gamma replaces alpha in the focused pane
+
+    await expect(page.locator("#terminals .pane")).toHaveCount(2);
+    await expect(page.locator('#terminals .pane[data-slot="TR"]')).toHaveAttribute("data-term", "cc-s-c");
+    // alpha is displaced but still open: its tab and its (parked) terminal survive.
+    await expect(page.locator("#tabs .tab")).toHaveCount(3);
+    await expect(page.locator('#terminals .pane[data-term="cc-s-a"]')).toHaveCount(0);
+    await expect(page.locator("#terminals .term-container")).toHaveCount(3);
+  });
+
+  test("removing a pane via its × collapses back to a single terminal", async ({ sidebar, page }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2);
+    await dropIntoQuadrant(page, "cc-s-a", "TR");
+    await expect(page.locator("#terminals")).toHaveClass(/split/);
+
+    await page.locator('#terminals .pane[data-slot="TR"] .pane-close').click();
+
+    // Down to one pane → leaves split; both sessions still open as tabs.
+    await expect(page.locator("#terminals")).not.toHaveClass(/split/);
+    await expect(page.locator("#terminals .pane")).toHaveCount(0);
+    await expect(page.locator("#tabs .tab")).toHaveCount(2);
+  });
+
+  test("the drop-zone overlay previews the hovered quadrant while dragging", async ({ sidebar, page }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2);
+
+    await page.evaluate(() => {
+      const tab = document.querySelector<HTMLElement>('#tabs .tab[data-term="cc-s-a"]')!;
+      const terms = document.querySelector<HTMLElement>("#terminals")!;
+      const r = terms.getBoundingClientRect();
+      tab.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
+      terms.dispatchEvent(
+        new DragEvent("dragover", { bubbles: true, clientX: r.left + r.width * 0.75, clientY: r.top + r.height * 0.25 }),
+      );
+    });
+
+    await expect(page.locator("#split-overlay")).toHaveClass(/show/);
+    await expect(page.locator("#split-overlay .dz.tr")).toHaveClass(/hot/);
+    await expect(page.locator("#split-overlay .dz.tl")).not.toHaveClass(/hot/);
+  });
+
+  test("dragging one visible pane onto the other swaps them (no collapse)", async ({ sidebar, page }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2);
+    await dropIntoQuadrant(page, "cc-s-a", "TR"); // TL=beta, TR=alpha
+    await expect(page.locator('#terminals .pane[data-slot="TL"]')).toHaveAttribute("data-term", "cc-s-b");
+    await expect(page.locator('#terminals .pane[data-slot="TR"]')).toHaveAttribute("data-term", "cc-s-a");
+
+    // Drag the visible TR pane (alpha) onto the visible TL pane (beta): they swap.
+    await dropIntoQuadrant(page, "cc-s-a", "TL");
+
+    await expect(page.locator("#terminals")).toHaveClass(/split/);
+    await expect(page.locator("#terminals .pane")).toHaveCount(2);
+    await expect(page.locator('#terminals .pane[data-slot="TL"]')).toHaveAttribute("data-term", "cc-s-a");
+    await expect(page.locator('#terminals .pane[data-slot="TR"]')).toHaveAttribute("data-term", "cc-s-b");
+  });
+
+  test("a parked session's auto-restart does not hijack the focused pane", async ({ sidebar, page }) => {
+    void sidebar;
+    await attach(page, "alpha", 1);
+    await attach(page, "beta", 2);
+    await dropIntoQuadrant(page, "cc-s-a", "TR"); // TL=beta, TR=alpha (focused TR)
+    await attach(page, "gamma", 3); // gamma replaces alpha in the focused pane; alpha parked
+    await expect(page.locator('#terminals .pane[data-slot="TR"]')).toHaveAttribute("data-term", "cc-s-c");
+
+    // Parked alpha's program exits → auto-restarts in place. It must NOT be
+    // injected into the focused pane (that only happens on a user attach).
+    await page.evaluate(() =>
+      (window as unknown as { __CC_SIM__: { emitPtyExit(n: string, e: boolean): Promise<void> } }).__CC_SIM__.emitPtyExit(
+        "cc-s-a",
+        true,
+      ),
+    );
+
+    // Focused pane still shows gamma; still two panes; alpha stays parked + alive.
+    await expect(page.locator('#terminals .pane[data-slot="TR"]')).toHaveAttribute("data-term", "cc-s-c");
+    await expect(page.locator("#terminals .pane")).toHaveCount(2);
+    await expect(page.locator('#terminals .pane[data-term="cc-s-a"]')).toHaveCount(0);
+    await expect(page.locator('#tabs .tab[data-term="cc-s-a"]')).not.toHaveClass(/dead/);
+  });
+});
