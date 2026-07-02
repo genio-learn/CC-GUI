@@ -121,6 +121,9 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Terminal: copy selection (auto-clears highlight) | select text |
 | Terminal: open a link | `Cmd+Click` |
 | Reorder terminal tabs | drag a tab |
+| Split the view into panes (up to 4) | drag a tab into a corner of the terminal area |
+| Remove a pane from the split | pane header `✕` |
+| Resize split panes | drag a pane border |
 | Attach / recreate a session | click its row |
 | Full session menu (shell, review, rename, editor, PR, lifecycle) | right-click row |
 | New session in a project | `+` on the project |

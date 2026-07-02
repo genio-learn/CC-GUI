@@ -2329,6 +2329,157 @@ body.resizing .panel-resizer {
   font-size: 13px;
 }
 
+/* ---------------------------------------------------------- split panes */
+/* Console split: #terminals becomes a row of columns-of-stacks. Each pane
+   hosts a re-parented .term-container (one PTY each). Per-quadrant colour
+   (TL blue / TR peach / BL green / BR mauve) ties a pane to its tab. */
+#terminals.split {
+  display: flex;
+  flex-direction: row;
+}
+
+#terminals.split > #placeholder {
+  display: none;
+}
+
+.split-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--pane-color);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+
+.pane.focused > .pane-header {
+  color: var(--text);
+  border-color: var(--pane-color);
+  border-bottom: none;
+}
+
+.pane-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.pane-close:hover {
+  color: var(--danger);
+}
+
+/* Container reflows from absolute (single/dock) to a flex child inside a pane,
+   joined to the header above it. */
+.pane > .term-container {
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  box-shadow: none;
+}
+
+.pane.focused > .term-container {
+  border-color: var(--pane-color);
+  border-top: none;
+}
+
+/* Draggable dividers between columns and between stacked rows. */
+.col-divider {
+  flex: 0 0 6px;
+  align-self: stretch;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.row-divider {
+  flex: 0 0 6px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.col-divider:hover,
+.row-divider:hover,
+body.resizing .col-divider,
+body.resizing .row-divider {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 3px;
+}
+
+/* Drop-zone preview shown while dragging a tab over #terminals. */
+#split-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: none;
+  pointer-events: none;
+}
+
+#split-overlay.show {
+  display: grid;
+  grid-template: 1fr 1fr / 1fr 1fr;
+  gap: 6px;
+  padding: 6px;
+}
+
+#split-overlay .dz {
+  border-radius: 10px;
+  border: 2px dashed transparent;
+  transition:
+    background 0.08s,
+    border-color 0.08s;
+}
+
+#split-overlay .dz.hot {
+  background: color-mix(in srgb, var(--dz-color) 22%, transparent);
+  border-color: var(--dz-color);
+  border-style: solid;
+}
+
+/* A tab whose session is currently on screen gets its pane's quadrant colour. */
+.tab.in-pane {
+  border-top-color: var(--pane-color);
+  color: var(--text);
+}
+
 /* ------------------------------------------------------------ review view */
 
 #review {
