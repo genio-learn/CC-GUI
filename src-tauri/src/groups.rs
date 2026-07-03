@@ -3,9 +3,10 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use claude_commander::api::CommanderService;
-use claude_commander::git::effective_pr_state;
-use claude_commander::tmux::AgentStateDetector;
+use claude_commander_core::agent::AgentKind;
+use claude_commander_core::api::CommanderService;
+use claude_commander_core::git::effective_pr_state;
+use claude_commander_core::tmux::AgentStateDetector;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -54,7 +55,7 @@ pub struct ProjectGroup {
 /// Full uuid for a project id. `ProjectId`'s `Display` truncates to 8 chars
 /// (and unlike `SessionId` it has no `as_uuid` accessor), but the frontend
 /// must round-trip ids through `parse_project_id`, which needs the full uuid.
-fn project_uuid(id: &claude_commander::session::ProjectId) -> String {
+fn project_uuid(id: &claude_commander_core::session::ProjectId) -> String {
     serde_json::to_value(id)
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))
@@ -84,14 +85,17 @@ pub async fn build_groups(
 
     let mut groups: Vec<ProjectGroup> = Vec::with_capacity(projects.len());
     for p in projects {
-        let project_sessions: Vec<&claude_commander::session::WorktreeSession> =
+        let project_sessions: Vec<&claude_commander_core::session::WorktreeSession> =
             sessions.iter().filter(|s| s.project_id == p.id).collect();
         let mut rows = Vec::with_capacity(project_sessions.len());
         for (s, stacked_child) in session_display_order(&project_sessions) {
             let agent_state = match detect.as_deref_mut() {
-                Some(d) if s.status.is_active() && s.program.contains("claude") => {
-                    format!("{:?}", d.detect(&s.tmux_session_name).await).to_lowercase()
-                }
+                Some(d) if s.status.is_active() && s.program.contains("claude") => format!(
+                    "{:?}",
+                    d.detect(AgentKind::from_program(&s.program), &s.tmux_session_name)
+                        .await
+                )
+                .to_lowercase(),
                 _ => "unknown".to_string(),
             };
             rows.push(SessionRow {
@@ -140,13 +144,13 @@ pub async fn build_groups(
 /// children following their root depth-first in creation order, flagged for
 /// indentation.
 fn session_display_order<'a>(
-    sessions: &[&'a claude_commander::session::WorktreeSession],
-) -> Vec<(&'a claude_commander::session::WorktreeSession, bool)> {
-    use claude_commander::session::resolve_stack_parent;
+    sessions: &[&'a claude_commander_core::session::WorktreeSession],
+) -> Vec<(&'a claude_commander_core::session::WorktreeSession, bool)> {
+    use claude_commander_core::session::resolve_stack_parent;
     let mut roots: Vec<_> = Vec::new();
     let mut children_by_parent: HashMap<
-        claude_commander::session::SessionId,
-        Vec<&claude_commander::session::WorktreeSession>,
+        claude_commander_core::session::SessionId,
+        Vec<&claude_commander_core::session::WorktreeSession>,
     > = HashMap::new();
     for s in sessions {
         match resolve_stack_parent(s, sessions) {
@@ -204,7 +208,7 @@ pub async fn build_snapshot(
     svc: &CommanderService,
     detect: Option<&mut AgentStateDetector>,
 ) -> Snapshot {
-    use claude_commander::config::ViewMode;
+    use claude_commander_core::config::ViewMode;
     let groups = build_groups(svc, detect).await;
     let config_sections = svc.read_config().sections;
     let (view_mode, sections) = {
@@ -216,7 +220,7 @@ pub async fn build_snapshot(
         let sections = if mode.is_section_view() {
             let sessions: Vec<_> = state.sessions.values().cloned().collect();
             Some(
-                claude_commander::session::build_sections(&sessions, &config_sections)
+                claude_commander_core::session::build_sections(&sessions, &config_sections)
                     .into_iter()
                     .map(|s| SectionBucket {
                         name: s.name,
@@ -259,7 +263,7 @@ pub async fn get_groups() -> Result<Snapshot, String> {
 /// when no sections are configured, mirroring the TUI's cycle-skip.
 #[tauri::command]
 pub async fn set_view_mode(mode: String) -> Result<(), String> {
-    use claude_commander::config::ViewMode;
+    use claude_commander_core::config::ViewMode;
     let svc = service().await?;
     let parsed = match mode.as_str() {
         "project" => ViewMode::ProjectGrouped,
@@ -290,12 +294,12 @@ pub async fn move_to_section(id: String, section: Option<String>) -> Result<(), 
             if let Some(session) = state.get_session_mut(&sid) {
                 match &section {
                     Some(name) => {
-                        claude_commander::session::place_created_session(
+                        claude_commander_core::session::place_created_session(
                             session, name, &sections, now,
                         );
                     }
                     None => {
-                        claude_commander::session::clear_override_and_reassign(
+                        claude_commander_core::session::clear_override_and_reassign(
                             session, &sections, now,
                         );
                     }
@@ -335,7 +339,7 @@ pub fn spawn_sessions_loop(app: AppHandle) {
                 // A Working → Idle transition marks the session unread (the
                 // agent finished while the user wasn't watching), mirroring
                 // the TUI. Sessions with an attached terminal are exempt.
-                let mut newly_unread: Vec<claude_commander::session::SessionId> = Vec::new();
+                let mut newly_unread: Vec<claude_commander_core::session::SessionId> = Vec::new();
                 for g in groups.iter_mut() {
                     for row in &mut g.sessions {
                         let became_idle = row.agent_state == "idle"

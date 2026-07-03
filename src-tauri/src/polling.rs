@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
-use claude_commander::git::{
+use claude_commander_core::git::{
     check_pr_for_branch, is_gh_available, run_project_pull, PrCheckResult, PullOutcome,
 };
-use claude_commander::session::apply_assignment;
+use claude_commander_core::session::apply_assignment;
 use futures::StreamExt;
 
 use crate::service::service;
@@ -81,9 +81,9 @@ fn spawn_pr_loop() {
     });
 }
 
-async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
+async fn poll_prs_once(svc: &claude_commander_core::api::CommanderService) {
     let sessions: Vec<(
-        claude_commander::session::SessionId,
+        claude_commander_core::session::SessionId,
         String,
         std::path::PathBuf,
     )> = {
@@ -91,7 +91,7 @@ async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
         state
             .sessions
             .values()
-            .filter(|s| s.status != claude_commander::session::SessionStatus::Creating)
+            .filter(|s| s.status != claude_commander_core::session::SessionStatus::Creating)
             .filter_map(|s| {
                 let project = state.projects.get(&s.project_id)?;
                 Some((s.id, s.branch.clone(), project.repo_path.clone()))
@@ -163,7 +163,7 @@ async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
         state
             .sessions
             .values()
-            .filter(|s| s.status == claude_commander::session::SessionStatus::Running)
+            .filter(|s| s.status == claude_commander_core::session::SessionStatus::Running)
             .map(|s| (s.tmux_session_name.clone(), svc.status_bar_info(s, &state)))
             .collect()
     };

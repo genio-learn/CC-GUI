@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use claude_commander::api::CreateSessionOpts;
+use claude_commander_core::api::CreateSessionOpts;
 
 use crate::service::{parse_session_id, service, with_service};
 
@@ -12,7 +12,7 @@ use crate::service::{parse_session_id, service, with_service};
 pub async fn get_session_detail(
     id: String,
     lines: Option<usize>,
-) -> Result<Option<claude_commander::api::SessionDetail>, String> {
+) -> Result<Option<claude_commander_core::api::SessionDetail>, String> {
     // The service resolves sessions by title or *display* id — the 8-char
     // prefix (`SessionId::to_string`). A full 36-char uuid never matches, so
     // validate it here and query with the display form.
@@ -46,8 +46,8 @@ pub async fn generate_summary(id: String) -> Result<String, String> {
     let Some((worktree_path, main_branch)) = info else {
         return Err("session not found".into());
     };
-    let diff = claude_commander::git::compute_branch_diff(&worktree_path, &main_branch).await;
-    claude_commander::git::fetch_branch_summary(&diff, &config.ai_summary_model).await
+    let diff = claude_commander_core::git::compute_branch_diff(&worktree_path, &main_branch).await;
+    claude_commander_core::git::fetch_branch_summary(&diff, &config.ai_summary_model).await
 }
 
 #[tauri::command]
@@ -60,6 +60,7 @@ pub async fn create_session(project_path: String, title: String) -> Result<Strin
             initial_prompt: None,
             effort: None,
             mode: None,
+            model: None,
             base_branch: None,
             section: None,
         };

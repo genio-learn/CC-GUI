@@ -85,7 +85,7 @@ adopt a newer release, bump the `tag`, then refresh the lockfile:
 
 ```sh
 cd src-tauri
-cargo update -p claude-commander
+cargo update -p claude-commander-core
 ```
 
 Commit the `Cargo.toml` + `Cargo.lock` change together so the pinned commit is
