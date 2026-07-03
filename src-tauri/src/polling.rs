@@ -27,6 +27,20 @@ pub static PULL_BLOCKED: LazyLock<Mutex<HashMap<String, String>>> =
 pub fn spawn_polling_loops() {
     spawn_pr_loop();
     spawn_project_pull_loop();
+    spawn_hibernation();
+}
+
+/// Start claude-commander's idle-hibernation policy loop. The service no-ops
+/// unless `hibernate_enabled` is set with a non-zero check interval, so this is
+/// safe to call unconditionally at startup — it mirrors how the TUI starts the
+/// same loop for a long-lived frontend. Hibernated sessions surface as a
+/// distinct sidebar state with a Wake action (see `groups::SessionRow`).
+fn spawn_hibernation() {
+    tauri::async_runtime::spawn(async move {
+        if let Ok(svc) = service().await {
+            svc.start_hibernation_loop();
+        }
+    });
 }
 
 /// True while a manual PR-status refresh is running, so a second trigger is a

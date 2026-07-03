@@ -25,6 +25,7 @@ export function makeSession(over: Partial<SessionRow> = {}): SessionRow {
     review_decision: null,
     has_pending_comments: false,
     unread: false,
+    hibernated: false,
     stacked_child: false,
     project_id: "proj-1",
     project_name: "acme",

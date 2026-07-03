@@ -143,6 +143,8 @@ class TauriSimulator {
         return this.renameSession(args.id as string, args.title as string);
       case "delete_session":
         return this.deleteSession(args.id as string);
+      case "restart_session":
+        return this.restartSession(args.id as string);
       case "move_to_section":
         return this.moveToSection(args.id as string, (args.section as string | null) ?? null);
       case "merged_pr_sessions":
@@ -259,6 +261,20 @@ class TauriSimulator {
   private deleteSession(id: string): null {
     for (const g of this.snapshot.groups) {
       g.sessions = g.sessions.filter((row) => row.id !== id);
+    }
+    return null;
+  }
+
+  /** Restart (also the Wake action for a hibernated session): the backend
+   *  recreates the pane and, when the session was hibernated, resumes the prior
+   *  agent — so status goes Running and the hibernation marker clears. */
+  private restartSession(id: string): null {
+    for (const g of this.snapshot.groups) {
+      const s = g.sessions.find((row) => row.id === id);
+      if (s) {
+        s.status = "running";
+        s.hibernated = false;
+      }
     }
     return null;
   }

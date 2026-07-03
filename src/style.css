@@ -1022,6 +1022,19 @@ body {
   line-height: 1;
 }
 
+/* Hibernated: a dim moon glyph rather than a circle, so an auto-suspended
+   session reads distinctly from a plainly-stopped (grey dot) one. Same
+   glyph-override shape as .dot-waiting. */
+.dot.dot-hibernated {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+}
+
 @keyframes dot-pulse {
   0%,
   100% {

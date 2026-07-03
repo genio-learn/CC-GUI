@@ -119,6 +119,7 @@ type SessionRow = {
   review_decision: string | null;
   has_pending_comments: boolean;
   unread: boolean;
+  hibernated: boolean;
   stacked_child: boolean;
   project_id: string;
   project_name: string;
@@ -1547,6 +1548,7 @@ const STATUS_GLYPH_CLASSES = [
   "dot-stopped",
   "dot-transient",
   "dot-waiting",
+  "dot-hibernated",
 ];
 
 /** Set `el`'s liveness dot (colour/pulse/tooltip) from a session's status.
@@ -1579,6 +1581,12 @@ function applyStatusGlyph(el: HTMLSpanElement, s: SessionRow): void {
       cls = "dot-idle";
       title = s.agent_state;
     }
+  } else if (s.hibernated) {
+    // Auto-hibernated (status is "stopped"): a moon glyph distinct from a
+    // plainly-stopped session, since it can be woken to resume its agent.
+    cls = "dot-hibernated";
+    el.textContent = "☾";
+    title = "hibernated — wake to resume";
   } else if (s.status === "stopped") {
     cls = "dot-stopped";
     title = "stopped";
@@ -1772,7 +1780,11 @@ function buildActions(s: SessionRow): HTMLDivElement {
   actions.appendChild(actionButton("±", "Review diff", () => void openReview(s.id, s.title)));
   if (s.status === "stopped") {
     actions.appendChild(
-      actionButton("▶", "Restart session", () => void lifecycle("restart_session", s.id)),
+      actionButton(
+        "▶",
+        s.hibernated ? "Wake session" : "Restart session",
+        () => void lifecycle("restart_session", s.id),
+      ),
     );
   }
   if (s.status === "running") {
@@ -1815,6 +1827,7 @@ function branchMatchesTitle(title: string, branch: string): boolean {
  *  (NOT the sidebar row sub-line — there the liveness dot conveys state). */
 function humanState(s: SessionRow): string {
   if (s.status === "running") return `running · ${s.agent_state}`;
+  if (s.hibernated) return "hibernated";
   return s.status.replace(/_/g, " ");
 }
 
@@ -1893,7 +1906,10 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
       },
     },
     "separator",
-    { label: "Restart", action: () => void lifecycle("restart_session", s.id) },
+    {
+      label: s.hibernated ? "Wake" : "Restart",
+      action: () => void lifecycle("restart_session", s.id),
+    },
     {
       label: "Restart fresh",
       action: () => {
