@@ -4,27 +4,33 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use claude_commander::api::CommanderService;
-use claude_commander::session::{AgentState, CascadeOutcome, SessionId};
-use claude_commander::tmux::AgentStateDetector;
+use claude_commander_core::agent::AgentKind;
+use claude_commander_core::api::CommanderService;
+use claude_commander_core::session::{AgentState, CascadeOutcome, SessionId};
+use claude_commander_core::tmux::AgentStateDetector;
 
 use crate::service::{parse_session_id, with_service};
 
 /// Fresh agent states for the manager's working-agent pre-flight checks.
 async fn detect_states(svc: &CommanderService) -> HashMap<SessionId, AgentState> {
-    let sessions: Vec<(SessionId, String)> = {
+    let sessions: Vec<(SessionId, String, String)> = {
         let state = svc.store().read().await;
         state
             .sessions
             .values()
             .filter(|s| s.status.is_active() && s.program.contains("claude"))
-            .map(|s| (s.id, s.tmux_session_name.clone()))
+            .map(|s| (s.id, s.tmux_session_name.clone(), s.program.clone()))
             .collect()
     };
     let mut detector = AgentStateDetector::new(svc.session_manager().tmux.clone(), Duration::ZERO);
     let mut map = HashMap::new();
-    for (id, tmux_name) in sessions {
-        map.insert(id, detector.detect(&tmux_name).await);
+    for (id, tmux_name, program) in sessions {
+        map.insert(
+            id,
+            detector
+                .detect(AgentKind::from_program(&program), &tmux_name)
+                .await,
+        );
     }
     map
 }

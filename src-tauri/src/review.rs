@@ -1,15 +1,15 @@
 //! Review diff + comment commands.
 
 use base64::Engine;
-use claude_commander::api::{DiffSide, NewComment};
-use claude_commander::comment::{ApplyOutcome, CommentSide};
+use claude_commander_core::api::{DiffSide, NewComment};
+use claude_commander_core::comment::{ApplyOutcome, CommentSide};
 
 use crate::service::{parse_session_id, with_service};
 
 /// Open the review diff for a session: parsed base→working-tree diff plus the
 /// session's re-anchored comments.
 #[tauri::command]
-pub async fn open_review(id: String) -> Result<claude_commander::api::ReviewSnapshot, String> {
+pub async fn open_review(id: String) -> Result<claude_commander_core::api::ReviewSnapshot, String> {
     let id = parse_session_id(&id)?;
     with_service(move |svc| async move { svc.open_review(&id).await.map_err(|e| e.to_string()) })
         .await

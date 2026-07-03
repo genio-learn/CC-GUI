@@ -24,7 +24,7 @@ pub async fn get_keybindings() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn save_config(config: serde_json::Value) -> Result<bool, String> {
     let svc = service().await?;
-    let parsed: claude_commander::Config =
+    let parsed: claude_commander_core::Config =
         serde_json::from_value(config).map_err(|e| format!("invalid config: {e}"))?;
     svc.update_config(parsed).map_err(|e| e.to_string())?;
     Ok(svc.restart_required())
