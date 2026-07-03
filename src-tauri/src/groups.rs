@@ -32,6 +32,10 @@ pub struct SessionRow {
     pub review_decision: Option<String>,
     pub has_pending_comments: bool,
     pub unread: bool,
+    /// Stopped by the auto-hibernation policy (as opposed to a manual kill).
+    /// A hibernated session is `status == "stopped"`; the frontend renders it
+    /// distinctly and offers a Wake action (which resumes the prior agent).
+    pub hibernated: bool,
     /// Rendered one indent level under its stack parent.
     pub stacked_child: bool,
     /// Full uuid of the owning project (matches `ProjectGroup.id`); lets section
@@ -118,6 +122,7 @@ pub async fn build_groups(
                 review_decision: s.review_decision.map(|d| format!("{d:?}").to_lowercase()),
                 has_pending_comments: pending_comments.contains(&s.id),
                 unread: s.unread,
+                hibernated: s.hibernated,
                 stacked_child,
                 project_id: project_uuid(&p.id),
                 project_name: p.name.clone(),

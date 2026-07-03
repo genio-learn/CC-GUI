@@ -215,6 +215,16 @@ export class SidebarPageObject extends AppPageObject {
     });
   }
 
+  /** Wake a hibernated session via its row action (the ▶ button, titled
+   *  "Wake session" when hibernated). Not a confirm button — one click. */
+  wakeViaRowAction(title: string): Promise<void> {
+    return this.step(`wakeViaRowAction: ${title}`, async () => {
+      const row = this.row(title);
+      await row.hover();
+      await row.getByTitle("Wake session").click();
+    });
+  }
+
   /** Sidebar menu → "Delete merged-PR sessions…" → confirm the dialog. */
   deleteMergedSessions(): Promise<void> {
     return this.step("deleteMergedSessions", async () => {

@@ -20,6 +20,7 @@ export type SessionRow = {
   review_decision: string | null;
   has_pending_comments: boolean;
   unread: boolean;
+  hibernated: boolean;
   stacked_child: boolean;
   project_id: string;
   project_name: string;
