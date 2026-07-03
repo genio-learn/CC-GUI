@@ -64,6 +64,42 @@ test("selecting text copies it to the clipboard and clears the highlight", async
   await expect(page.locator(".xterm-selection div")).toHaveCount(0);
 });
 
+test("copy-on-select captures the cell under the release, not just the last mousemove", async ({
+  terminal,
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await terminal.attach("fix login bug");
+  await terminal.pushText(TMUX, "copyme123");
+  await terminal.expectScreenContains("copyme123");
+
+  const screen = page.locator("#terminals .term-container.active .xterm-screen");
+  const box = (await screen.boundingBox())!;
+  const y = box.y + 6;
+
+  // Drag that stops SHORT of the text's end, then release further right — as a
+  // fast real drag does, where coalesced mousemoves lag the release point.
+  // xterm ignores the mouseup coordinates, so without our replayed mousemove
+  // the trailing characters would be dropped from the copy.
+  await page.mouse.move(box.x + 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 50, y, { steps: 8 });
+  await page.evaluate(
+    ([sx, sy]) => {
+      document
+        .querySelector("#terminals .term-container.active .xterm-screen")!
+        .dispatchEvent(
+          new MouseEvent("mouseup", { bubbles: true, clientX: sx, clientY: sy, button: 0 }),
+        );
+    },
+    [box.x + 120, y] as const,
+  );
+
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip).toContain("copyme123");
+});
+
 test("Cmd+Click opens a URL externally; a plain click does not", async ({ terminal, page }) => {
   await terminal.attach("fix login bug");
   await terminal.pushText(TMUX, "https://example.com/foo");

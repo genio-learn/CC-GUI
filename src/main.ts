@@ -487,11 +487,25 @@ async function attachTerminal(
   );
 
   // Copy-on-select for plain shells (no app mouse mode): finishing a drag
-  // selection copies it to the clipboard and clears the highlight. mouseup on
-  // the container bubbles after xterm's own handlers, so the selection is
-  // final. In an app that grabs the mouse (Claude), xterm makes no selection
-  // and this no-ops — OSC 52 above handles that case instead.
-  surface.addEventListener("mouseup", () => {
+  // selection copies it to the clipboard and clears the highlight. In an app
+  // that grabs the mouse (Claude), xterm makes no selection and this no-ops —
+  // OSC 52 above handles that case instead.
+  //
+  // xterm sets the selection end only from mousemove; its own mouseup handler
+  // discards the release coordinates. On a fast release the final mousemove
+  // lags the pointer, so the selection (and thus the copy) stops a cell short.
+  // This bubble listener runs before xterm's document-level mouseup handler —
+  // where it detaches its drag listeners — so replaying the release point as a
+  // mousemove extends the selection to where the button actually came up.
+  surface.addEventListener("mouseup", (e) => {
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        buttons: 1,
+        bubbles: true,
+      }),
+    );
     const sel = term.getSelection();
     if (!sel) return;
     void writeText(sel).catch((e) =>
