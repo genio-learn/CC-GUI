@@ -10,6 +10,7 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview, closeReview } from "./review";
+import { openExplorer, closeExplorer, isExplorerOpen } from "./fileExplorer";
 import { toast, confirmDialog, promptDialog, deleteSessionDialog } from "./toast";
 import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
@@ -1135,6 +1136,43 @@ window.addEventListener(
     e.preventDefault();
     e.stopPropagation();
     fn();
+  },
+  true,
+);
+
+/** Open the file explorer rooted at the active session's repo. */
+function openFileExplorer(): void {
+  const name = activeTerm;
+  const s = name
+    ? groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === name)
+    : undefined;
+  if (!name || !s) {
+    toast("No active session", "error");
+    return;
+  }
+  void openExplorer({
+    sessionId: s.id,
+    tmuxSession: name,
+    rootLabel: groupOf(s.id)?.name ?? s.title,
+    focusTerminal: () => terminals.get(name)?.term.focus(),
+  });
+}
+
+// Cmd+E toggles the file explorer. Capture phase + Cmd (not Ctrl — Ctrl+E is the
+// terminal's move-to-end-of-line) so it opens even while a terminal is focused,
+// the same technique as Cmd+W / Cmd+1..9 above.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key !== "e" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (isExplorerOpen()) {
+      closeExplorer();
+      if (activeTerm) terminals.get(activeTerm)?.term.focus();
+    } else {
+      openFileExplorer();
+    }
   },
   true,
 );
@@ -3489,6 +3527,7 @@ registerPaletteProvider(() => [
     hint: "command",
     action: () => commanderChip.click(),
   },
+  { label: "Open file explorer", hint: "⌘E", action: openFileExplorer },
   { label: "Settings", hint: "command", action: () => void openSettings() },
   { label: "Help", hint: "command", action: toggleHelp },
 ]);

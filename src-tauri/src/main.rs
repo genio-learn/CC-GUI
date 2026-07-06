@@ -2,6 +2,7 @@
 
 mod cascade;
 mod commander;
+mod files;
 mod groups;
 mod polling;
 mod projects;
@@ -112,6 +113,7 @@ fn main() {
             projects::prepare_project_shell,
             projects::open_in_editor,
             projects::open_external,
+            files::list_session_dir,
             review::open_review,
             review::read_review_image,
             review::create_comment,
