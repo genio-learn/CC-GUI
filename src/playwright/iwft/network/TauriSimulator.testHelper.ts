@@ -8,7 +8,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { confirmDialog, promptDialog } from "../../../toast";
 import type { Comment, ReviewSnapshot } from "../../../review/model";
-import type { Seed, SessionRow, Snapshot } from "./types.testHelper";
+import type { FsEntry, Seed, SessionRow, Snapshot } from "./types.testHelper";
 
 type CreateCommentArgs = {
   id: string;
@@ -35,7 +35,11 @@ class TauriSimulator {
   private nextProject = 1;
   private dirs: string[];
   private browsePath: string | null;
+  private fileTree: Record<string, FsEntry[]>;
   private openedUrls: string[] = [];
+  // Bytes the frontend wrote to a PTY (write_pty) — the file explorer's @path
+  // reference lands here, in order.
+  private ptyWrites: { tmuxSession: string; data: string }[] = [];
   // Section moves the frontend actually dispatched (a no-op drop short-circuits
   // before invoke, so this stays empty — how a negative test tells them apart).
   private sectionMoves: { id: string; section: string | null }[] = [];
@@ -48,6 +52,7 @@ class TauriSimulator {
     this.customThemes = seed.customThemes ?? [];
     this.dirs = seed.dirs ?? [];
     this.browsePath = seed.browsePath ?? null;
+    this.fileTree = seed.fileTree ?? {};
     this.comments = {};
     this.reviewed = {};
     for (const [id, review] of Object.entries(seed.reviews)) {
@@ -103,6 +108,12 @@ class TauriSimulator {
   /** URLs the frontend asked the platform opener to launch (open_external). */
   getOpenedUrls(): string[] {
     return this.openedUrls;
+  }
+
+  /** Bytes written to PTYs via write_pty, in order — what a file-explorer test
+   *  asserts the `@path` reference against. */
+  getPtyWrites(): { tmuxSession: string; data: string }[] {
+    return this.ptyWrites;
   }
 
   // ----- event push (the backend's role; available for sidebar scenarios) -----
@@ -172,11 +183,18 @@ class TauriSimulator {
           index: 0,
         };
         return null;
+      case "write_pty":
+        this.ptyWrites.push({
+          tmuxSession: args.tmuxSession as string,
+          data: args.data as string,
+        });
+        return null;
       case "restart_fresh":
       case "resize_pty":
-      case "write_pty":
       case "detach":
         return null;
+      case "list_session_dir":
+        return this.listSessionDir(args.subPath as string, args.showHidden as boolean);
       case "open_external":
         this.openedUrls.push(args.url as string);
         return null;
@@ -353,6 +371,22 @@ class TauriSimulator {
     return this.getSessions()
       .filter((s) => s.pr_state === "merged")
       .map((s) => [s.id, s.title]);
+  }
+
+  /** Contents of one directory in the fake file tree, sorted directories-first
+   *  then case-insensitive by name — mirroring the backend's list_session_dir. */
+  private listSessionDir(
+    subPath: string,
+    showHidden: boolean,
+  ): { rel_path: string; at_root: boolean; entries: FsEntry[] } {
+    const all = this.fileTree[subPath] ?? [];
+    const entries = all
+      .filter((e) => showHidden || !e.name.startsWith("."))
+      .sort((a, b) => {
+        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+    return { rel_path: subPath, at_root: subPath === "", entries };
   }
 
   private openReview(id: string): ReviewSnapshot {

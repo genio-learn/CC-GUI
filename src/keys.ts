@@ -97,6 +97,7 @@ export function overlayOpen(): boolean {
     document.querySelector("#help-overlay:not(.hidden)") !== null ||
     document.querySelector("#settings-overlay:not(.hidden)") !== null ||
     document.querySelector("#review:not(.hidden)") !== null ||
+    document.querySelector("#file-explorer:not(.hidden)") !== null ||
     document.querySelector(".confirm-overlay") !== null ||
     document.querySelector(".context-menu") !== null
   );

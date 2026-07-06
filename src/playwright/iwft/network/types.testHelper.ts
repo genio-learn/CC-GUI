@@ -27,6 +27,9 @@ export type SessionRow = {
   current_section: string | null;
 };
 
+/** One entry in a listed directory, mirroring the backend's FsEntry. */
+export type FsEntry = { name: string; is_dir: boolean; size: number };
+
 export type ProjectGroup = {
   id: string;
   name: string;
@@ -58,4 +61,7 @@ export type Seed = {
   dirs?: string[];
   /** Path the native folder picker (Browse…) returns; null models a cancel. */
   browsePath?: string | null;
+  /** The file explorer's fake filesystem: directory contents keyed by path
+   *  relative to the session's repo root ("" = root). Answers list_session_dir. */
+  fileTree?: Record<string, FsEntry[]>;
 };

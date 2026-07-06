@@ -38,6 +38,19 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     ],
   ],
   [
+    "File explorer",
+    [
+      ["Cmd+E", "Open/close the file explorer for the active session's repo"],
+      ["↑/↓ or j/k", "Move the cursor"],
+      ["Enter / → / l", "Open a folder, or reference the file as @path in the terminal"],
+      ["Backspace / ← / h", "Up to the parent folder"],
+      ["/", "Filter the current folder (type to narrow, Esc clears)"],
+      [".", "Toggle hidden (dot) files"],
+      ["Click / double-click", "Move cursor / open"],
+      ["Esc", "Close"],
+    ],
+  ],
+  [
     "Global",
     [
       ["Cmd/Ctrl+K", "Fuzzy palette: jump to session or run a command"],
