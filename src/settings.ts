@@ -72,6 +72,16 @@ const COMMANDER_CATEGORIES: Category[] = [
     ],
   },
   {
+    id: "hibernation",
+    label: "Hibernation",
+    note: "Automatically stop idle sessions to free memory (~400MB per idle agent), keeping the worktree and metadata. A hibernated session resumes its agent on wake. Enabling hibernation and changing the check interval take effect after restarting the app.",
+    fields: [
+      { path: "hibernate_enabled", label: "Enable hibernation", desc: "Run the background loop that hibernates idle sessions.", control: { kind: "toggle" } },
+      { path: "hibernate_idle_timeout_secs", label: "Idle timeout", desc: "Seconds a session must be idle (agent Idle, nothing attached) before it hibernates. 0 = never hibernate.", control: { kind: "number", min: 0, unit: "s" }, enabledBy: "hibernate_enabled" },
+      { path: "hibernate_check_interval_secs", label: "Check interval", desc: "Seconds between hibernation policy checks (effective minimum 30). 0 disables the loop.", control: { kind: "number", min: 0, unit: "s" }, enabledBy: "hibernate_enabled" },
+    ],
+  },
+  {
     id: "git",
     label: "Git & PRs",
     fields: [
