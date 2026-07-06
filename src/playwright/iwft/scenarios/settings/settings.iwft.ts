@@ -43,6 +43,27 @@ test("a boolean renders as a toggle and persists", async ({ settings }) => {
   expect(saved?.resume_session).toBe(false);
 });
 
+test("enabling hibernation gates its interval fields and persists", async ({
+  settings,
+}) => {
+  await settings.open();
+  await settings.selectCategory("hibernation");
+  expect(await settings.fieldKind("hibernate_enabled")).toBe("toggle");
+  // Interval fields are disabled until hibernation is enabled.
+  expect(await settings.field("hibernate_check_interval_secs").isDisabled()).toBe(true);
+
+  await settings.toggle("hibernate_enabled", true);
+  expect(await settings.field("hibernate_check_interval_secs").isDisabled()).toBe(false);
+  await settings.setText("hibernate_idle_timeout_secs", "3600");
+  await settings.setText("hibernate_check_interval_secs", "120");
+  await settings.save();
+
+  const saved = await settings.savedConfig();
+  expect(saved?.hibernate_enabled).toBe(true);
+  expect(saved?.hibernate_idle_timeout_secs).toBe(3600);
+  expect(saved?.hibernate_check_interval_secs).toBe(120);
+});
+
 test("a nested field round-trips into its sub-object", async ({ settings }) => {
   await settings.open();
   await settings.selectCategory("conversation");
