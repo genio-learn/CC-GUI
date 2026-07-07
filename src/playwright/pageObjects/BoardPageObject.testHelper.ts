@@ -2,16 +2,18 @@ import { expect, type Locator } from "@playwright/test";
 import { AppPageObject } from "./AppPageObject.testHelper";
 
 // Drives the Board layout (#board): the title-bar [Board] segment switch, the
-// per-project columns, the agent cards, the filter pills + search, the card
-// quick actions, and the bottom dock. The docked terminal reuses the Console
-// terminal machinery (one PTY re-parented into #board-dock-surface), so its
-// byte stream is driven through the same fake as TerminalPageObject.
+// per-section columns, the agent cards (each naming its project), the filter
+// pills + search, the card quick actions, and the bottom dock. The docked
+// terminal reuses the Console terminal machinery (one PTY re-parented into
+// #board-dock-surface), so its byte stream is driven through the same fake as
+// TerminalPageObject.
 export class BoardPageObject extends AppPageObject {
   private readonly board = this.page.locator("#board");
   private readonly columns = this.board.locator("#board-columns .board-col");
   private readonly cards = this.board.locator(".agent-card");
-  private readonly pills = this.board.locator("#board-filter .board-pill");
   private readonly searchInput = this.board.locator("#board-filter .board-search");
+  private readonly projectFilterBtn = this.board.locator("#board-filter .board-project-btn");
+  private readonly projectPanel = this.board.locator("#board-filter .board-project-panel");
   private readonly dock = this.board.locator("#board-dock");
   private readonly dockSurface = this.dock.locator("#board-dock-surface");
   private readonly dockName = this.dock.locator("#board-dock-name");
@@ -31,21 +33,21 @@ export class BoardPageObject extends AppPageObject {
     return this.columns.count();
   }
 
-  /** Project column names, left to right. */
+  /** Section column names, left to right (the "No section" catch-all first). */
   columnNames(): Locator {
     return this.columns.locator(".board-col-name");
   }
 
-  /** The column whose header matches `projectName`. */
-  column(projectName: string): Locator {
+  /** The column whose header matches `sectionName`. */
+  column(sectionName: string): Locator {
     return this.columns.filter({
-      has: this.page.locator(".board-col-name", { hasText: projectName }),
+      has: this.page.locator(".board-col-name", { hasText: sectionName }),
     });
   }
 
   /** A column's visible-card count (the header badge). */
-  columnCount_(projectName: string): Promise<string> {
-    return this.column(projectName).locator(".board-col-count").innerText();
+  columnCount_(sectionName: string): Promise<string> {
+    return this.column(sectionName).locator(".board-col-count").innerText();
   }
 
   // ----- cards -----
@@ -65,25 +67,13 @@ export class BoardPageObject extends AppPageObject {
     });
   }
 
+  /** A card's project name (the h2 line under the session title). */
+  cardProject(title: string): Promise<string> {
+    return this.card(title).locator(".card-project-name").innerText();
+  }
+
   // ----- filter + search -----
-  /** Click a filter pill by its label (e.g. "Running", "Needs review"). */
-  setFilter(label: string): Promise<void> {
-    return this.step(`setFilter: ${label}`, async () => {
-      await this.pills.filter({ hasText: label }).click();
-      await expect(this.pills.filter({ hasText: label })).toHaveClass(/active/);
-    });
-  }
-
-  /** Toggle a section filter pill on/off by its section name. */
-  toggleSectionFilter(name: string): Promise<void> {
-    return this.step(`toggleSectionFilter: ${name}`, () =>
-      this.board
-        .locator("#board-filter .board-pill.section", { hasText: name })
-        .click(),
-    );
-  }
-
-  /** Toggle the "Hide empty" projects switch. */
+  /** Toggle the "Hide empty" section-columns switch. */
   toggleHideEmpty(): Promise<void> {
     return this.step("toggleHideEmpty", () =>
       this.board.locator("#board-filter .board-pill.hide-empty").click(),
@@ -93,6 +83,41 @@ export class BoardPageObject extends AppPageObject {
   /** Type into the board search field (filters cards by name). */
   search(text: string): Promise<void> {
     return this.step(`search: ${text}`, () => this.searchInput.fill(text));
+  }
+
+  // ----- project filter dropdown -----
+  /** The dropdown button's summary text (e.g. "All projects ▾"). */
+  projectFilterLabel(): Promise<string> {
+    return this.projectFilterBtn.innerText();
+  }
+
+  /** Open the project multiselect popover. */
+  openProjectFilter(): Promise<void> {
+    return this.step("openProjectFilter", async () => {
+      await this.projectFilterBtn.click();
+      await expect(this.projectPanel).not.toHaveClass(/hidden/);
+    });
+  }
+
+  /** Toggle a project's checkbox in the open popover. */
+  toggleProject(name: string): Promise<void> {
+    return this.step(`toggleProject: ${name}`, () =>
+      this.projectPanel.locator(".board-project-row", { hasText: name }).locator("input").click(),
+    );
+  }
+
+  /** Click the popover's "Select all" helper. */
+  selectAllProjects(): Promise<void> {
+    return this.step("selectAllProjects", () =>
+      this.projectPanel.locator(".board-project-tool", { hasText: "Select all" }).click(),
+    );
+  }
+
+  /** Click the popover's "Clear all" helper. */
+  clearAllProjects(): Promise<void> {
+    return this.step("clearAllProjects", () =>
+      this.projectPanel.locator(".board-project-tool", { hasText: "Clear all" }).click(),
+    );
   }
 
   // ----- quick actions -----

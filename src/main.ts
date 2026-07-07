@@ -1455,12 +1455,12 @@ let projectFilter: string | null = null;
 
 // Board layout: which cards are visible (filter pills) + a name search. Mirrors
 // projectFilter's "local UI state, re-render on change" shape.
-let boardFilter: "all" | "review" | "running" | "blocked" = "all";
 let boardSearch = "";
-// Custom-section filter (composes with the four base pills + search). null = no
-// section narrowing. Cleared if the section disappears from the snapshot.
-let boardSectionFilter: string | null = null;
-// Hide project columns with zero sessions (persisted).
+// Project multiselect filter: the set of selected project ids, or null for "all
+// projects" (the default). Cards whose project isn't selected are hidden across
+// every section column.
+let boardProjectFilter: Set<string> | null = null;
+// Hide section columns with zero visible cards (persisted).
 let hideEmptyColumns = localStorage.getItem("cc-board-hide-empty") === "1";
 
 const SECTION_VIEW = (): boolean => sections !== null;
@@ -2989,20 +2989,21 @@ function boardStateClass(s: SessionRow): string {
   return "state-idle";
 }
 
-/** Does a session pass the active board filter pill? The base pill and the
- *  optional custom-section pill both must pass; search composes on top. */
+/** Every project id known to the current snapshot, in board order. */
+function allProjectIds(): string[] {
+  return groups.map((g) => g.id);
+}
+
+/** The selected project ids, bounded to projects still present in the snapshot.
+ *  null (the default) means every project — returned here as the full set. */
+function selectedProjectIds(): Set<string> {
+  const all = allProjectIds();
+  return boardProjectFilter ? new Set(all.filter((id) => boardProjectFilter!.has(id))) : new Set(all);
+}
+
+/** Does a session pass the project filter? Search composes on top. */
 function boardMatchesFilter(s: SessionRow): boolean {
-  if (boardSectionFilter && s.current_section !== boardSectionFilter) return false;
-  switch (boardFilter) {
-    case "review":
-      return s.has_pending_comments;
-    case "running":
-      return s.status === "running";
-    case "blocked":
-      return groupOf(s.id)?.pull_blocked != null;
-    default:
-      return true;
-  }
+  return !boardProjectFilter || boardProjectFilter.has(s.project_id);
 }
 
 function boardMatchesSearch(s: SessionRow): boolean {
@@ -3010,9 +3011,36 @@ function boardMatchesSearch(s: SessionRow): boolean {
   return s.title.toLowerCase().includes(boardSearch.toLowerCase());
 }
 
-/** Sessions of a project visible under the current filter + search. */
-function boardVisibleSessions(g: ProjectGroup): SessionRow[] {
-  return g.sessions.filter((s) => boardMatchesFilter(s) && boardMatchesSearch(s));
+/** A board column: the sessions pinned to one section (or the leading "no
+ *  section" catch-all), already narrowed by filter + search. `key` is the
+ *  section name, or `NO_SECTION_KEY` for the catch-all. */
+type BoardSection = { key: string; name: string; sessions: SessionRow[] };
+
+// Sentinel key for the leading catch-all column (sessions with no section pin,
+// and — when no sections are configured at all — every session).
+const NO_SECTION_KEY = " none";
+const NO_SECTION_LABEL = "No section";
+
+/** All sessions across projects, bucketed into section columns and narrowed by
+ *  the active filter + search. The catch-all "no section" column comes first,
+ *  then one column per configured section in `sectionNames` order. */
+function boardSectionColumns(): BoardSection[] {
+  const none: BoardSection = { key: NO_SECTION_KEY, name: NO_SECTION_LABEL, sessions: [] };
+  const byName = new Map<string, BoardSection>();
+  const cols: BoardSection[] = [none];
+  for (const name of sectionNames) {
+    const col: BoardSection = { key: name, name, sessions: [] };
+    byName.set(name, col);
+    cols.push(col);
+  }
+  for (const g of groups) {
+    for (const s of g.sessions) {
+      if (!(boardMatchesFilter(s) && boardMatchesSearch(s))) continue;
+      const sec = s.current_section;
+      (sec && byName.get(sec) ? byName.get(sec)! : none).sessions.push(s);
+    }
+  }
+  return cols;
 }
 
 /** Lazy-fetch a session's diffstat for its card bar; fill in place when it
@@ -3093,14 +3121,28 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   accent.className = `card-accent ${boardStateClass(s)}`;
   card.appendChild(accent);
 
-  // Header: liveness dot + name + ⋯ menu. The dot (and the accent bar) already
-  // convey the state, so no textual state pill is repeated here.
+  // Header: liveness dot + a title block (session name over its project) + ⋯
+  // menu. Cards now group by section, not project, so the project is named on
+  // each card: the session title is primary (h1), the project secondary (h2).
+  // The dot (and accent bar) already convey state, so no textual state pill.
   const header = document.createElement("div");
   header.className = "card-header";
+  const heading = document.createElement("div");
+  heading.className = "card-heading";
   const name = document.createElement("span");
   name.className = "card-title";
   name.textContent = s.title;
   name.title = `Branch: ${s.branch}`;
+  const project = document.createElement("span");
+  project.className = "card-project";
+  const square = document.createElement("span");
+  square.className = `proj-square ${projClass(s.project_id)}`;
+  const projName = document.createElement("span");
+  projName.className = "card-project-name";
+  projName.textContent = s.project_name;
+  project.append(square, projName);
+  project.title = s.project_name;
+  heading.append(name, project);
   const menu = document.createElement("button");
   menu.className = "row-action card-menu";
   menu.textContent = "⋯";
@@ -3109,7 +3151,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     e.stopPropagation();
     showContextMenu(e, sessionMenuItems(cardRefs(s)));
   });
-  header.append(statusGlyph(s), name, menu);
+  header.append(statusGlyph(s), heading, menu);
   card.appendChild(header);
 
   // Branch line under the title — only when it diverges from the title (it's
@@ -3204,9 +3246,10 @@ function cardRefs(s: SessionRow): RowRefs {
   };
 }
 
-// Board column order is GUI-owned (like theme/layout prefs): the backend always
-// returns projects alphabetically, and we re-sort client-side from a persisted
-// id list so drag-to-reorder sticks across reloads without touching CC config.
+// Board column order is GUI-owned (like theme/layout prefs): the canonical order
+// is the "no section" catch-all first, then sections in their configured order.
+// We re-sort client-side from a persisted key list so drag-to-reorder sticks
+// across reloads without touching CC config.
 const BOARD_ORDER_KEY = "cc-board-col-order";
 function loadBoardOrder(): string[] {
   try {
@@ -3218,13 +3261,13 @@ function loadBoardOrder(): string[] {
 }
 let boardColOrder = loadBoardOrder();
 
-/** `groups` re-sorted by the persisted column order. Projects absent from the
- *  saved order (new ones) keep their backend alphabetical position, after the
+/** Section columns re-sorted by the persisted column order. Columns absent from
+ *  the saved order (new sections) keep their canonical position, after the
  *  ranked ones — Array.sort is stable, so unranked relative order is preserved. */
-function orderedGroups(): ProjectGroup[] {
-  const rank = new Map(boardColOrder.map((id, i) => [id, i] as const));
-  return [...groups].sort(
-    (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity),
+function orderedSectionColumns(): BoardSection[] {
+  const rank = new Map(boardColOrder.map((key, i) => [key, i] as const));
+  return [...boardSectionColumns()].sort(
+    (a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity),
   );
 }
 
@@ -3256,12 +3299,12 @@ function clearColDropMarker(): void {
   }
 }
 
-/** One project column: header (color square + name + visible count + +/$) over
- *  a body of stacked agent cards. Rendered for every project incl. sessionless. */
-function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
+/** One section column: header (name + visible count) over a body of stacked
+ *  agent cards. Rendered for every section incl. the "no section" catch-all. */
+function renderBoardColumn(sec: BoardSection): HTMLDivElement {
   const col = document.createElement("div");
   col.className = "board-col";
-  col.dataset.project = g.id;
+  col.dataset.section = sec.key;
 
   const header = document.createElement("div");
   header.className = "board-col-header";
@@ -3269,9 +3312,9 @@ function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
   // boardColumnsEl listeners), so an Esc-cancelled drag leaves the order intact.
   header.draggable = true;
   header.addEventListener("dragstart", (e) => {
-    draggingColId = g.id;
+    draggingColId = sec.key;
     col.classList.add("dragging");
-    e.dataTransfer?.setData("text/plain", g.id);
+    e.dataTransfer?.setData("text/plain", sec.key);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   });
   header.addEventListener("dragend", () => {
@@ -3279,90 +3322,39 @@ function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
     col.classList.remove("dragging");
     clearColDropMarker(); // in case the drop landed outside the strip
   });
-  const square = document.createElement("span");
-  square.className = `proj-square ${projClass(g.id)}`;
   const name = document.createElement("span");
   name.className = "board-col-name";
-  name.textContent = g.name;
-  name.title = g.name;
+  name.textContent = sec.name;
+  name.title = sec.name;
 
-  const visible = boardVisibleSessions(g);
   const count = document.createElement("span");
   count.className = "board-col-count";
-  count.textContent = String(visible.length);
+  count.textContent = String(sec.sessions.length);
 
-  const add = document.createElement("button");
-  add.className = "proj-btn add";
-  add.textContent = "+";
-  add.title = "New session in this project";
-  add.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void createSessionInProject(g);
-  });
-  const shell = document.createElement("button");
-  shell.className = "proj-btn shell";
-  shell.textContent = "$";
-  shell.title = "Project shell";
-  shell.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void openProjectShell(g);
-  });
-  header.append(square, name, count, add, shell);
+  header.append(name, count);
   col.appendChild(header);
 
   const body = document.createElement("div");
   body.className = "board-col-body";
-  body.dataset.project = g.id;
-  for (const s of visible) body.appendChild(renderAgentCard(s));
+  body.dataset.section = sec.key;
+  for (const s of sec.sessions) body.appendChild(renderAgentCard(s));
   col.appendChild(body);
   return col;
 }
 
-/** Filter bar: pill filters + name search + primary "New session". */
+/** Filter bar: Hide-empty toggle + project filter + name search + primary
+ *  "New session". */
 function renderBoardFilterBar(): void {
   boardFilterEl.innerHTML = "";
 
   const pills = document.createElement("div");
   pills.className = "board-pills";
-  const defs: { key: typeof boardFilter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "review", label: "Needs review" },
-    { key: "running", label: "Running" },
-    { key: "blocked", label: "Blocked" },
-  ];
-  for (const { key, label } of defs) {
-    const pill = document.createElement("button");
-    pill.className = "board-pill";
-    pill.textContent = label;
-    pill.classList.toggle("active", boardFilter === key);
-    pill.addEventListener("click", () => {
-      boardFilter = key;
-      renderBoardFilterBar();
-      renderBoardColumns();
-    });
-    pills.appendChild(pill);
-  }
 
-  // One pill per configured custom section. Selecting toggles a section filter
-  // that narrows cards to that section (composes with the base pills + search).
-  for (const sectionName of sectionNames) {
-    const pill = document.createElement("button");
-    pill.className = "board-pill section";
-    pill.textContent = sectionName;
-    pill.classList.toggle("active", boardSectionFilter === sectionName);
-    pill.addEventListener("click", () => {
-      boardSectionFilter = boardSectionFilter === sectionName ? null : sectionName;
-      renderBoardFilterBar();
-      renderBoardColumns();
-    });
-    pills.appendChild(pill);
-  }
-
-  // Toggle: hide project columns with zero sessions.
+  // Toggle: hide section columns with zero visible cards.
   const hideEmpty = document.createElement("button");
   hideEmpty.className = "board-pill hide-empty";
   hideEmpty.textContent = "Hide empty";
-  hideEmpty.title = "Hide project columns with no sessions";
+  hideEmpty.title = "Hide section columns with no cards";
   hideEmpty.classList.toggle("active", hideEmptyColumns);
   hideEmpty.addEventListener("click", () => {
     hideEmptyColumns = !hideEmptyColumns;
@@ -3388,31 +3380,132 @@ function renderBoardFilterBar(): void {
   create.title = "New session";
   create.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
 
-  boardFilterEl.append(pills, search, create);
+  boardFilterEl.append(pills, buildProjectFilter(), search, create);
+}
+
+/** Multiselect project filter: a button summarising the selection, over a
+ *  popover of per-project checkboxes with Select-all / Clear-all helpers.
+ *  Defaults to all projects; the selection lives in `boardProjectFilter`. */
+function buildProjectFilter(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "board-project-filter";
+
+  const btn = document.createElement("button");
+  btn.className = "board-pill board-project-btn";
+  btn.title = "Filter by project";
+
+  const panel = document.createElement("div");
+  panel.className = "board-project-panel hidden";
+
+  const updateSummary = (): void => {
+    const total = allProjectIds().length;
+    const sel = selectedProjectIds();
+    btn.classList.toggle("active", sel.size !== total);
+    let label: string;
+    if (sel.size === total) label = "All projects";
+    else if (sel.size === 0) label = "No projects";
+    else if (sel.size === 1) label = groups.find((g) => sel.has(g.id))?.name ?? "1 project";
+    else label = `${sel.size} projects`;
+    btn.textContent = `${label} ▾`;
+  };
+
+  const commit = (next: Set<string> | null): void => {
+    boardProjectFilter = next && next.size === allProjectIds().length ? null : next;
+    updateSummary();
+    renderBoardColumns();
+  };
+
+  const rebuildPanel = (): void => {
+    panel.innerHTML = "";
+    const tools = document.createElement("div");
+    tools.className = "board-project-tools";
+    const selectAll = document.createElement("button");
+    selectAll.className = "board-project-tool";
+    selectAll.textContent = "Select all";
+    selectAll.addEventListener("click", (e) => {
+      e.stopPropagation();
+      commit(null);
+      rebuildPanel();
+    });
+    const clearAll = document.createElement("button");
+    clearAll.className = "board-project-tool";
+    clearAll.textContent = "Clear all";
+    clearAll.addEventListener("click", (e) => {
+      e.stopPropagation();
+      commit(new Set());
+      rebuildPanel();
+    });
+    tools.append(selectAll, clearAll);
+    panel.appendChild(tools);
+
+    const selected = selectedProjectIds();
+    for (const g of groups) {
+      const row = document.createElement("label");
+      row.className = "board-project-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selected.has(g.id);
+      cb.addEventListener("change", () => {
+        const sel = selectedProjectIds();
+        if (cb.checked) sel.add(g.id);
+        else sel.delete(g.id);
+        commit(sel);
+      });
+      const square = document.createElement("span");
+      square.className = `proj-square ${projClass(g.id)}`;
+      const name = document.createElement("span");
+      name.className = "board-project-name";
+      name.textContent = g.name;
+      row.append(cb, square, name);
+      panel.appendChild(row);
+    }
+  };
+
+  const onDocClick = (e: MouseEvent): void => {
+    if (!wrap.contains(e.target as Node)) close();
+  };
+  const close = (): void => {
+    panel.classList.add("hidden");
+    document.removeEventListener("click", onDocClick, true);
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains("hidden")) {
+      rebuildPanel();
+      panel.classList.remove("hidden");
+      document.addEventListener("click", onDocClick, true);
+    } else {
+      close();
+    }
+  });
+
+  updateSummary();
+  wrap.append(btn, panel);
+  return wrap;
 }
 
 /** Rebuild the columns from the current snapshot + filter + search. */
 function renderBoardColumns(): void {
   // Columns are rebuilt wholesale on every snapshot tick (~2s); capture the
-  // per-column vertical scroll (keyed by project) + the strip's horizontal
+  // per-column vertical scroll (keyed by section) + the strip's horizontal
   // scroll so an in-progress session doesn't yank the view back to the top.
   const prevScroll = new Map<string, number>();
   for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
-    if (body.dataset.project) prevScroll.set(body.dataset.project, body.scrollTop);
+    if (body.dataset.section) prevScroll.set(body.dataset.section, body.scrollTop);
   }
   const prevScrollLeft = boardColumnsEl.scrollLeft;
 
   boardCardRefs.clear();
   boardColumnsEl.innerHTML = "";
-  for (const g of orderedGroups()) {
-    // "Hide empty" hides columns with no VISIBLE cards, so a project whose
-    // sessions are all filtered out (e.g. by the section filter) drops too.
-    if (hideEmptyColumns && boardVisibleSessions(g).length === 0) continue;
-    boardColumnsEl.appendChild(renderBoardColumn(g));
+  for (const sec of orderedSectionColumns()) {
+    // "Hide empty" hides columns with no VISIBLE cards, so a section whose
+    // sessions are all filtered out drops too.
+    if (hideEmptyColumns && sec.sessions.length === 0) continue;
+    boardColumnsEl.appendChild(renderBoardColumn(sec));
   }
 
   for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
-    const top = body.dataset.project ? prevScroll.get(body.dataset.project) : undefined;
+    const top = body.dataset.section ? prevScroll.get(body.dataset.section) : undefined;
     if (top) body.scrollTop = top;
   }
   boardColumnsEl.scrollLeft = prevScrollLeft;
@@ -3420,7 +3513,7 @@ function renderBoardColumns(): void {
 
 // Column drag-to-reorder: only the strip calls preventDefault on dragover (so it
 // is the drop target), and the new order is committed on `drop` against the full
-// ordered group list — inserting before a visible column is well-defined even
+// ordered column list — inserting before a visible column is well-defined even
 // when "Hide empty" omits some columns, and a dropped-at-end column lands last.
 boardColumnsEl.addEventListener("dragover", (e) => {
   if (!draggingColId) return;
@@ -3432,11 +3525,11 @@ boardColumnsEl.addEventListener("drop", (e) => {
   if (!draggingColId) return;
   e.preventDefault();
   clearColDropMarker();
-  const beforeId = colBeforeX(e.clientX)?.dataset.project ?? null;
-  const order = orderedGroups()
-    .map((g) => g.id)
-    .filter((id) => id !== draggingColId);
-  const idx = beforeId ? order.indexOf(beforeId) : order.length;
+  const beforeKey = colBeforeX(e.clientX)?.dataset.section ?? null;
+  const order = orderedSectionColumns()
+    .map((sec) => sec.key)
+    .filter((key) => key !== draggingColId);
+  const idx = beforeKey ? order.indexOf(beforeKey) : order.length;
   order.splice(idx, 0, draggingColId);
   boardColOrder = order;
   localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(order));
@@ -3458,16 +3551,7 @@ function applySnapshot(snap: Snapshot): void {
   groups = snap.groups;
   viewMode = snap.view_mode;
   sections = snap.sections;
-  const prevSectionNames = sectionNames;
   sectionNames = snap.section_names;
-  // A section filter referencing a now-removed section can no longer match.
-  if (boardSectionFilter && !sectionNames.includes(boardSectionFilter)) {
-    boardSectionFilter = null;
-  }
-  // Rebuild the (otherwise sticky) filter bar when the section pills change.
-  if (prevSectionNames.join(" ") !== sectionNames.join(" ")) {
-    boardFilterEl.innerHTML = "";
-  }
   updateTitleBarCounts();
   renderSidebar();
   renderBoard();
