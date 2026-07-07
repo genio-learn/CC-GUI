@@ -620,6 +620,11 @@ body {
   background: var(--bg-elevated);
 }
 
+/* Closed via "×": collapse the whole dock so the board columns fill the space. */
+#board-dock.dock-closed {
+  display: none;
+}
+
 /* Fullscreen overlay: float the dock into a centred ~85% dialog over a dimmed
    backdrop. `inset` of 7.5vh/7.5vw leaves an even margin all round so the dialog
    reads as dismissable, not as a panel that swallowed the window. */

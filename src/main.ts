@@ -645,14 +645,17 @@ function refitActive(): void {
 // after any re-parent it must be re-fit once its new parent is laid out. When
 // switching back to Console the container returns to #terminals.
 
-// The user can "×" detach the dock without killing the PTY: the terminal goes
-// back to #terminals and the dock shows its placeholder even though a terminal
-// is still active. Cleared by attaching from a card or re-entering board mode.
+// The user can "×" close the dock without killing the PTY: the terminal goes
+// back to #terminals and the whole dock panel collapses out of the board so the
+// columns fill the space. The PTY stays attached. Cleared by attaching from a
+// card or re-entering board mode.
 let dockDetached = false;
 
 /** Fill the dock header (session name + branch) from the active terminal's
- *  snapshot row, and toggle the placeholder vs. the docked terminal. */
+ *  snapshot row, toggle the placeholder vs. the docked terminal, and collapse
+ *  the whole dock panel when the user has closed it with "×". */
 function updateDockHeader(): void {
+  boardDockEl.classList.toggle("dock-closed", dockDetached);
   const entry = activeTerm && !dockDetached ? terminals.get(activeTerm) : null;
   if (!entry) {
     boardDockNameEl.textContent = "";
@@ -2879,9 +2882,10 @@ tbBoard.classList.toggle("active", layout === "board");
 // Dock the active terminal (if any) when booting straight into board mode.
 if (layout === "board") dockActiveTerminal();
 
-// Dock "×" detaches: undock the terminal back to #terminals and show the dock
-// placeholder. It does NOT kill the PTY — the session stays attached and the
-// terminal reappears in Console (or on the next card ▸). Also drops out of the
+// Dock "×" closes the preview: undock the terminal back to #terminals and
+// collapse the whole dock panel so the columns fill the board. It does NOT kill
+// the PTY — the session stays attached and the terminal reappears in Console
+// (or on the next card ▸, which reopens the dock). Also drops out of the
 // fullscreen overlay if it was open (nothing left to show fullscreen).
 document.querySelector<HTMLButtonElement>("#board-dock-close")!.addEventListener("click", () => {
   setDockFullscreen(false);

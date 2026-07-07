@@ -152,6 +152,16 @@ export class BoardPageObject extends AppPageObject {
     return this.dockPlaceholder.isVisible();
   }
 
+  /** Is the dock panel itself showing (false once "×" collapses it)? */
+  dockVisible(): Promise<boolean> {
+    return this.dock.isVisible();
+  }
+
+  /** Click the dock's "×" to close the preview (collapses the whole dock). */
+  closeDock(): Promise<void> {
+    return this.step("closeDock", () => this.dock.locator("#board-dock-close").click());
+  }
+
   /** Assert the docked terminal's rendered screen contains `text`. */
   async expectDockScreenContains(text: string): Promise<void> {
     await expect(this.dockScreen).toContainText(text);
