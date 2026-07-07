@@ -148,6 +148,21 @@ test("attaching from a card docks that session's terminal", async ({ board }) =>
   await board.expectDockScreenContains("docked-output");
 });
 
+test("the dock's × closes the preview, and re-attaching reopens it", async ({ board }) => {
+  await board.enter();
+  await board.attachFromCard("fix login bug");
+  expect(await board.dockVisible()).toBe(true);
+
+  // "×" collapses the whole dock panel — not just a placeholder swap.
+  await board.closeDock();
+  expect(await board.dockVisible()).toBe(false);
+
+  // Attaching from a card reopens the dock with that session docked.
+  await board.attachFromCard("tune cache");
+  expect(await board.dockVisible()).toBe(true);
+  expect(await board.dockName_()).toBe("tune cache");
+});
+
 test("clicking a card body also docks that session's terminal", async ({ board }) => {
   await board.enter();
   expect(await board.dockPlaceholderVisible()).toBe(true);
