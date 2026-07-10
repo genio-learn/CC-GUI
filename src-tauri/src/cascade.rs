@@ -1,7 +1,7 @@
 //! Cascade-merge / push-stack commands. Each returns a short human-readable
 //! summary string for the frontend to toast.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use claude_commander_core::agent::AgentKind;
@@ -12,7 +12,7 @@ use claude_commander_core::tmux::AgentStateDetector;
 use crate::service::{parse_session_id, with_service};
 
 /// Fresh agent states for the manager's working-agent pre-flight checks.
-async fn detect_states(svc: &CommanderService) -> HashMap<SessionId, AgentState> {
+async fn detect_states(svc: &CommanderService) -> BTreeMap<SessionId, AgentState> {
     let sessions: Vec<(SessionId, String, String)> = {
         let state = svc.store().read().await;
         state
@@ -23,7 +23,7 @@ async fn detect_states(svc: &CommanderService) -> HashMap<SessionId, AgentState>
             .collect()
     };
     let mut detector = AgentStateDetector::new(svc.session_manager().tmux.clone(), Duration::ZERO);
-    let mut map = HashMap::new();
+    let mut map = BTreeMap::new();
     for (id, tmux_name, program) in sessions {
         map.insert(
             id,
