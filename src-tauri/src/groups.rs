@@ -153,7 +153,7 @@ fn session_display_order<'a>(
         Vec<&claude_commander_core::session::WorktreeSession>,
     > = HashMap::new();
     for s in sessions {
-        match resolve_stack_parent(s, sessions) {
+        match resolve_stack_parent(*s, sessions) {
             Some(parent_id) => children_by_parent.entry(parent_id).or_default().push(s),
             None => roots.push(*s),
         }
