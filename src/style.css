@@ -1758,6 +1758,48 @@ body {
 .settings-field > select:focus,
 .settings-field > textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* --------------------------------------------------- custom select styling */
+
+/* Native selects render WebKit's dated arrow-button chrome; strip it and draw
+   our own chevron with two gradients so it reskins with the theme (a data-URI
+   SVG can't read var()). Shared by both the settings and section-grid selects. */
+.settings-field > select,
+.section-grid select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 26px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) center,
+    calc(100% - 9px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+
+.settings-field > select:hover,
+.section-grid select:hover {
+  border-color: var(--surface2);
+}
+
+.settings-field > select:focus,
+.section-grid select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* dropdown option list — WebKit renders these with system chrome, but styling
+   the option elements themselves keeps the open menu on-theme. */
+.settings-field > select option,
+.section-grid select option {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 /* toggle switch */
@@ -1908,7 +1950,7 @@ body {
 .section-grid input[type="text"],
 .section-grid input[type="number"],
 .section-grid select {
-  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   color: var(--text);
