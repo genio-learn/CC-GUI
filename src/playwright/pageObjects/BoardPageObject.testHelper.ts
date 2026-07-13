@@ -120,6 +120,61 @@ export class BoardPageObject extends AppPageObject {
     );
   }
 
+  // ----- card → section drag -----
+  /** Dispatch the HTML5 DnD sequence the card handlers listen for — dragstart on
+   *  the card, dragover+drop on the target section column, dragend on the card.
+   *  Playwright can't fire trusted native DnD from mouse moves, and the synthetic
+   *  DragEvents carry no dataTransfer (which the guarded handlers tolerate). */
+  dragCardToColumn(title: string, sectionName: string): Promise<void> {
+    return this.step(`dragCardToColumn: ${title} → ${sectionName}`, () =>
+      this.page.evaluate(
+        ({ title, sectionName }) => {
+          const card = [...document.querySelectorAll<HTMLElement>("#board .agent-card")].find(
+            (c) => c.querySelector(".card-title")?.textContent?.trim() === title,
+          );
+          const col = [...document.querySelectorAll<HTMLElement>("#board .board-col")].find(
+            (c) => c.querySelector(".board-col-name")?.textContent?.trim() === sectionName,
+          );
+          if (!card || !col) {
+            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
+          }
+          card.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
+          col.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
+          col.dispatchEvent(new DragEvent("drop", { bubbles: true }));
+          card.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+        },
+        { title, sectionName },
+      ),
+    );
+  }
+
+  /** Hover a dragged card over a column and report whether that column shows the
+   *  accent-blue drop preview (`.card-drop-target`), then cancel the drag with
+   *  dragend so no move commits. */
+  columnHighlightedWhileDragging(title: string, sectionName: string): Promise<boolean> {
+    return this.step(`columnHighlightedWhileDragging: ${title} → ${sectionName}`, () =>
+      this.page.evaluate(
+        ({ title, sectionName }) => {
+          const card = [...document.querySelectorAll<HTMLElement>("#board .agent-card")].find(
+            (c) => c.querySelector(".card-title")?.textContent?.trim() === title,
+          );
+          const col = [...document.querySelectorAll<HTMLElement>("#board .board-col")].find(
+            (c) => c.querySelector(".board-col-name")?.textContent?.trim() === sectionName,
+          );
+          if (!card || !col) {
+            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
+          }
+          card.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
+          col.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
+          const highlighted = col.classList.contains("card-drop-target");
+          card.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
+          return highlighted;
+        },
+        { title, sectionName },
+      ),
+    );
+  }
+
   // ----- quick actions -----
   /** Click a card's ▸ attach button (docks the session's terminal). */
   attachFromCard(title: string): Promise<void> {
@@ -140,6 +195,18 @@ export class BoardPageObject extends AppPageObject {
   reviewFromCard(title: string): Promise<void> {
     return this.step(`reviewFromCard: ${title}`, () =>
       this.card(title).locator(".card-action.review").click(),
+    );
+  }
+
+  /** Section moves the frontend dispatched — empty after a no-op drop. */
+  storedSectionMoves(): Promise<{ id: string; section: string | null }[]> {
+    return this.page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __CC_SIM__: { getSectionMoves(): { id: string; section: string | null }[] };
+          }
+        ).__CC_SIM__.getSectionMoves(),
     );
   }
 

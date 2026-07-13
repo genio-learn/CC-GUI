@@ -202,3 +202,58 @@ test("Hide empty drops columns left empty by search", async ({ board }) => {
   await board.search("docs");
   await expect(board.columnNames()).toHaveText(["Review"]);
 });
+
+test("dragging a card to another section re-pins it there", async ({ board }) => {
+  await board.enter();
+  await expect(board.column("Build").locator(".card-title")).toHaveText(["tune cache"]);
+
+  // Drag the Review "fix login bug" card onto the Build column.
+  await board.dragCardToColumn("fix login bug", "Build");
+
+  // The board re-rendered from the rebuilt snapshot: the card now sits under
+  // Build, the fake recorded the move, and Review lost it. Cards bucket in
+  // group order (atlas before beacon), so the moved card leads "tune cache".
+  await expect(async () => {
+    await expect(board.column("Build").locator(".card-title")).toHaveText([
+      "fix login bug",
+      "tune cache",
+    ]);
+  }).toPass();
+  await expect(board.column("Review").locator(".card-title")).toHaveText(["update docs"]);
+  expect(await board.storedSectionMoves()).toEqual([{ id: "s-login", section: "Build" }]);
+});
+
+test("dragging a card to the No section column clears its pin", async ({ board }) => {
+  await board.enter();
+
+  await board.dragCardToColumn("tune cache", "No section");
+
+  await expect(async () => {
+    await expect(board.column("No section").locator(".card-title")).toHaveText(["tune cache"]);
+  }).toPass();
+  expect(await board.storedSectionMoves()).toEqual([{ id: "s-cache", section: null }]);
+});
+
+test("dropping a card on its current section is a no-op (no move dispatched)", async ({
+  board,
+}) => {
+  await board.enter();
+
+  // "fix login bug" is already in Review — dropping it back dispatches nothing.
+  await board.dragCardToColumn("fix login bug", "Review");
+  // A real move afterwards proves the earlier no-op didn't just race ahead.
+  await board.dragCardToColumn("fix login bug", "Build");
+
+  await expect(async () => {
+    await expect(board.column("Build").locator(".card-title")).toContainText(["fix login bug"]);
+  }).toPass();
+  expect(await board.storedSectionMoves()).toEqual([{ id: "s-login", section: "Build" }]);
+});
+
+test("a card dragged over a column highlights it in accent blue", async ({ board }) => {
+  await board.enter();
+
+  // The hovered column shows the drop preview; an unrelated column does not.
+  expect(await board.columnHighlightedWhileDragging("fix login bug", "Build")).toBe(true);
+  expect(await board.columnHighlightedWhileDragging("fix login bug", "No section")).toBe(true);
+});

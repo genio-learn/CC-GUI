@@ -322,6 +322,12 @@ let draggingTab: HTMLDivElement | null = null;
 // session's id is module state; section-header drop handlers read it.
 let draggingSessionId: string | null = null;
 
+// Board cards drag onto section columns to move a session between sections. The
+// dragged session's id is module state; the column drop handlers read it. Kept
+// separate from draggingSessionId (sidebar) and draggingColId (column reorder)
+// so the three drag flows can't interfere.
+let draggingCardId: string | null = null;
+
 /** The tab to insert the dragged tab before, given the pointer's x (null = end). */
 function tabBeforeX(x: number): HTMLDivElement | null {
   const tabs = [...tabsEl.querySelectorAll<HTMLDivElement>(".tab:not(.dragging)")];
@@ -3120,6 +3126,22 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   card.classList.toggle("selected", selectedId === s.id);
   boardCardRefs.set(s.id, card);
 
+  // Drag the card onto another section column to re-pin it. The move commits on
+  // the column's `drop` (see makeCardDropTarget), so an Esc-cancelled drag is a
+  // no-op. The card's own click/⋯/▸/± handlers still fire when no drag starts.
+  card.draggable = true;
+  card.dataset.id = s.id;
+  card.addEventListener("dragstart", (e) => {
+    draggingCardId = s.id;
+    card.classList.add("dragging");
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  });
+  card.addEventListener("dragend", () => {
+    draggingCardId = null;
+    card.classList.remove("dragging");
+    clearCardDropTargets(); // in case the drop landed outside any column
+  });
+
   // 3px top accent bar in the liveness state colour.
   const accent = document.createElement("div");
   accent.className = `card-accent ${boardStateClass(s)}`;
@@ -3303,12 +3325,56 @@ function clearColDropMarker(): void {
   }
 }
 
+/** Remove the card-drop highlight from every column. */
+function clearCardDropTargets(): void {
+  for (const c of boardColumnsEl.querySelectorAll(".board-col.card-drop-target")) {
+    c.classList.remove("card-drop-target");
+  }
+}
+
+/** Wire a column as a drop target for a dragged card. Only columns call
+ *  preventDefault on dragover while a card is dragging, so card drops can't land
+ *  anywhere else, and it stays clear of the column-reorder flow (which guards on
+ *  draggingColId). Dropping re-pins the session to this section — or clears the
+ *  pin on the "no section" catch-all. Highlights the whole column in accent blue
+ *  while hovered. */
+function makeCardDropTarget(col: HTMLDivElement, sec: BoardSection): void {
+  col.addEventListener("dragover", (e) => {
+    if (!draggingCardId) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    if (!col.classList.contains("card-drop-target")) {
+      clearCardDropTargets();
+      col.classList.add("card-drop-target");
+    }
+  });
+  col.addEventListener("dragleave", (e) => {
+    // Ignore leaves into a descendant (dragleave fires when crossing children);
+    // only clear when the pointer actually left the column.
+    if (col.contains(e.relatedTarget as Node | null)) return;
+    col.classList.remove("card-drop-target");
+  });
+  col.addEventListener("drop", (e) => {
+    if (!draggingCardId) return;
+    e.preventDefault();
+    col.classList.remove("card-drop-target");
+    const id = draggingCardId;
+    // The catch-all column clears the pin (section: null); real columns pin to
+    // the section name (sec.key === the section name for configured columns).
+    const target = sec.key === NO_SECTION_KEY ? null : sec.key;
+    const current = findSession(id)?.current_section ?? null;
+    if (current === target) return; // no-op drop
+    void lifecycleArgs("move_to_section", { id, section: target });
+  });
+}
+
 /** One section column: header (name + visible count) over a body of stacked
  *  agent cards. Rendered for every section incl. the "no section" catch-all. */
 function renderBoardColumn(sec: BoardSection): HTMLDivElement {
   const col = document.createElement("div");
   col.className = "board-col";
   col.dataset.section = sec.key;
+  makeCardDropTarget(col, sec);
 
   const header = document.createElement("div");
   header.className = "board-col-header";
