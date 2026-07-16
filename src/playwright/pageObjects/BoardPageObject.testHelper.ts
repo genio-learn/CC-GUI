@@ -121,58 +121,32 @@ export class BoardPageObject extends AppPageObject {
   }
 
   // ----- card → section drag -----
-  /** Dispatch the HTML5 DnD sequence the card handlers listen for — dragstart on
-   *  the card, dragover+drop on the target section column, dragend on the card.
-   *  Playwright can't fire trusted native DnD from mouse moves, and the synthetic
-   *  DragEvents carry no dataTransfer (which the guarded handlers tolerate). */
+  /** Drag a card onto a section column (pointer-based; see AppPageObject
+   *  .pointerDragElement). Releasing over the column commits the re-pin. */
   dragCardToColumn(title: string, sectionName: string): Promise<void> {
     return this.step(`dragCardToColumn: ${title} → ${sectionName}`, () =>
-      this.page.evaluate(
-        ({ title, sectionName }) => {
-          const card = [...document.querySelectorAll<HTMLElement>("#board .agent-card")].find(
-            (c) => c.querySelector(".card-title")?.textContent?.trim() === title,
-          );
-          const col = [...document.querySelectorAll<HTMLElement>("#board .board-col")].find(
-            (c) => c.querySelector(".board-col-name")?.textContent?.trim() === sectionName,
-          );
-          if (!card || !col) {
-            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
-          }
-          card.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-          col.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
-          col.dispatchEvent(new DragEvent("drop", { bubbles: true }));
-          card.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
-        },
-        { title, sectionName },
-      ),
+      this.pointerDragElement(this.card(title), this.column(sectionName)),
     );
   }
 
-  /** Hover a dragged card over a column and report whether that column shows the
-   *  accent-blue drop preview (`.card-drop-target`), then cancel the drag with
-   *  dragend so no move commits. */
+  /** Drag a card over a column, report whether that column shows the accent-blue
+   *  drop preview (`.card-drop-target`), then cancel with Esc so no move commits. */
   columnHighlightedWhileDragging(title: string, sectionName: string): Promise<boolean> {
-    return this.step(`columnHighlightedWhileDragging: ${title} → ${sectionName}`, () =>
-      this.page.evaluate(
-        ({ title, sectionName }) => {
-          const card = [...document.querySelectorAll<HTMLElement>("#board .agent-card")].find(
-            (c) => c.querySelector(".card-title")?.textContent?.trim() === title,
-          );
-          const col = [...document.querySelectorAll<HTMLElement>("#board .board-col")].find(
-            (c) => c.querySelector(".board-col-name")?.textContent?.trim() === sectionName,
-          );
-          if (!card || !col) {
-            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
-          }
-          card.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-          col.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
-          const highlighted = col.classList.contains("card-drop-target");
-          card.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
-          return highlighted;
-        },
-        { title, sectionName },
-      ),
-    );
+    return this.step(`columnHighlightedWhileDragging: ${title} → ${sectionName}`, async () => {
+      const card = await this.card(title).boundingBox();
+      const col = this.column(sectionName);
+      const box = await col.boundingBox();
+      if (!card || !box) throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
+      const { mouse, keyboard } = this.page;
+      await mouse.move(card.x + card.width / 2, card.y + card.height / 2);
+      await mouse.down();
+      await mouse.move(card.x + card.width / 2 + 6, card.y + card.height / 2, { steps: 3 });
+      await mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+      const highlighted = await col.evaluate((el) => el.classList.contains("card-drop-target"));
+      await keyboard.press("Escape"); // cancel the drag: no re-pin commits
+      await mouse.up();
+      return highlighted;
+    });
   }
 
   // ----- quick actions -----

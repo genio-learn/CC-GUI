@@ -4,6 +4,22 @@ import { SESSION_ID, makeSession, makeSnapshot } from "../../network/seed.testHe
 // Default seed's session attaches under this tmux name (see makeSession).
 const TMUX = `cc-${SESSION_ID}`;
 
+// Pointer-based drag from one viewport point to another. Native HTML5 DnD is
+// disabled (Tauri's OS drag-drop handler swallows it — see main.ts `draggable`),
+// so tab drags are driven by real pointer events: press, cross the 4px
+// threshold, move to the target, release.
+async function pointerDrag(
+  page: import("@playwright/test").Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): Promise<void> {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 6, from.y, { steps: 3 });
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.mouse.up();
+}
+
 test("attaching opens a tab and streamed PTY bytes render", async ({ terminal }) => {
   await terminal.attach("fix login bug");
 
@@ -162,20 +178,16 @@ test.describe("tab reorder", () => {
     await attach("gamma", 3);
     await expect(page.locator("#tabs .tab .tab-label")).toHaveText(["alpha", "beta", "gamma"]);
 
-    // Drag tab 0 (alpha) past the last tab. Playwright can't fire trusted native
-    // HTML5 DnD from mouse moves, so dispatch the sequence the handlers listen
-    // for: dragstart marks the dragged tab, dragover on #tabs positions the drop
-    // marker by clientX, drop commits the Map order, dragend cleans up.
-    await page.evaluate(() => {
-      const tabs = document.querySelectorAll<HTMLElement>("#tabs .tab");
-      const strip = document.querySelector("#tabs")!;
-      const last = tabs[2].getBoundingClientRect();
-      const at = { bubbles: true, clientX: last.right - 2, clientY: last.top + 2 };
-      tabs[0].dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-      strip.dispatchEvent(new DragEvent("dragover", at));
-      strip.dispatchEvent(new DragEvent("drop", at));
-      tabs[0].dispatchEvent(new DragEvent("dragend", { bubbles: true }));
-    });
+    // Drag tab 0 (alpha) past the last tab: dropping past a tab's midpoint lands
+    // before the trailing "+" button, so alpha moves to the end.
+    const firstBox = await page.locator("#tabs .tab").nth(0).boundingBox();
+    const lastBox = await page.locator("#tabs .tab").nth(2).boundingBox();
+    if (!firstBox || !lastBox) throw new Error("tabs not visible");
+    await pointerDrag(
+      page,
+      { x: firstBox.x + firstBox.width / 2, y: firstBox.y + firstBox.height / 2 },
+      { x: lastBox.x + lastBox.width - 2, y: lastBox.y + lastBox.height / 2 },
+    );
     await expect(page.locator("#tabs .tab .tab-label")).toHaveText(["beta", "gamma", "alpha"]);
 
     // Index navigation follows the new order: Cmd+1 activates the first tab.
@@ -217,25 +229,20 @@ test.describe("split panes", () => {
       .click()
       .then(() => expect(page.locator("#tabs .tab")).toHaveCount(count));
 
-  // Dispatch the DnD sequence the handlers listen for, dropping the tab for
-  // `tmux` into a quadrant of #terminals ("TL"|"TR"|"BL"|"BR"). Playwright can't
-  // fire trusted native HTML5 DnD, so we synthesise dragstart→dragover→drop→dragend.
-  const dropIntoQuadrant = (page: import("@playwright/test").Page, tmux: string, q: string) =>
-    page.evaluate(
-      ([name, quad]) => {
-        const tab = document.querySelector<HTMLElement>(`#tabs .tab[data-term="${name}"]`)!;
-        const terms = document.querySelector<HTMLElement>("#terminals")!;
-        const r = terms.getBoundingClientRect();
-        const fx = quad[1] === "L" ? 0.25 : 0.75;
-        const fy = quad[0] === "T" ? 0.25 : 0.75;
-        const at = { bubbles: true, clientX: r.left + r.width * fx, clientY: r.top + r.height * fy };
-        tab.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-        terms.dispatchEvent(new DragEvent("dragover", at));
-        terms.dispatchEvent(new DragEvent("drop", at));
-        tab.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
-      },
-      [tmux, q] as const,
+  // Drag the tab for `tmux` into a quadrant of #terminals ("TL"|"TR"|"BL"|"BR"),
+  // releasing there to seed/extend a split (pointer-based; see pointerDrag).
+  const dropIntoQuadrant = async (page: import("@playwright/test").Page, tmux: string, q: string) => {
+    const tabBox = await page.locator(`#tabs .tab[data-term="${tmux}"]`).boundingBox();
+    const termBox = await page.locator("#terminals").boundingBox();
+    if (!tabBox || !termBox) throw new Error(`drag source/target missing: ${tmux}`);
+    const fx = q[1] === "L" ? 0.25 : 0.75;
+    const fy = q[0] === "T" ? 0.25 : 0.75;
+    await pointerDrag(
+      page,
+      { x: tabBox.x + tabBox.width / 2, y: tabBox.y + tabBox.height / 2 },
+      { x: termBox.x + termBox.width * fx, y: termBox.y + termBox.height * fy },
     );
+  };
 
   test("dragging a tab into a corner creates a two-pane vertical split", async ({ sidebar, page }) => {
     void sidebar;
@@ -309,19 +316,22 @@ test.describe("split panes", () => {
     await attach(page, "alpha", 1);
     await attach(page, "beta", 2);
 
-    await page.evaluate(() => {
-      const tab = document.querySelector<HTMLElement>('#tabs .tab[data-term="cc-s-a"]')!;
-      const terms = document.querySelector<HTMLElement>("#terminals")!;
-      const r = terms.getBoundingClientRect();
-      tab.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-      terms.dispatchEvent(
-        new DragEvent("dragover", { bubbles: true, clientX: r.left + r.width * 0.75, clientY: r.top + r.height * 0.25 }),
-      );
-    });
+    const tabBox = await page.locator('#tabs .tab[data-term="cc-s-a"]').boundingBox();
+    const termBox = await page.locator("#terminals").boundingBox();
+    if (!tabBox || !termBox) throw new Error("drag source/target missing");
+    // Press the tab, cross the threshold, then hover the TR quadrant (don't drop).
+    await page.mouse.move(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tabBox.x + tabBox.width / 2 + 6, tabBox.y + tabBox.height / 2, { steps: 3 });
+    await page.mouse.move(termBox.x + termBox.width * 0.75, termBox.y + termBox.height * 0.25, { steps: 10 });
 
     await expect(page.locator("#split-overlay")).toHaveClass(/show/);
     await expect(page.locator("#split-overlay .dz.tr")).toHaveClass(/hot/);
     await expect(page.locator("#split-overlay .dz.tl")).not.toHaveClass(/hot/);
+
+    // Cancel with Esc so no split commits, then release the button.
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
   });
 
   test("dragging one visible pane onto the other swaps them (no collapse)", async ({ sidebar, page }) => {
