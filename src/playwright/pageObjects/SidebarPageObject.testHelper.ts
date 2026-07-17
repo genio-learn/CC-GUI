@@ -244,33 +244,11 @@ export class SidebarPageObject extends AppPageObject {
       .filter({ has: this.page.locator("span", { hasText: name }) });
   }
 
-  /** Dispatch the HTML5 DnD sequence the handlers listen for — dragstart on the
-   *  row, dragover+drop on the target section header, dragend on the row.
-   *  Playwright can't fire trusted native DnD from mouse moves, and the synthetic
-   *  DragEvents carry no dataTransfer (which the guarded handlers must tolerate). */
+  /** Drag a session row onto a section header (pointer-based; see AppPageObject
+   *  .pointerDragElement). Releasing over the header commits the re-pin. */
   dragSessionToSection(title: string, sectionName: string): Promise<void> {
     return this.step(`dragSessionToSection: ${title} → ${sectionName}`, () =>
-      this.page.evaluate(
-        ({ title, sectionName }) => {
-          const rows = [...document.querySelectorAll<HTMLElement>("#sessions .session-row")];
-          const row = rows.find((r) => r.querySelector(".title")?.textContent?.trim() === title);
-          const headers = [
-            ...document.querySelectorAll<HTMLElement>("#sessions .project-header"),
-          ];
-          // The name span is prefixed with a collapse chevron ("▾ " / "▸ ").
-          const headerName = (h: HTMLElement) =>
-            h.querySelector("span")?.textContent?.replace(/^[▾▸]\s*/, "").trim();
-          const header = headers.find((h) => headerName(h) === sectionName);
-          if (!row || !header) {
-            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
-          }
-          row.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-          header.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
-          header.dispatchEvent(new DragEvent("drop", { bubbles: true }));
-          row.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
-        },
-        { title, sectionName },
-      ),
+      this.pointerDragElement(this.row(title), this.sectionHeader(sectionName)),
     );
   }
 

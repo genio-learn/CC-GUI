@@ -1,6 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { writeText, readText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { Terminal } from "@xterm/xterm";
@@ -37,6 +38,22 @@ import { openThemeModal } from "./themeModal";
 // then follow the OS appearance via the native Tauri theme event when in System mode.
 initTheme();
 void getCurrentWindow().onThemeChanged(() => followSystem());
+
+// Dropping OS files onto the window inserts them as `@<path>` references into the
+// active session's prompt (mirrors the file explorer's reference insertion).
+// Requires `dragDropEnabled: true` in tauri.conf.json.
+void getCurrentWebview().onDragDropEvent((event) => {
+  if (event.payload.type !== "drop") return;
+  if (!activeTerm) {
+    toast("No active session to drop files into", "error");
+    return;
+  }
+  const target = activeTerm;
+  const refs = event.payload.paths.map((p) => `@${p} `).join("");
+  void invoke("write_pty", { tmuxSession: target, data: refs })
+    .then(() => terminals.get(target)?.term.focus())
+    .catch((e) => toast(`could not insert reference: ${e}`, "error"));
+});
 
 // Warm the bundled terminal font (both weights) before any xterm is created, so
 // it measures glyph dimensions against MesloLGS NF rather than the fallback.
@@ -309,24 +326,91 @@ function closeTerminal(name: string): void {
   renderSidebar();
 }
 
-// --------------------------------------------------- tab drag-to-reorder
-// HTML5 drag-and-drop reorders the tab strip. `dragover` shows an insertion
-// marker at the drop point; `drop` performs the move and rebuilds the
-// `terminals` Map to match the DOM so index/cycle navigation follows the
-// visible order. Committing on `drop` (not `dragend`) means an Esc-cancelled
-// drag leaves the order untouched.
-let draggingTab: HTMLDivElement | null = null;
+// --------------------------------------------------- pointer drag-and-drop
+// HTML5 native drag-and-drop is unavailable: Tauri's OS drag-drop handler
+// (enabled for file drops in tauri.conf.json) swallows the webview's HTML5
+// drag events. So tab reorder, sidebar row → section, board card → column, and
+// board column reorder are all driven by pointer events instead.
+//
+// A drag begins only once the pointer moves past a small threshold, so plain
+// clicks and context-menus on the handle still work. During a drag the handle
+// captures the pointer and each flow hit-tests its own drop targets (by
+// elementFromPoint or coordinates) in `onMove`/`onDrop`. `onDrop` runs only on
+// release over a target; Esc or pointercancel ends the drag with `onEnd` alone,
+// leaving state untouched — mirroring the old `drop`-vs-`dragend` split.
+interface DragSession {
+  onMove(x: number, y: number): void;
+  onDrop(x: number, y: number): void;
+  onEnd(): void;
+}
 
-// Session rows drag onto section headers to move a session between sections
-// (section view only — headers exist solely in renderSections). The dragged
-// session's id is module state; section-header drop handlers read it.
-let draggingSessionId: string | null = null;
+function draggable(handle: HTMLElement, begin: () => DragSession | null): void {
+  handle.addEventListener("pointerdown", (down) => {
+    if (down.button !== 0) return; // left button only; right-click = context menu
+    const sx = down.clientX;
+    const sy = down.clientY;
+    let sess: DragSession | null = null;
 
-// Board cards drag onto section columns to move a session between sections. The
-// dragged session's id is module state; the column drop handlers read it. Kept
-// separate from draggingSessionId (sidebar) and draggingColId (column reorder)
-// so the three drag flows can't interfere.
-let draggingCardId: string | null = null;
+    const move = (e: PointerEvent) => {
+      if (!sess) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 4) return; // below threshold: still a click
+        sess = begin();
+        if (!sess) return teardown();
+        handle.setPointerCapture(down.pointerId);
+        document.body.style.userSelect = "none";
+      }
+      e.preventDefault(); // suppress text selection / scroll while dragging
+      sess.onMove(e.clientX, e.clientY);
+    };
+    const end = (drop: PointerEvent | null) => {
+      if (sess) {
+        if (drop) sess.onDrop(drop.clientX, drop.clientY);
+        sess.onEnd();
+        document.body.style.userSelect = "";
+        if (drop) suppressNextClick(handle); // eat the click synthesized by this pointerup
+      }
+      teardown();
+    };
+    const onUp = (e: PointerEvent) => end(e);
+    const onCancel = () => end(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && sess) {
+        e.preventDefault();
+        e.stopPropagation();
+        end(null);
+      }
+    };
+    const teardown = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey, true);
+      try {
+        handle.releasePointerCapture(down.pointerId);
+      } catch {
+        // never captured (drag never crossed the threshold) — nothing to release
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
+/** Swallow the click synthesized by a drag-ending pointerup, so a drag that
+ *  starts on a clickable handle (tab, card, row) doesn't also fire its click. */
+function suppressNextClick(handle: HTMLElement): void {
+  const eat = (e: Event) => {
+    e.stopPropagation();
+    e.preventDefault();
+    handle.removeEventListener("click", eat, true);
+  };
+  handle.addEventListener("click", eat, true);
+  // If no click follows (release off the handle), drop the listener next tick so
+  // it can't eat an unrelated later click.
+  setTimeout(() => handle.removeEventListener("click", eat, true), 0);
+}
 
 /** The tab to insert the dragged tab before, given the pointer's x (null = end). */
 function tabBeforeX(x: number): HTMLDivElement | null {
@@ -365,24 +449,6 @@ function syncTermOrderFromDom(): void {
   terminals.clear();
   for (const [n, e] of entries) terminals.set(n, e);
 }
-
-tabsEl.addEventListener("dragover", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault(); // mark the strip a valid drop target
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  showDropMarker(tabBeforeX(e.clientX));
-});
-
-tabsEl.addEventListener("drop", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault();
-  const before = tabBeforeX(e.clientX);
-  // Keep the trailing "+" button last: drop "at the end" means before it.
-  if (before) tabsEl.insertBefore(draggingTab, before);
-  else tabsEl.insertBefore(draggingTab, tabNewBtn);
-  clearDropMarker();
-  syncTermOrderFromDom();
-});
 
 // "+" new-terminal button — pinned to the end of the strip. It has no
 // `dataset.term`, so the drag-reorder helpers (tabBeforeX queries `.tab`,
@@ -570,23 +636,44 @@ async function attachTerminal(
 
   const tab = document.createElement("div");
   tab.className = "tab";
-  tab.draggable = true;
   tab.dataset.term = name;
-  tab.addEventListener("dragstart", (e) => {
-    draggingTab = tab;
+  // Drag a tab to reorder it within the strip, or onto #terminals to open it in
+  // a split pane. The move commits on release over a target; an Esc-cancelled
+  // drag leaves both the order and the split layout unchanged.
+  draggable(tab, () => {
     tab.classList.add("dragging");
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      // Some webviews won't fire dragover/drop unless drag data is set.
-      e.dataTransfer.setData("text/plain", name);
-    }
-  });
-  tab.addEventListener("dragend", () => {
-    // Cleanup only — the reorder is committed in the `drop` handler, so an
-    // Esc-cancelled drag (drop never fires) leaves the order unchanged.
-    tab.classList.remove("dragging");
-    draggingTab = null;
-    clearDropMarker();
+    return {
+      onMove(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (el?.closest("#terminals")) {
+          clearDropMarker();
+          showSplitOverlay(quadrantAt(x, y));
+        } else if (el?.closest("#tabs")) {
+          hideSplitOverlay();
+          showDropMarker(tabBeforeX(x));
+        } else {
+          clearDropMarker();
+          hideSplitOverlay();
+        }
+      },
+      onDrop(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (el?.closest("#terminals")) {
+          assignPane(quadrantAt(x, y), name);
+        } else if (el?.closest("#tabs")) {
+          const before = tabBeforeX(x);
+          // Keep the trailing "+" button last: drop "at the end" means before it.
+          if (before) tabsEl.insertBefore(tab, before);
+          else tabsEl.insertBefore(tab, tabNewBtn);
+          syncTermOrderFromDom();
+        }
+      },
+      onEnd() {
+        tab.classList.remove("dragging");
+        clearDropMarker();
+        hideSplitOverlay();
+      },
+    };
   });
   const glyph = document.createElement("span");
   glyph.className = "tab-glyph dot";
@@ -773,26 +860,6 @@ function hideSplitOverlay(): void {
   splitOverlay.classList.remove("show");
   for (const dz of Object.values(dzEls)) dz.classList.remove("hot");
 }
-
-terminalsEl.addEventListener("dragover", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault(); // mark #terminals a valid drop target for a tab
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  showSplitOverlay(quadrantAt(e.clientX, e.clientY));
-});
-terminalsEl.addEventListener("dragleave", (e) => {
-  // dragleave fires crossing child boundaries; only hide when truly leaving.
-  if (!terminalsEl.contains(e.relatedTarget as Node | null)) hideSplitOverlay();
-});
-terminalsEl.addEventListener("drop", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault();
-  const name = draggingTab.dataset.term;
-  const slot = quadrantAt(e.clientX, e.clientY);
-  hideSplitOverlay();
-  if (name) assignPane(slot, name);
-});
-window.addEventListener("dragend", hideSplitOverlay);
 
 /** Assign a dragged session to a quadrant. From single-pane this seeds a
  *  two-pane vertical split (the on-screen session takes the opposite column),
@@ -2094,19 +2161,32 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
     void openTerminal(refs.session);
   });
   row.addEventListener("contextmenu", (e) => showContextMenu(e, sessionMenuItems(refs)));
-  // Draggable onto a section header (section view only). Not set in rename mode:
-  // that branch returns above, and draggable=true suppresses input text selection.
-  row.draggable = true;
+  // Draggable onto a section header to re-pin the session (section view only;
+  // headers are annotated with dataset.dropSection in renderSections). Not wired
+  // in rename mode: that branch returns above.
   row.dataset.id = s.id;
-  row.addEventListener("dragstart", (e) => {
-    draggingSessionId = refs.session.id;
+  draggable(row, () => {
     row.classList.add("dragging");
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  });
-  row.addEventListener("dragend", () => {
-    draggingSessionId = null;
-    row.classList.remove("dragging");
-    clearDropTargets();
+    return {
+      onMove(x, y) {
+        clearDropTargets();
+        const header = document.elementFromPoint(x, y)?.closest<HTMLElement>(".project-header");
+        if (header?.dataset.dropSection !== undefined) header.classList.add("drop-target");
+      },
+      onDrop(x, y) {
+        const header = document.elementFromPoint(x, y)?.closest<HTMLElement>(".project-header");
+        if (header?.dataset.dropSection === undefined) return;
+        // dropSection is "" on the index-0 "In Progress" catch-all: clear the pin.
+        const target = header.dataset.dropSection || null;
+        const id = refs.session.id;
+        if ((findSession(id)?.current_section ?? null) === target) return; // no-op drop
+        void lifecycleArgs("move_to_section", { id, section: target });
+      },
+      onEnd() {
+        row.classList.remove("dragging");
+        clearDropTargets();
+      },
+    };
   });
   updateRow(refs, s);
   return row;
@@ -2582,7 +2662,9 @@ function renderSections(buckets: SectionBucket[]): void {
     count.textContent = String(ids.length);
     header.append(name, count, headerRule());
     const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
-    makeSectionDropTarget(header, bucket, bucketIndex);
+    // Annotate as a session drop target for the row drag (see renderRow): "" on
+    // the index-0 "In Progress" catch-all clears the pin, else the section name.
+    header.dataset.dropSection = bucketIndex === 0 ? "" : bucket.name;
     sessionsEl.appendChild(header);
     if (isCollapsed) return;
 
@@ -2646,36 +2728,6 @@ function renderProjectSubheader(group: ProjectGroup, sectionName: string): HTMLD
   return header;
 }
 
-/** Wire a section header as a drop target for a dragged session row. Dropping
- *  pins the session to this section (or clears the pin on the index-0
- *  "In Progress" catch-all). Only headers call preventDefault on dragover, so
- *  drops can't land anywhere else. */
-function makeSectionDropTarget(
-  header: HTMLDivElement,
-  bucket: SectionBucket,
-  bucketIndex: number,
-): void {
-  header.addEventListener("dragover", (e) => {
-    if (!draggingSessionId) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    header.classList.add("drop-target");
-  });
-  header.addEventListener("dragleave", () => header.classList.remove("drop-target"));
-  header.addEventListener("drop", (e) => {
-    if (!draggingSessionId) return;
-    e.preventDefault();
-    header.classList.remove("drop-target");
-    const id = draggingSessionId;
-    // buckets[0] is always the reserved "In Progress" catch-all; dropping there
-    // clears the pin (section: null), which the backend re-runs predicates on.
-    const target = bucketIndex === 0 ? null : bucket.name;
-    const current = findSession(id)?.current_section ?? null;
-    if (current === target) return; // no-op drop
-    void lifecycleArgs("move_to_section", { id, section: target });
-  });
-}
-
 function renderSidebar(): void {
   const signature =
     groups
@@ -2698,9 +2750,6 @@ function renderSidebar(): void {
   sidebarSignature = signature;
   rowRefs.clear();
   visibleGroups = [];
-  // A rebuild (e.g. a poll refresh mid-drag) discards the dragged row's node, so
-  // dragend may never fire — drop the stale id rather than leave it dangling.
-  draggingSessionId = null;
   sessionsEl.innerHTML = "";
   if (topInput) {
     sessionsEl.appendChild(renderTopInput(topInput));
@@ -3127,19 +3176,34 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   boardCardRefs.set(s.id, card);
 
   // Drag the card onto another section column to re-pin it. The move commits on
-  // the column's `drop` (see makeCardDropTarget), so an Esc-cancelled drag is a
-  // no-op. The card's own click/⋯/▸/± handlers still fire when no drag starts.
-  card.draggable = true;
+  // release over a column, so an Esc-cancelled drag is a no-op. The card's own
+  // click/⋯/▸/± handlers still fire when the pointer doesn't move (no drag).
   card.dataset.id = s.id;
-  card.addEventListener("dragstart", (e) => {
-    draggingCardId = s.id;
+  draggable(card, () => {
     card.classList.add("dragging");
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  });
-  card.addEventListener("dragend", () => {
-    draggingCardId = null;
-    card.classList.remove("dragging");
-    clearCardDropTargets(); // in case the drop landed outside any column
+    return {
+      onMove(x, y) {
+        clearCardDropTargets();
+        document
+          .elementFromPoint(x, y)
+          ?.closest<HTMLElement>(".board-col")
+          ?.classList.add("card-drop-target");
+      },
+      onDrop(x, y) {
+        const col = document.elementFromPoint(x, y)?.closest<HTMLElement>(".board-col");
+        const key = col?.dataset.section;
+        if (key === undefined) return;
+        // The catch-all column clears the pin (section: null); real columns pin
+        // to the section name (dataset.section === the section name).
+        const target = key === NO_SECTION_KEY ? null : key;
+        if ((findSession(s.id)?.current_section ?? null) === target) return; // no-op drop
+        void lifecycleArgs("move_to_section", { id: s.id, section: target });
+      },
+      onEnd() {
+        card.classList.remove("dragging");
+        clearCardDropTargets();
+      },
+    };
   });
 
   // 3px top accent bar in the liveness state colour.
@@ -3298,7 +3362,6 @@ function orderedSectionColumns(): BoardSection[] {
 }
 
 /** The column to drop before, given the pointer's x (null = past the last). */
-let draggingColId: string | null = null;
 function colBeforeX(x: number): HTMLElement | null {
   const cols = [...boardColumnsEl.querySelectorAll<HTMLElement>(".board-col:not(.dragging)")];
   for (const c of cols) {
@@ -3332,65 +3395,44 @@ function clearCardDropTargets(): void {
   }
 }
 
-/** Wire a column as a drop target for a dragged card. Only columns call
- *  preventDefault on dragover while a card is dragging, so card drops can't land
- *  anywhere else, and it stays clear of the column-reorder flow (which guards on
- *  draggingColId). Dropping re-pins the session to this section — or clears the
- *  pin on the "no section" catch-all. Highlights the whole column in accent blue
- *  while hovered. */
-function makeCardDropTarget(col: HTMLDivElement, sec: BoardSection): void {
-  col.addEventListener("dragover", (e) => {
-    if (!draggingCardId) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    if (!col.classList.contains("card-drop-target")) {
-      clearCardDropTargets();
-      col.classList.add("card-drop-target");
-    }
-  });
-  col.addEventListener("dragleave", (e) => {
-    // Ignore leaves into a descendant (dragleave fires when crossing children);
-    // only clear when the pointer actually left the column.
-    if (col.contains(e.relatedTarget as Node | null)) return;
-    col.classList.remove("card-drop-target");
-  });
-  col.addEventListener("drop", (e) => {
-    if (!draggingCardId) return;
-    e.preventDefault();
-    col.classList.remove("card-drop-target");
-    const id = draggingCardId;
-    // The catch-all column clears the pin (section: null); real columns pin to
-    // the section name (sec.key === the section name for configured columns).
-    const target = sec.key === NO_SECTION_KEY ? null : sec.key;
-    const current = findSession(id)?.current_section ?? null;
-    if (current === target) return; // no-op drop
-    void lifecycleArgs("move_to_section", { id, section: target });
-  });
-}
-
 /** One section column: header (name + visible count) over a body of stacked
  *  agent cards. Rendered for every section incl. the "no section" catch-all. */
 function renderBoardColumn(sec: BoardSection): HTMLDivElement {
   const col = document.createElement("div");
   col.className = "board-col";
-  col.dataset.section = sec.key;
-  makeCardDropTarget(col, sec);
+  col.dataset.section = sec.key; // read by the card drag (renderAgentCard) as the drop target
 
   const header = document.createElement("div");
   header.className = "board-col-header";
-  // Drag the header to reorder columns. Commit lands on `drop` (see the
-  // boardColumnsEl listeners), so an Esc-cancelled drag leaves the order intact.
-  header.draggable = true;
-  header.addEventListener("dragstart", (e) => {
-    draggingColId = sec.key;
+  // Drag the header to reorder columns within the strip. The new order commits
+  // on release over the strip, so an Esc-cancelled drag leaves it intact.
+  draggable(header, () => {
     col.classList.add("dragging");
-    e.dataTransfer?.setData("text/plain", sec.key);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  });
-  header.addEventListener("dragend", () => {
-    draggingColId = null;
-    col.classList.remove("dragging");
-    clearColDropMarker(); // in case the drop landed outside the strip
+    return {
+      onMove(x, y) {
+        if (document.elementFromPoint(x, y)?.closest("#board-columns")) {
+          showColDropMarker(colBeforeX(x));
+        } else {
+          clearColDropMarker();
+        }
+      },
+      onDrop(x, y) {
+        if (!document.elementFromPoint(x, y)?.closest("#board-columns")) return;
+        const beforeKey = colBeforeX(x)?.dataset.section ?? null;
+        const order = orderedSectionColumns()
+          .map((s) => s.key)
+          .filter((key) => key !== sec.key);
+        const idx = beforeKey ? order.indexOf(beforeKey) : order.length;
+        order.splice(idx, 0, sec.key);
+        boardColOrder = order;
+        localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(order));
+        renderBoardColumns();
+      },
+      onEnd() {
+        col.classList.remove("dragging");
+        clearColDropMarker();
+      },
+    };
   });
   const name = document.createElement("span");
   name.className = "board-col-name";
@@ -3580,32 +3622,6 @@ function renderBoardColumns(): void {
   }
   boardColumnsEl.scrollLeft = prevScrollLeft;
 }
-
-// Column drag-to-reorder: only the strip calls preventDefault on dragover (so it
-// is the drop target), and the new order is committed on `drop` against the full
-// ordered column list — inserting before a visible column is well-defined even
-// when "Hide empty" omits some columns, and a dropped-at-end column lands last.
-boardColumnsEl.addEventListener("dragover", (e) => {
-  if (!draggingColId) return;
-  e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  showColDropMarker(colBeforeX(e.clientX));
-});
-boardColumnsEl.addEventListener("drop", (e) => {
-  if (!draggingColId) return;
-  e.preventDefault();
-  clearColDropMarker();
-  const beforeKey = colBeforeX(e.clientX)?.dataset.section ?? null;
-  const order = orderedSectionColumns()
-    .map((sec) => sec.key)
-    .filter((key) => key !== draggingColId);
-  const idx = beforeKey ? order.indexOf(beforeKey) : order.length;
-  order.splice(idx, 0, draggingColId);
-  boardColOrder = order;
-  localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(order));
-  draggingColId = null;
-  renderBoardColumns();
-});
 
 /** Full board render. The filter bar is rebuilt only when needed (it owns the
  *  live search input); columns rebuild on every snapshot tick. Preserving the
