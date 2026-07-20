@@ -11,6 +11,8 @@ export type PaletteEntry = {
   /** Which section the entry renders under. Defaults to "command" so command
    *  providers need no change; the session provider marks its entries. */
   kind?: "session" | "command";
+  /** Command-only: formatted shortcut glyphs (e.g. "⌘E"), shown right-aligned. */
+  shortcut?: string;
   /** Session-only: liveness-dot class (e.g. "dot-running") and the project +
    *  human-readable state shown alongside the name. */
   dotClass?: string;
@@ -148,10 +150,20 @@ function renderList(): void {
       const icon = document.createElement("i");
       icon.className = "palette-icon";
       icon.textContent = "⌥";
-      const hint = document.createElement("span");
-      hint.className = "palette-hint";
-      hint.textContent = e.hint;
-      row.append(icon, label, hint);
+      row.append(icon, label);
+      // A shortcut glyph replaces the generic hint text on the right; otherwise
+      // the hint (e.g. a description like "force dark") fills the slot.
+      if (e.shortcut) {
+        const kbd = document.createElement("span");
+        kbd.className = "palette-shortcut";
+        kbd.textContent = e.shortcut;
+        row.appendChild(kbd);
+      } else {
+        const hint = document.createElement("span");
+        hint.className = "palette-hint";
+        hint.textContent = e.hint;
+        row.appendChild(hint);
+      }
     }
     row.addEventListener("click", () => {
       closePalette();
