@@ -200,7 +200,7 @@ body {
 }
 
 .tb-pill {
-  font-family: "MesloLGS NF Embedded", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
   padding: 2px 8px;
