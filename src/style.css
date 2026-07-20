@@ -20,32 +20,86 @@
   src: url("./assets/fonts/MesloLGSNF-Bold.woff2") format("woff2");
 }
 
+/* Bundled chrome fonts: IBM Plex Sans (UI) + IBM Plex Mono (mono chrome —
+   diffs, counters, badges). Self-hosted (SIL OFL 1.1) so the interface renders
+   identically regardless of installed fonts. See --font-ui / --font-mono. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexMono-Bold.woff2") format("woff2");
+}
+
 :root {
+  /* Type stacks. --font-ui is the UI/chrome face; --font-mono covers mono
+     chrome (diffs, counters, badges, palette shortcuts). Both self-hosted
+     above; the xterm terminal keeps its own MesloLGS NF stack. Static boot
+     defaults — not part of the Theme.cssVars contract. */
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
   /* Backgrounds */
   --bg-base: #1e1e2e;
-  --bg-elevated: #181825;
+  --bg-elevated: #191926;
   --bg-inset: #11111b;
 
   /* Borders / surfaces */
-  --border: #313244;
-  --border-strong: #45475a;
-  --surface2: #585b70;
+  --border: #343650;
+  --border-strong: #4a4c68;
+  --surface2: #5c5f78;
 
   /* Text */
-  --text: #cdd6f4;
-  --text-muted: #a6adc8;
-  --text-dim: #6c7086;
+  --text: #e4e8fb;
+  --text-muted: #b7bedd;
+  --text-dim: #8a90ad;
   --overlay1: #7f849c;
   --subtext1: #bac2de;
 
   /* Accents */
-  --accent: #89b4fa;
-  --success: #a6e3a1;
-  --danger: #f38ba8;
-  --warning: #f9e2af;
+  --accent: #8fb8ff;
+  --success: #a9e6a4;
+  --danger: #f58fab;
+  --warning: #f6dd9c;
   --attention: #fab387;
   --info: #cba6f7;
-  --cyan: #89dceb;
+  --cyan: #8fe0ee;
   --accent-tool: #b4befe;
   --attn-blocked: #eba0ac;
   --tag-cool: #94e2d5;
@@ -60,7 +114,7 @@
   --proj-4: #cba6f7; /* mauve */
   --proj-5: #94e2d5; /* teal */
   --proj-6: #fab387; /* peach */
-  --proj-7: #eba0ac; /* maroon */
+  --proj-7: #f0a7b2; /* maroon */
 
   /* Alpha tints derived from base tokens (color-mix, so they reskin with the
      theme — never raw rgba as a consumer). */
@@ -78,6 +132,13 @@
   --shadow-terminal: 0 8px 30px rgba(0, 0, 0, 0.25);
   --shadow-popover: 0 20px 50px rgba(0, 0, 0, 0.5);
   --shadow-dialog: 0 28px 70px rgba(0, 0, 0, 0.6);
+
+  /* Shape + elevation scale (Refined). Adopted opportunistically by later
+     phases — defined here as static boot defaults, not swept in yet. */
+  --radius-1: 7px; /* chips, small buttons */
+  --radius-2: 10px; /* cards, composer */
+  --radius-3: 12px; /* panels, wells */
+  --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -91,7 +152,7 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg-base);
   color: var(--text);
   overflow: hidden;
@@ -565,7 +626,7 @@ body {
   display: flex;
   gap: 8px;
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .card-diffcounts .added {
@@ -954,7 +1015,7 @@ body {
 }
 
 .stack-name {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text);
   white-space: nowrap;
@@ -1035,7 +1096,7 @@ body {
 }
 
 .row-main .title {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
@@ -1394,7 +1455,7 @@ body {
 }
 
 .commander-label {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
 }
 
 .commander-attach {
@@ -1602,7 +1663,7 @@ body {
 
 .help-table dt {
   color: var(--subtext1);
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -1767,7 +1828,7 @@ body {
   font-size: 12px;
   padding: 4px 8px;
   outline: none;
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
 }
 
 .settings-field > textarea {
@@ -1891,7 +1952,7 @@ body {
 
 .settings-segment button.active {
   background: var(--accent);
-  color: var(--bg-base);
+  color: var(--bg-inset);
 }
 
 .settings-theme-actions {
@@ -2145,7 +2206,7 @@ body.resizing .panel-resizer {
 }
 
 .delete-name {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--danger);
   margin-bottom: 12px;
@@ -2383,7 +2444,7 @@ body.resizing .panel-resizer {
   gap: 6px;
   padding: 0 6px 0 14px;
   font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: var(--text-muted);
   cursor: pointer;
   border-right: 1px solid var(--border);
@@ -2533,7 +2594,7 @@ body.resizing .panel-resizer {
   flex-shrink: 0;
   padding: 0 8px;
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: var(--text-muted);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -2967,7 +3028,7 @@ body.resizing .row-divider {
   flex: 1;
   overflow: auto;
   padding: 8px 0;
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -3065,7 +3126,7 @@ body.resizing .row-divider {
   border-radius: 4px;
   color: var(--text);
   font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   padding: 5px 8px;
   outline: none;
   resize: vertical;
@@ -3104,7 +3165,7 @@ body.resizing .row-divider {
   border-left: 3px solid var(--info);
   border-radius: 6px;
   padding: 6px 10px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   background: color-mix(in srgb, var(--info) 8%, var(--bg-elevated));
 }
 
@@ -3177,7 +3238,7 @@ body.resizing .row-divider {
   padding: 16px;
   color: var(--text-dim);
   font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
 }
 
 .review-empty.error {
@@ -3190,7 +3251,7 @@ body.resizing .row-divider {
   display: flex;
   justify-content: center;
   padding: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   /* the wipe-drag must never start a text selection; WKWebView honors the
      prefixed property, and putting it on the pane covers the surround too */
   -webkit-user-select: none;

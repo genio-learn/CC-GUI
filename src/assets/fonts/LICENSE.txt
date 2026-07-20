@@ -12,3 +12,18 @@ License: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
 
 Meslo LG is copyright (c) André Berg. Nerd Fonts glyphs are copyright (c)
 Ryan L McIntyre and contributors. Distributed under the Apache License 2.0.
+
+
+IBM Plex
+========
+
+The bundled IBMPlexSans-*.woff2 and IBMPlexMono-*.woff2 are the IBM Plex Sans
+and IBM Plex Mono fonts, used for the app chrome (UI type) and monospace chrome
+(diffs, counters, badges) respectively. They are self-hosted so the interface
+renders identically regardless of which fonts the user has installed.
+
+Source:  https://github.com/IBM/plex
+License: SIL Open Font License 1.1 — full text in IBMPlex-OFL.txt
+
+IBM Plex is copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
+Distributed under the SIL Open Font License, Version 1.1.
