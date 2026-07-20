@@ -1098,6 +1098,8 @@ body {
 .row-main .title {
   font-family: var(--font-mono);
   font-size: 13px;
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1208,6 +1210,66 @@ body {
     opacity: 1;
     transform: none;
   }
+}
+
+/* ── Status chip: shape + colour + word (shared vocabulary, screen 08) ───────
+   The labeled replacement for colour-only dots and bare glyph badges. Painted
+   from a single --chip-color token so a tone class only sets the hue; the
+   background is a wash of the same colour. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  /* Chips carry their own casing/tracking even inside uppercase headers. */
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--chip-color);
+  background: color-mix(in srgb, var(--chip-color) 14%, transparent);
+}
+
+.status-chip .chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--chip-color);
+}
+
+/* Counters (comment counts, stack depth) render in the mono face. */
+.status-chip .chip-count {
+  font-family: var(--font-mono);
+}
+
+.status-chip.tone-success {
+  --chip-color: var(--success);
+}
+.status-chip.tone-warning {
+  --chip-color: var(--warning);
+}
+.status-chip.tone-cyan {
+  --chip-color: var(--cyan);
+}
+.status-chip.tone-danger {
+  --chip-color: var(--danger);
+}
+.status-chip.tone-info {
+  --chip-color: var(--info);
+}
+.status-chip.tone-accent {
+  --chip-color: var(--accent);
+}
+/* Stopped/hibernated: dim hue with a slightly stronger wash so the low-contrast
+   text stays legible (matches the decoded grid's .16 on the stopped state). */
+.status-chip.tone-dim {
+  --chip-color: var(--text-dim);
+  background: color-mix(in srgb, var(--chip-color) 16%, transparent);
 }
 
 /* ── Project identity colour (hashed per project_id → --proj-0..7) ───────── */
@@ -1399,26 +1461,6 @@ body {
 .pr-draft {
   color: var(--text-dim);
   border-color: var(--text-dim);
-}
-
-.comment-badge {
-  color: var(--info);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-.blocked-badge {
-  color: var(--attn-blocked);
-  font-size: 11px;
-  flex-shrink: 0;
-  cursor: help;
-}
-
-.pull-blocked {
-  color: var(--attention);
-  font-size: 10px;
-  margin-left: 6px;
-  cursor: help;
 }
 
 /* ── Sidebar footer: commander chip ──────────────────────────────────────── */

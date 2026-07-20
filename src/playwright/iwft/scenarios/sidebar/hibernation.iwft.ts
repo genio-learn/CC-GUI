@@ -17,14 +17,12 @@ function hibernatedSnapshot() {
   });
 }
 
-test("a hibernated session renders the moon dot, not the plain stopped dot", async ({
+test("a hibernated session reads 'Hibernated', not the plain 'Stopped' word", async ({
   sidebar,
 }) => {
   await sidebar.pushSnapshot(hibernatedSnapshot());
 
-  const cls = await sidebar.dotClass("fix login bug");
-  expect(cls).toContain("dot-hibernated");
-  expect(cls).not.toContain("dot-stopped");
+  expect(await sidebar.statusLabel("fix login bug")).toBe("Hibernated");
 });
 
 test("waking a hibernated session resumes it (running, marker cleared)", async ({
@@ -37,7 +35,7 @@ test("waking a hibernated session resumes it (running, marker cleared)", async (
   // The fake restart flips the session Running and clears the marker; the row
   // re-renders off the refreshed snapshot.
   await expect(async () => {
-    expect(await sidebar.dotClass("fix login bug")).not.toContain("dot-hibernated");
+    expect(await sidebar.statusLabel("fix login bug")).not.toBe("Hibernated");
   }).toPass();
   const stored = await sidebar.storedSessions();
   expect(stored[0].status).toBe("running");

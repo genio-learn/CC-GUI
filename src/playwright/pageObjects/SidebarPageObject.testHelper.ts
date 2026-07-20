@@ -262,27 +262,26 @@ export class SidebarPageObject extends AppPageObject {
     return this.page.locator(".context-menu .menu-item", { hasText: label });
   }
 
-  // ----- glyphs / badges -----
-  /** The maroon ⚠ blocked chip on a row in an auto-pull-blocked project. */
+  // ----- status chip / badges -----
+  /** The ⚠ pull-blocked chip on a row in an auto-pull-blocked project
+   *  (--danger tone, in the trailing chip cluster). */
   blockedBadge(title: string): Locator {
-    return this.row(title).locator(".blocked-badge");
+    return this.row(title).locator(".row-chips .status-chip.tone-danger");
   }
 
-  /** The mauve ✎ pending-comments chip on a row. */
+  /** The ✎ pending-comments chip on a row (--info tone, trailing cluster). */
   commentBadge(title: string): Locator {
-    return this.row(title).locator(".comment-badge");
+    return this.row(title).locator(".row-chips .status-chip.tone-info");
   }
 
-  /** A row's 8px liveness dot. Its state class (dot-running/finished/idle/
-   *  stopped/transient) carries the colour; an unread (finished-while-away)
-   *  session shows as dot-finished. */
-  statusDot(title: string): Locator {
-    return this.row(title).locator(".glyph.dot");
+  /** A row's leading liveness status chip (shape + colour + word). */
+  statusChip(title: string): Locator {
+    return this.row(title).locator(".row-line > .status-chip");
   }
 
-  /** Class on a row's liveness dot (e.g. "glyph dot dot-finished"). */
-  dotClass(title: string): Promise<string> {
-    return this.statusDot(title).getAttribute("class") as Promise<string>;
+  /** The word on a row's status chip (e.g. "Running" / "Done" / "Hibernated"). */
+  statusLabel(title: string): Promise<string> {
+    return this.statusChip(title).locator(".chip-label").innerText();
   }
 
   // ----- event push (drives the backend's sessions-updated path) -----
