@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseBinding, matches, type ParsedBinding } from "./keys";
+import { parseBinding, matches, formatBinding, type ParsedBinding } from "./keys";
 
 const ev = (key: string, mods: Partial<KeyboardEvent> = {}): KeyboardEvent =>
   new KeyboardEvent("keydown", {
@@ -51,6 +51,34 @@ describe("parseBinding", () => {
 
   it("returns null for an unparseable multi-char key", () => {
     expect(parseBinding("foo")).toBeNull();
+  });
+});
+
+describe("formatBinding", () => {
+  it("renders modifiers as glyphs in ⌃⌥⇧ order", () => {
+    expect(formatBinding("Ctrl-c")).toBe("⌃C");
+    expect(formatBinding("Alt-r")).toBe("⌥R");
+    expect(formatBinding("ctrl-alt-delete")).toBe("⌃⌥⌦");
+  });
+
+  it("shows ⇧ only for named keys, not shifted single chars", () => {
+    expect(formatBinding("Shift-Tab")).toBe("⇧⇥");
+    expect(formatBinding("?")).toBe("?");
+    expect(formatBinding("Ctrl-Shift-N")).toBe("⌃N");
+  });
+
+  it("maps named keys to glyphs", () => {
+    expect(formatBinding("Ctrl-Enter")).toBe("⌃↵");
+    expect(formatBinding("esc")).toBe("⎋");
+    expect(formatBinding("Alt-up")).toBe("⌥↑");
+  });
+
+  it("passes function keys through", () => {
+    expect(formatBinding("Ctrl-F12")).toBe("⌃F12");
+  });
+
+  it("returns null for an unparseable binding", () => {
+    expect(formatBinding("foo")).toBeNull();
   });
 });
 

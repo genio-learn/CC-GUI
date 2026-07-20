@@ -17,7 +17,13 @@ import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
 import { registerPaletteProvider, togglePalette } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
-import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
+import {
+  initKeybindings,
+  reloadKeybindings,
+  loadedBindings,
+  formatBinding,
+  overlayOpen as keyOverlayOpen,
+} from "./keys";
 import { openSettings } from "./settings";
 import { noTextAssist } from "./dom";
 import {
@@ -2009,11 +2015,12 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
   const s = refs.session;
   // Core actions, in the order from the design brief.
   const items: MenuItem[] = [
-    { label: "Attach", action: () => void openTerminal(s) },
-    { label: "Open shell", action: () => void openShell(s) },
-    { label: "Review diff", action: () => void openReview(s.id, s.title) },
+    { label: "Attach", shortcut: kb("select"), action: () => void openTerminal(s) },
+    { label: "Open shell", shortcut: kb("select_shell"), action: () => void openShell(s) },
+    { label: "Review diff", shortcut: kb("open_review_diff"), action: () => void openReview(s.id, s.title) },
     {
       label: "Rename…",
+      shortcut: kb("rename_session"),
       action: () => {
         renamingId = s.id;
         renderSidebar();
@@ -2022,6 +2029,7 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
     "separator",
     {
       label: s.hibernated ? "Wake" : "Restart",
+      shortcut: kb("restart_session"),
       action: () => void lifecycle("restart_session", s.id),
     },
     {
@@ -2041,6 +2049,7 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
     {
       label: "Delete session…",
       danger: true,
+      shortcut: kb("delete_session"),
       action: () => {
         void deleteSessionDialog(s.title, s.branch).then((ok) => {
           if (ok) deleteSession(s);
@@ -2053,31 +2062,36 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
   // drop existing functionality (details, editor, PR, cascade, sections).
   const extras: MenuItem[] = [
     { label: "Details", action: () => toggleDetail(s) },
-    { label: "Open in editor", action: () => void lifecycle("open_in_editor", s.id) },
+    { label: "Open in editor", shortcut: kb("open_in_editor"), action: () => void lifecycle("open_in_editor", s.id) },
   ];
   if (s.pr_url) {
     const url = s.pr_url;
     extras.push({
       label: `Open PR #${s.pr_number}`,
+      shortcut: kb("open_pull_request"),
       action: () => void invoke("open_external", { url }),
     });
   }
   extras.push({
     label: "Cascade-merge main → stack",
+    shortcut: kb("cascade_merge_main"),
     action: () => void invokeToast("cascade_merge", { id: s.id }),
   });
   extras.push({
     label: "Push stack to origin",
+    shortcut: kb("push_stack"),
     action: () => void invokeToast("push_stack", { id: s.id }),
   });
   if (s.status === "cascade_paused") {
     extras.push({
       label: "Resume cascade",
+      shortcut: kb("cascade_resume"),
       action: () => void invokeToast("cascade_resume", {}),
     });
     extras.push({
       label: "Abandon cascade",
       danger: true,
+      shortcut: kb("cascade_abandon"),
       action: () => void invokeToast("cascade_abandon", {}),
     });
   }
@@ -2323,6 +2337,7 @@ function projectMenuItems(group: ProjectGroup, createKey: string = group.id): Me
   return [
     {
       label: "New session…",
+      shortcut: kb("new_session"),
       action: () => {
         newSessionProject = createKey;
         renderSidebar();
@@ -2333,6 +2348,7 @@ function projectMenuItems(group: ProjectGroup, createKey: string = group.id): Me
     {
       label: "Remove project (deletes all its sessions)",
       danger: true,
+      shortcut: kb("remove_project"),
       action: () => {
         void confirmDialog(
           `Remove project "${group.name}" and all ${group.sessions.length} session(s)?\nWorktrees and tmux sessions will be removed.`,
@@ -2530,6 +2546,7 @@ function sidebarMenuItems(): MenuItem[] {
   return [
     {
       label: "Add project…",
+      shortcut: kb("new_project"),
       action: () => {
         topInput = "add";
         renderSidebar();
@@ -2537,18 +2554,20 @@ function sidebarMenuItems(): MenuItem[] {
     },
     {
       label: "Scan directory for repos…",
+      shortcut: kb("scan_directory"),
       action: () => {
         topInput = "scan";
         renderSidebar();
       },
     },
     "separator",
-    { label: "Settings…", action: () => void openSettings() },
-    { label: "Help", action: toggleHelp },
+    { label: "Settings…", shortcut: kb("show_settings"), action: () => void openSettings() },
+    { label: "Help", shortcut: kb("show_help"), action: toggleHelp },
     "separator",
     {
       label: "Delete merged-PR sessions…",
       danger: true,
+      shortcut: kb("delete_merged_pr_sessions"),
       action: () => void deleteMergedSessions(),
     },
   ];
@@ -3662,10 +3681,11 @@ registerPaletteProvider(() =>
 );
 
 registerPaletteProvider(() => [
-  { label: "Cycle view mode", hint: "command", action: cycleViewMode },
+  { label: "Cycle view mode", hint: "command", shortcut: kb("toggle_view_mode"), action: cycleViewMode },
   {
     label: "Add project…",
     hint: "command",
+    shortcut: kb("new_project"),
     action: () => {
       topInput = "add";
       renderSidebar();
@@ -3674,6 +3694,7 @@ registerPaletteProvider(() => [
   {
     label: "Scan directory for repos…",
     hint: "command",
+    shortcut: kb("scan_directory"),
     action: () => {
       topInput = "scan";
       renderSidebar();
@@ -3682,6 +3703,7 @@ registerPaletteProvider(() => [
   {
     label: "Delete merged-PR sessions…",
     hint: "command",
+    shortcut: kb("delete_merged_pr_sessions"),
     action: () => void deleteMergedSessions(),
   },
   {
@@ -3695,11 +3717,12 @@ registerPaletteProvider(() => [
   {
     label: "Attach commander session",
     hint: "command",
+    shortcut: kb("open_commander"),
     action: () => commanderChip.click(),
   },
-  { label: "Open file explorer", hint: "⌘E", action: openFileExplorer },
-  { label: "Settings", hint: "command", action: () => void openSettings() },
-  { label: "Help", hint: "command", action: toggleHelp },
+  { label: "Open file explorer", hint: "command", shortcut: "⌘E", action: openFileExplorer },
+  { label: "Settings", hint: "command", shortcut: kb("show_settings"), action: () => void openSettings() },
+  { label: "Help", hint: "command", shortcut: kb("show_help"), action: toggleHelp },
 ]);
 
 // Theme commands: the two slot pickers (open a modal listing that appearance's
@@ -3921,6 +3944,13 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
 // GUI dispatch ignores the Shift bit for single chars — so the commander default
 // binding both "Shift-?" and "?" lists the same physical key twice. Drop the
 // redundant "Shift-" prefix and de-dupe so each key shows once.
+/** Formatted glyphs for an action's primary config binding, for menu/palette
+ *  shortcut hints. Undefined when the action is unbound or unparseable. */
+function kb(action: string): string | undefined {
+  const first = (loadedBindings[action] ?? [])[0];
+  return (first && formatBinding(first)) || undefined;
+}
+
 function helpKeyLabel(keys: string[]): string {
   const seen = new Set(keys.map((k) => k.replace(/^Shift-(?=\S$)/, "")));
   return [...seen].join(", ");

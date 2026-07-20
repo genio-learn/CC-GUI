@@ -2,7 +2,14 @@
 // click, Esc, or scroll.
 
 export type MenuItem =
-  | { label: string; action: () => void; danger?: boolean; warning?: boolean }
+  | {
+      label: string;
+      action: () => void;
+      danger?: boolean;
+      warning?: boolean;
+      /** Formatted shortcut glyphs (e.g. "⌃D"), shown right-aligned. */
+      shortcut?: string;
+    }
   | "separator";
 
 let menuEl: HTMLDivElement | null = null;
@@ -30,7 +37,16 @@ export function showContextMenu(e: MouseEvent, items: MenuItem[]): void {
     row.className = "menu-item";
     if (item.danger) row.classList.add("danger");
     if (item.warning) row.classList.add("warning");
-    row.textContent = item.label;
+    const label = document.createElement("span");
+    label.className = "menu-label";
+    label.textContent = item.label;
+    row.appendChild(label);
+    if (item.shortcut) {
+      const kbd = document.createElement("span");
+      kbd.className = "menu-shortcut";
+      kbd.textContent = item.shortcut;
+      row.appendChild(kbd);
+    }
     row.addEventListener("click", () => {
       dismissMenu();
       item.action();
