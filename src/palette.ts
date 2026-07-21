@@ -13,11 +13,16 @@ export type PaletteEntry = {
   kind?: "session" | "command";
   /** Command-only: formatted shortcut glyphs (e.g. "⌘E"), shown right-aligned. */
   shortcut?: string;
-  /** Session-only: liveness-dot class (e.g. "dot-running") and the project +
-   *  human-readable state shown alongside the name. */
-  dotClass?: string;
+  /** Command-only: leading action glyph and its tint (a status-chip tone name,
+   *  e.g. "success"). Untinted ⌥ when omitted. */
+  icon?: string;
+  iconTone?: string;
+  /** Session-only: project-identity class (proj-N), the project name, and the
+   *  state pill's word + tone (shared status-chip vocabulary). */
+  projClass?: string;
   project?: string;
   state?: string;
+  stateTone?: string;
 };
 
 let providers: (() => PaletteEntry[])[] = [];
@@ -136,20 +141,24 @@ function renderList(): void {
     label.textContent = e.label;
     if (kind === "session") {
       // Non-<span> so the label stays the row's first <span> (test contract).
-      const dot = document.createElement("i");
-      dot.className = `palette-dot dot ${e.dotClass ?? ""}`.trim();
+      const square = document.createElement("i");
+      square.className = `palette-proj proj-square ${e.projClass ?? ""}`.trim();
       const project = document.createElement("span");
       project.className = "palette-meta";
       project.textContent = e.project ?? "";
+      // Labeled state pill in the shared status-chip vocabulary.
       const state = document.createElement("span");
-      state.className = "palette-state";
-      state.textContent = e.state ?? "";
-      row.append(dot, label, project, state);
+      state.className = `palette-state status-chip compact tone-${e.stateTone ?? "dim"}`;
+      const stateLabel = document.createElement("span");
+      stateLabel.className = "chip-label";
+      stateLabel.textContent = e.state ?? "";
+      state.appendChild(stateLabel);
+      row.append(square, label, project, state);
     } else {
       // Non-<span> so the label stays the row's first <span> (test contract).
       const icon = document.createElement("i");
-      icon.className = "palette-icon";
-      icon.textContent = "⌥";
+      icon.className = `palette-icon${e.iconTone ? ` tone-${e.iconTone}` : ""}`;
+      icon.textContent = e.icon ?? "⌥";
       row.append(icon, label);
       // A shortcut glyph replaces the generic hint text on the right; otherwise
       // the hint (e.g. a description like "force dark") fills the slot.

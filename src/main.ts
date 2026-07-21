@@ -25,7 +25,7 @@ import {
   overlayOpen as keyOverlayOpen,
 } from "./keys";
 import { openSettings } from "./settings";
-import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip, type StatusState } from "./status";
+import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip, stateChipInfo, type StatusState } from "./status";
 import { noTextAssist } from "./dom";
 import {
   initTheme,
@@ -1777,14 +1777,18 @@ function sessionStateKey(s: SessionRow): StatusState {
   return "idle";
 }
 
-/** The shared shape+colour+word chip for a session's liveness state. Transient
- *  states (creating/merging/pushing/…) carry the humanized status as their word
- *  rather than a fixed one. */
+/** The chip word for a session's state. Transient states (creating/merging/
+ *  pushing/…) carry the humanized status rather than a fixed word. */
+function sessionStateWord(s: SessionRow, key: StatusState): string {
+  return key === "transient"
+    ? s.status.charAt(0).toUpperCase() + s.status.slice(1).replace(/_/g, " ")
+    : stateChipInfo(key).word;
+}
+
+/** The shared shape+colour+word chip for a session's liveness state. */
 function sessionStatusChip(s: SessionRow): HTMLSpanElement {
   const key = sessionStateKey(s);
-  const word =
-    key === "transient" ? s.status.charAt(0).toUpperCase() + s.status.slice(1).replace(/_/g, " ") : undefined;
-  return statusChip(key, { word });
+  return statusChip(key, { word: sessionStateWord(s, key) });
 }
 
 /** Number of project-identity palette slots (--proj-0..--proj-7 in :root). */
@@ -2002,15 +2006,6 @@ function prBadge(s: SessionRow): HTMLSpanElement | null {
 function branchMatchesTitle(title: string, branch: string): boolean {
   const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return slug(title) === slug(branch);
-}
-
-/** Humanized liveness label. Mirrors renderDetail's `running · <agent_state>`
- *  shape. Used by the board card pill/preview and the palette
- *  (NOT the sidebar row sub-line — there the liveness dot conveys state). */
-function humanState(s: SessionRow): string {
-  if (s.status === "running") return `running · ${s.agent_state}`;
-  if (s.hibernated) return "hibernated";
-  return s.status.replace(/_/g, " ");
 }
 
 /** Rebuild the inner content of a row's main span (cheap; no input state). */
@@ -3178,7 +3173,7 @@ commanderChip.addEventListener("click", () => {
 //
 // The Board layout renders the SAME snapshot `groups` as the sidebar — one
 // column per project, agent cards inside — reusing the Console helpers
-// (projClass / applyStatusGlyph / humanState / sessionMenuItems / openReview /
+// (projClass / applyStatusGlyph / sessionMenuItems / openReview /
 // openTerminal). Selection is shared with the sidebar via `selectedId`.
 
 /** Card DOM refs by session id, so updateSelectionClasses can toggle the
@@ -3790,23 +3785,29 @@ function applySnapshot(snap: Snapshot): void {
 
 registerPaletteProvider(() =>
   groups.flatMap((g) =>
-    g.sessions.map((s) => ({
-      kind: "session" as const,
-      label: s.title,
-      hint: `${g.name} · ${s.branch}`,
-      dotClass: statusGlyph(s).className.split(" ").find((c) => c.startsWith("dot-")) ?? "",
-      project: g.name,
-      state: humanState(s),
-      action: () => void openTerminal(s),
-    })),
+    g.sessions.map((s) => {
+      const key = sessionStateKey(s);
+      return {
+        kind: "session" as const,
+        label: s.title,
+        hint: `${g.name} · ${s.branch}`,
+        projClass: projClass(s.project_id),
+        project: g.name,
+        state: sessionStateWord(s, key),
+        stateTone: stateChipInfo(key).tone,
+        action: () => void openTerminal(s),
+      };
+    }),
   ),
 );
 
 registerPaletteProvider(() => [
-  { label: "Cycle view mode", hint: "command", shortcut: kb("toggle_view_mode"), action: cycleViewMode },
+  { label: "Cycle view mode", hint: "command", icon: "⇄", iconTone: "info", shortcut: kb("toggle_view_mode"), action: cycleViewMode },
   {
     label: "Add project…",
     hint: "command",
+    icon: "＋",
+    iconTone: "success",
     shortcut: kb("new_project"),
     action: () => {
       topInput = "add";
@@ -3816,6 +3817,8 @@ registerPaletteProvider(() => [
   {
     label: "Scan directory for repos…",
     hint: "command",
+    icon: "⌕",
+    iconTone: "success",
     shortcut: kb("scan_directory"),
     action: () => {
       topInput = "scan";
@@ -3825,12 +3828,16 @@ registerPaletteProvider(() => [
   {
     label: "Delete merged-PR sessions…",
     hint: "command",
+    icon: "⌦",
+    iconTone: "danger",
     shortcut: kb("delete_merged_pr_sessions"),
     action: () => void deleteMergedSessions(),
   },
   {
     label: "Refresh PR status",
     hint: "command",
+    icon: "↻",
+    iconTone: "info",
     action: () => {
       toast("Refreshing PR status…");
       void invoke("refresh_pr_status").catch((e) => toast(`${e}`, "error"));
@@ -3839,31 +3846,37 @@ registerPaletteProvider(() => [
   {
     label: "Attach commander session",
     hint: "command",
+    icon: "◈",
+    iconTone: "info",
     shortcut: kb("open_commander"),
     action: () => commanderChip.click(),
   },
-  { label: "Open file explorer", hint: "command", shortcut: "⌘E", action: openFileExplorer },
-  { label: "Settings", hint: "command", shortcut: kb("show_settings"), action: () => void openSettings() },
-  { label: "Help", hint: "command", shortcut: kb("show_help"), action: toggleHelp },
+  { label: "Open file explorer", hint: "command", icon: "▤", iconTone: "info", shortcut: "⌘E", action: openFileExplorer },
+  { label: "Settings", hint: "command", icon: "⚙", iconTone: "dim", shortcut: kb("show_settings"), action: () => void openSettings() },
+  { label: "Help", hint: "command", icon: "?", iconTone: "dim", shortcut: kb("show_help"), action: toggleHelp },
 ]);
 
 // Theme commands: the two slot pickers (open a modal listing that appearance's
 // themes, with live preview), the mode toggles, and custom-theme management.
 registerPaletteProvider(() => [
-  { label: "Theme: Set dark theme…", hint: "command", action: () => openThemeModal("dark") },
-  { label: "Theme: Set light theme…", hint: "command", action: () => openThemeModal("light") },
-  { label: "Theme: Dark mode", hint: "force dark", action: () => setMode("dark") },
-  { label: "Theme: Light mode", hint: "force light", action: () => setMode("light") },
-  { label: "Theme: Follow system", hint: "follow OS appearance", action: () => setMode("system") },
-  { label: "Theme: Reload custom themes", hint: "command", action: () => void loadCustomThemes(true) },
+  { label: "Theme: Set dark theme…", hint: "command", icon: "◐", iconTone: "dim", action: () => openThemeModal("dark") },
+  { label: "Theme: Set light theme…", hint: "command", icon: "◐", iconTone: "dim", action: () => openThemeModal("light") },
+  { label: "Theme: Dark mode", hint: "force dark", icon: "◐", iconTone: "dim", action: () => setMode("dark") },
+  { label: "Theme: Light mode", hint: "force light", icon: "◐", iconTone: "dim", action: () => setMode("light") },
+  { label: "Theme: Follow system", hint: "follow OS appearance", icon: "◐", iconTone: "dim", action: () => setMode("system") },
+  { label: "Theme: Reload custom themes", hint: "command", icon: "◐", iconTone: "dim", action: () => void loadCustomThemes(true) },
   {
     label: "Theme: Export current theme as template…",
     hint: "command",
+    icon: "◐",
+    iconTone: "dim",
     action: () => void exportThemeTemplate(),
   },
   {
     label: "Theme: Open themes folder…",
     hint: "command",
+    icon: "◐",
+    iconTone: "dim",
     action: () => void invoke("open_themes_dir").catch((e) => toast(`${e}`, "error")),
   },
 ]);

@@ -83,6 +83,13 @@ const STATE_CHIP: Record<StatusState, { tone: ChipTone; word: string; dot?: bool
   transient: { tone: "warning", word: "Working", dot: true },
 };
 
+/** A state's chip tone + default word, for surfaces that build their own pill
+ *  markup (the ⌘K palette) but must stay in the shared chip vocabulary. */
+export function stateChipInfo(state: StatusState): { tone: string; word: string } {
+  const { tone, word } = STATE_CHIP[state];
+  return { tone, word };
+}
+
 /** The labeled liveness chip for a derived session state. */
 export function statusChip(
   state: StatusState,

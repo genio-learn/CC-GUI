@@ -78,4 +78,25 @@ export class PalettePageObject extends AppPageObject {
   selectedLabel(): Promise<string> {
     return this.overlay.locator(".palette-row.selected span").first().innerText();
   }
+
+  /** The row whose label span matches. */
+  private row(label: string): Locator {
+    return this.rows.filter({ has: this.page.locator(".palette-label", { hasText: label }) });
+  }
+
+  /** A session row's project-identity square (its proj-N class carries the
+   *  project colour). */
+  projSquare(label: string): Locator {
+    return this.row(label).locator(".palette-proj");
+  }
+
+  /** A session row's labeled state pill (shared status-chip markup). */
+  statePill(label: string): Locator {
+    return this.row(label).locator(".palette-state");
+  }
+
+  /** A command row's leading icon (tinted when the command declares a tone). */
+  commandIcon(label: string): Locator {
+    return this.row(label).locator(".palette-icon");
+  }
 }
