@@ -72,6 +72,18 @@ export class BoardPageObject extends AppPageObject {
     return this.card(title).locator(".card-project-name").innerText();
   }
 
+  /** A card's status-chip label — the shape+colour+word chip that replaced the
+   *  bare liveness dot (e.g. "Running", "Done"). */
+  cardStatus(title: string): Promise<string> {
+    return this.card(title).locator(".card-header .status-chip").innerText();
+  }
+
+  /** A card's quick-action button (▸ Attach / ± Review), always visible on the
+   *  board (no hover reveal). */
+  cardAction(title: string, which: "attach" | "review"): Locator {
+    return this.card(title).locator(`.card-action.${which}`);
+  }
+
   // ----- filter + search -----
   /** Toggle the "Hide empty" section-columns switch. */
   toggleHideEmpty(): Promise<void> {
