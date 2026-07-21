@@ -498,6 +498,9 @@ function renderPanel(): void {
   const panel = box.querySelector<HTMLElement>(".settings-panel");
   if (!panel) return;
   panel.innerHTML = "";
+  // A search with no matches empties the panel too — otherwise the nav says
+  // "No matches" while the previously-active category keeps rendering.
+  if (visibleCategories().length === 0) return;
   const cat = CATEGORIES.find((c) => c.id === activeCat);
   if (!cat) return;
 

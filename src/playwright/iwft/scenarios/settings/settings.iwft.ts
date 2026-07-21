@@ -146,6 +146,14 @@ test("search matches field labels, not just category names", async ({ settings }
   await expect(settings.panelHeading()).toHaveText("General");
 });
 
+test("a search with no matches empties both nav and panel", async ({ settings }) => {
+  await settings.open();
+  await settings.search("zzz-no-such-setting");
+
+  expect(await settings.navLabels()).toEqual([]);
+  await expect(settings.panelHeading()).toHaveCount(0);
+});
+
 test("clearing the search restores every category", async ({ settings }) => {
   await settings.open();
   await settings.search("hibern");
