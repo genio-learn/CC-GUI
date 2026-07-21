@@ -192,6 +192,7 @@ const placeholderEl = document.querySelector<HTMLDivElement>("#placeholder")!;
 const detailEl = document.querySelector<HTMLElement>("#detail")!;
 const detailTitleEl = document.querySelector<HTMLSpanElement>("#detail-title")!;
 const detailMetaEl = document.querySelector<HTMLDListElement>("#detail-meta")!;
+const detailChangesEl = document.querySelector<HTMLDivElement>("#detail-changes-label")!;
 const detailDiffstatEl = document.querySelector<HTMLDivElement>("#detail-diffstat")!;
 const detailSummaryEl = document.querySelector<HTMLDivElement>("#detail-summary")!;
 const detailTagsEl = document.querySelector<HTMLDivElement>("#detail-tags")!;
@@ -1309,6 +1310,32 @@ let detailPrUrl: string | null = null; // PR url from the last fetched detail, f
 type Summary = { state: "loading" } | { state: "ready"; text: string } | { state: "error"; text: string };
 const summaries = new Map<string, Summary>(); // keyed by session id, app-session cache
 
+/** Parse the backend's git-style diffstat summary ("3 files changed,
+ *  124 insertions(+), 38 deletions(-)"; zero clauses omitted). Null when the
+ *  string isn't that shape. */
+function parseDiffStat(diffStat: string): { files: number; adds: number; dels: number } | null {
+  const m = diffStat.match(
+    /^(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?$/,
+  );
+  if (!m) return null;
+  return { files: Number(m[1]), adds: Number(m[2] ?? 0), dels: Number(m[3] ?? 0) };
+}
+
+/** Proportional add/remove bar for a parsed diffstat. */
+function diffstatBar(adds: number, dels: number): HTMLDivElement {
+  const bar = document.createElement("div");
+  bar.className = "diffstat-bar";
+  const total = adds + dels;
+  const a = document.createElement("span");
+  a.className = "added";
+  a.style.width = `${(adds / total) * 100}%`;
+  const r = document.createElement("span");
+  r.className = "removed";
+  r.style.width = `${(dels / total) * 100}%`;
+  bar.append(a, r);
+  return bar;
+}
+
 function metaRow(label: string, value: string): [HTMLElement, HTMLElement] {
   const dt = document.createElement("dt");
   dt.textContent = label;
@@ -1339,37 +1366,24 @@ function renderDetail(d: SessionDetail): void {
   }
 
   detailDiffstatEl.innerHTML = "";
-  if (d.diff_stat) {
-    // Colorize "+N" / "-N" tokens in the diffstat summary.
-    let adds = 0;
-    let dels = 0;
-    for (const token of d.diff_stat.split(/(\+\d+|-\d+)/)) {
-      const span = document.createElement("span");
-      if (/^\+\d+$/.test(token)) {
-        span.className = "added";
-        adds += Number(token.slice(1));
-      }
-      if (/^-\d+$/.test(token)) {
-        span.className = "removed";
-        dels += Number(token.slice(1));
-      }
-      span.textContent = token;
-      detailDiffstatEl.appendChild(span);
-    }
-    // Proportional add/remove bar.
-    const total = adds + dels;
-    if (total > 0) {
-      const bar = document.createElement("div");
-      bar.className = "diffstat-bar";
-      const a = document.createElement("span");
-      a.className = "added";
-      a.style.width = `${(adds / total) * 100}%`;
-      const r = document.createElement("span");
-      r.className = "removed";
-      r.style.width = `${(dels / total) * 100}%`;
-      bar.append(a, r);
-      detailDiffstatEl.appendChild(bar);
-    }
+  const stat = d.diff_stat ? parseDiffStat(d.diff_stat) : null;
+  detailChangesEl.textContent =
+    stat === null ? "Changes" : `Changes · ${stat.files} file${stat.files === 1 ? "" : "s"}`;
+  if (stat) {
+    const counts = document.createElement("div");
+    counts.className = "diffstat-counts";
+    const a = document.createElement("span");
+    a.className = "added";
+    a.textContent = `+${stat.adds}`;
+    const r = document.createElement("span");
+    r.className = "removed";
+    r.textContent = `−${stat.dels}`;
+    counts.append(a, r);
+    detailDiffstatEl.appendChild(counts);
+    if (stat.adds + stat.dels > 0) detailDiffstatEl.appendChild(diffstatBar(stat.adds, stat.dels));
+  } else if (d.diff_stat) {
+    // Unrecognized summary shape — show it verbatim rather than dropping it.
+    detailDiffstatEl.textContent = d.diff_stat;
   } else {
     detailDiffstatEl.textContent = "No changes";
   }
@@ -1461,6 +1475,7 @@ function toggleDetail(s: SessionRow): void {
   detailEl.classList.remove("hidden");
   detailTitleEl.textContent = s.title;
   detailMetaEl.innerHTML = "";
+  detailChangesEl.textContent = "Changes";
   detailDiffstatEl.textContent = "Loading…";
   detailTagsEl.innerHTML = "";
   detailPrEl.disabled = true;
@@ -3223,48 +3238,25 @@ function ensureBoardDiffStat(id: string, bar: HTMLElement): void {
  *  there is no diff (graceful — never fabricated). */
 function fillDiffstatBar(container: HTMLElement, diffStat: string | null): void {
   container.innerHTML = "";
-  if (!diffStat) {
-    container.classList.add("hidden");
-    return;
-  }
-  let adds = 0;
-  let dels = 0;
-  const counts = document.createElement("div");
-  counts.className = "card-diffcounts";
-  for (const token of diffStat.split(/(\+\d+|-\d+)/)) {
-    if (/^\+\d+$/.test(token)) {
-      adds += Number(token.slice(1));
-      const span = document.createElement("span");
-      span.className = "added";
-      span.textContent = token;
-      counts.appendChild(span);
-    } else if (/^-\d+$/.test(token)) {
-      dels += Number(token.slice(1));
-      const span = document.createElement("span");
-      span.className = "removed";
-      span.textContent = token;
-      counts.appendChild(span);
-    }
-  }
-  const total = adds + dels;
-  if (total === 0) {
+  const stat = diffStat ? parseDiffStat(diffStat) : null;
+  if (!stat || stat.adds + stat.dels === 0) {
     container.classList.add("hidden");
     return;
   }
   container.classList.remove("hidden");
-  const bar = document.createElement("div");
-  bar.className = "diffstat-bar";
+  const counts = document.createElement("div");
+  counts.className = "card-diffcounts";
   const a = document.createElement("span");
   a.className = "added";
-  a.style.width = `${(adds / total) * 100}%`;
+  a.textContent = `+${stat.adds}`;
   const r = document.createElement("span");
   r.className = "removed";
-  r.style.width = `${(dels / total) * 100}%`;
-  bar.append(a, r);
+  r.textContent = `−${stat.dels}`;
+  counts.append(a, r);
   // Bar on top, counts below (the Refined board layout): the proportional bar
   // spans the card, then the +adds/−dels counts sit on their own line and wrap
   // rather than clipping at the column edge.
-  container.append(bar, counts);
+  container.append(diffstatBar(stat.adds, stat.dels), counts);
 }
 
 /** One agent card for a session. */
