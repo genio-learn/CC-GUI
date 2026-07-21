@@ -1956,7 +1956,7 @@ function buildActions(s: SessionRow): HTMLDivElement {
   }
   if (s.status === "running") {
     actions.appendChild(
-      confirmButton("■", "Kill session", () => void lifecycle("kill_session", s.id)),
+      confirmButton("■", "Stop session", () => void lifecycle("kill_session", s.id)),
     );
   }
   actions.appendChild(
@@ -2080,7 +2080,7 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
       },
     },
     {
-      label: "Kill",
+      label: "Stop",
       sublabel: "stops the process, keeps the worktree",
       warning: true,
       action: () => void lifecycle("kill_session", s.id),
@@ -3336,13 +3336,18 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     e.stopPropagation();
     showContextMenu(e, sessionMenuItems(cardRefs(s)));
   });
-  // Status chip trails the title block; the 3px left accent border reinforces
-  // its colour. The board uses the compact chip variant (pill + dot at a smaller
-  // scale) so the word fits beside the title without crowding it.
+  header.append(heading, menu);
+  card.appendChild(header);
+
+  // Status chip on its own row under the title — beside the title it crowded
+  // long session names into early ellipsis. The 3px left accent border
+  // reinforces its colour; the board uses the compact chip variant.
   const chip = sessionStatusChip(s);
   chip.classList.add("compact");
-  header.append(heading, chip, menu);
-  card.appendChild(header);
+  const statusRow = document.createElement("div");
+  statusRow.className = "card-status-row";
+  statusRow.appendChild(chip);
+  card.appendChild(statusRow);
 
   // Branch line under the title — only when it diverges from the title (it's
   // usually just a slug of the name), mirroring the sidebar row. Omitted

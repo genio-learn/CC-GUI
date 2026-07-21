@@ -41,9 +41,9 @@ test("renames a session inline", async ({ sidebar }) => {
   expect(stored[0].title).toBe("fix logout bug");
 });
 
-test("context menu names the Kill/Delete consequence on each row", async ({ sidebar }) => {
+test("context menu names the Stop/Delete consequence on each row", async ({ sidebar }) => {
   await sidebar.openContextMenu("fix login bug");
-  await expect(sidebar.menuItemText("Kill")).resolves.toContain(
+  await expect(sidebar.menuItemText("Stop")).resolves.toContain(
     "stops the process, keeps the worktree",
   );
   await expect(sidebar.menuItemText("Delete session")).resolves.toContain(

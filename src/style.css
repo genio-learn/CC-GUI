@@ -607,6 +607,12 @@ body {
   border-color: transparent;
 }
 
+.card-status-row {
+  display: flex;
+  margin: 0 13px;
+  padding-bottom: 4px;
+}
+
 .card-subtitle {
   display: flex;
   align-items: center;
@@ -1004,7 +1010,7 @@ body {
 .session-row {
   display: flex;
   flex-direction: column;
-  padding: 9px 10px;
+  padding: 6px 10px;
   border-radius: 9px;
   cursor: pointer;
 }
@@ -1388,7 +1394,7 @@ body {
 .row-actions {
   display: none;
   gap: 6px;
-  margin-top: 9px; /* sub-line → action line, per the mockup */
+  margin-top: 5px;
 }
 
 .session-row:hover .row-actions,
@@ -1416,10 +1422,10 @@ body {
 
 .row-actions .row-action {
   flex: 1;
-  height: 29px;
+  height: 22px;
   padding: 0;
   border-radius: var(--radius-1);
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 
 .row-action:hover {
