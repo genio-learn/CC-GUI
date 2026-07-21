@@ -68,10 +68,11 @@ describe("status chip vocabulary", () => {
     expect(parts.indexOf("chip-count")).toBeGreaterThan(parts.indexOf("chip-label"));
   });
 
-  it("shell chip reads '❯ Shell' on the accent tone", () => {
+  it("shell chip reads '❯ Shell' on the info tone", () => {
     const chip = shellChip();
     expect(shape(chip)).toBe("❯");
     expect(label(chip)).toBe("Shell");
-    expect(tone(chip)).toBe("accent");
+    // Info (mauve), grouped with ✎ comments / ⌗ stack — see shellChip's note.
+    expect(tone(chip)).toBe("info");
   });
 });

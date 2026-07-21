@@ -25,7 +25,7 @@ import {
   overlayOpen as keyOverlayOpen,
 } from "./keys";
 import { openSettings } from "./settings";
-import { statusChip, commentsChip, pullBlockedChip, type StatusState } from "./status";
+import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip, type StatusState } from "./status";
 import { noTextAssist } from "./dom";
 import {
   initTheme,
@@ -487,7 +487,10 @@ async function openShell(session: SessionRow): Promise<void> {
     toast(`shell failed: ${e}`, "error");
     return;
   }
-  await attachTerminal(name, `${session.title} — shell`, null);
+  // The tab carries a "❯ Shell" chip (name ends "-sh"), so the title stays the
+  // bare session name — keeping entry.title consistent across the tab, the
+  // split-pane header, and the board dock (all read entry.title).
+  await attachTerminal(name, session.title, null);
 }
 
 async function openProjectShell(group: ProjectGroup): Promise<void> {
@@ -498,7 +501,7 @@ async function openProjectShell(group: ProjectGroup): Promise<void> {
     toast(`project shell failed: ${e}`, "error");
     return;
   }
-  await attachTerminal(name, `${group.name} — shell`, null);
+  await attachTerminal(name, group.name, null); // see openShell re: the bare title
 }
 
 /**
@@ -688,6 +691,10 @@ async function attachTerminal(
   const label = document.createElement("span");
   label.className = "tab-label";
   label.textContent = title;
+  // Shell tabs (tmux name ends "-sh") carry no session status, so the liveness
+  // dot stays hidden; mark them with the shared "❯ Shell" chip instead (the
+  // title is already the bare name — see openShell).
+  const isShell = name.endsWith("-sh");
   const close = document.createElement("button");
   close.className = "tab-close";
   close.textContent = "×";
@@ -695,7 +702,13 @@ async function attachTerminal(
     e.stopPropagation();
     closeTerminal(name);
   });
-  tab.append(glyph, label, close);
+  if (isShell) {
+    const shell = shellChip("Shell terminal");
+    shell.classList.add("tab-shell");
+    tab.append(shell, label, close);
+  } else {
+    tab.append(glyph, label, close);
+  }
   tab.addEventListener("click", () => activateTerminal(name));
   tabsEl.insertBefore(tab, tabNewBtn); // keep the "+" button trailing
 
@@ -1979,14 +1992,16 @@ function humanState(s: SessionRow): string {
 function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   main.innerHTML = "";
 
-  // Top line: liveness dot · name · project tag · PR badge · right-side chips.
+  // Top line: liveness dot · name · PR badge · right-side chips. The dot is the
+  // fast-scan colour at the row's fixed left edge; the labeled word (Running /
+  // Done / …) lives on the sub-line so the title gets the full line width.
   const line = document.createElement("div");
   line.className = "row-line";
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = s.title;
   title.title = `Branch: ${s.branch}`;
-  line.append(sessionStatusChip(s), title);
+  line.append(statusGlyph(s), title);
 
   const badge = prBadge(s);
   if (badge) line.appendChild(badge);
@@ -2008,25 +2023,21 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   }
   if (chips.childElementCount) line.appendChild(chips);
 
-  // Sub-line: the 8px liveness dot already conveys state, so no textual state
-  // label here. SessionRow carries no diff_stat (only SessionDetail does, and
-  // we avoid per-row fetches), so there is no "+adds −dels" source for the row;
-  // the sub-line shows only the branch when it diverges from the title
-  // (otherwise it just repeats the name — always in the hover title), and is
-  // omitted entirely when there is nothing to show.
-  const showBranch = !branchMatchesTitle(s.title, s.branch);
-  if (showBranch) {
-    const sub = document.createElement("div");
-    sub.className = "row-sub";
+  // Sub-line: the labeled status chip (word-only here — the leading dot already
+  // carries shape+colour, so the chip's own dot is hidden by a row-scoped rule),
+  // plus the branch when it diverges from the title. SessionRow carries no
+  // diff_stat (only SessionDetail does, and we avoid per-row fetches), so the
+  // prototype's "+adds −dels" beside the chip has no source on a row.
+  const sub = document.createElement("div");
+  sub.className = "row-sub";
+  sub.appendChild(sessionStatusChip(s));
+  if (!branchMatchesTitle(s.title, s.branch)) {
     const branch = document.createElement("span");
     branch.className = "meta";
     branch.textContent = s.branch;
     sub.append(branch);
-    main.append(line, sub);
-    return;
   }
-
-  main.append(line);
+  main.append(line, sub);
 }
 
 function sessionMenuItems(refs: RowRefs): MenuItem[] {
@@ -2258,15 +2269,14 @@ function renderStack(parent: SessionRow, children: SessionRow[]): HTMLDivElement
 
   const header = document.createElement("div");
   header.className = "stack-header";
-  const glyph = document.createElement("span");
-  glyph.className = "stack-glyph";
-  glyph.textContent = "⌗";
-  glyph.title = "Cascade stack";
+  // The ⌗ glyph becomes the labeled "⌗ Stack of N" chip (parent + children),
+  // then the parent title names which stack this is.
+  const chip = stackChip(children.length + 1, "Cascade stack");
   const name = document.createElement("span");
   name.className = "stack-name";
   name.textContent = parent.title;
   name.title = parent.title;
-  header.append(glyph, name);
+  header.append(chip, name);
 
   const actions = document.createElement("span");
   actions.className = "stack-actions";

@@ -822,7 +822,7 @@ body {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 
@@ -904,33 +904,38 @@ body {
 .group-by-label {
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 
 .segmented {
   display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
+  border-radius: var(--radius-1);
 }
 
 .segment {
-  padding: 3px 10px;
+  padding: 4px 12px;
   border: none;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 .segment:hover {
   background: var(--row-hover-bg);
 }
 
+/* Active segment: accent fill with the dark inset label (Phase 0 accent-label
+   rule), matching the console mockup's segmented control. */
 .segment.active {
-  background: var(--row-selected-bg);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--bg-inset);
 }
 
 /* ── Active project-filter banner ────────────────────────────────────────── */
@@ -956,10 +961,9 @@ body {
 
 .session-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  border-radius: 6px;
+  flex-direction: column;
+  padding: 9px 10px;
+  border-radius: 9px;
   cursor: pointer;
 }
 
@@ -985,7 +989,7 @@ body {
 .session-row.selected {
   background: var(--row-selected-bg);
   border-left: 2px solid var(--accent);
-  padding-left: 6px; /* 8px − 2px border so content doesn't shift */
+  padding-left: 8px; /* 10px − 2px border so content doesn't shift */
 }
 
 .session-row.attached .title {
@@ -1006,12 +1010,6 @@ body {
   align-items: center;
   gap: 7px;
   padding: 4px 6px;
-}
-
-.stack-glyph {
-  color: var(--info);
-  font-size: 12px;
-  flex-shrink: 0;
 }
 
 .stack-name {
@@ -1082,22 +1080,31 @@ body {
 .row-main {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 6px; /* title → sub-line, per the mockup */
   min-width: 0;
-  flex: 1;
 }
 
-/* Top line of a row: dot · name · tag · PR badge · right-side chips. */
+/* Top line of a row: dot · name · PR badge · right-side chips. */
 .row-line {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 9px;
   min-width: 0;
 }
 
+/* Sidebar-row leading dot is 9px per the mockup; the base .dot stays 8px for
+   tabs/palette. :where() keeps this at .glyph.dot specificity, so the later
+   .dot-waiting / .dot-hibernated rules (which size those glyph states to auto)
+   still win for them. */
+:where(.row-line) > .glyph.dot {
+  width: 9px;
+  height: 9px;
+}
+
 .row-main .title {
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -1105,12 +1112,28 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Sub-line: the diverging branch only (the liveness dot conveys state). */
+/* Sub-line: the labeled status chip (word-only — see below) plus the diverging
+   branch. Aligned under the leading dot (the chip's left edge sits at row-main's
+   left, past the dot on the line above). */
 .row-sub {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+}
+
+/* On a row, the leading dot already carries shape+colour, so the sub-line chip
+   is the word only: hide its own dot/glyph and shrink it to the compact inline
+   form the console mockup uses (radius-1, not the 999px vocabulary pill). */
+.row-sub .status-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-1);
+  font-size: 11px;
+}
+
+.row-sub .status-chip .chip-dot,
+.row-sub .status-chip .chip-glyph {
+  display: none;
 }
 
 .row-main .meta {
@@ -1262,9 +1285,6 @@ body {
 .status-chip.tone-info {
   --chip-color: var(--info);
 }
-.status-chip.tone-accent {
-  --chip-color: var(--accent);
-}
 /* Stopped/hibernated: dim hue with a slightly stronger wash so the low-contrast
    text stays legible (matches the decoded grid's .16 on the stopped state). */
 .status-chip.tone-dim {
@@ -1306,14 +1326,25 @@ body {
   background: var(--proj-color);
 }
 
+/* Inline row actions: their own line below the content, revealed on the row
+   you're pointing at (or the selected one), each an equal-width ≥28px target —
+   "actions moved to point-of-use" from the audit. */
 .row-actions {
   display: none;
-  gap: 4px;
-  flex-shrink: 0;
+  gap: 6px;
+  margin-top: 9px; /* sub-line → action line, per the mockup */
 }
 
-.session-row:hover .row-actions {
+.session-row:hover .row-actions,
+.session-row.selected .row-actions {
   display: flex;
+}
+
+/* While dragging, keep the row at its resting height: pointer-capture holds
+   :hover on the source row, so without this the action line would stay open and
+   its extra height would shift every row below it mid-drag. */
+.session-row.dragging .row-actions {
+  display: none;
 }
 
 .row-action {
@@ -1325,6 +1356,14 @@ body {
   font-size: 11px;
   line-height: 1.4;
   padding: 0 6px;
+}
+
+.row-actions .row-action {
+  flex: 1;
+  height: 29px;
+  padding: 0;
+  border-radius: var(--radius-1);
+  font-size: 12.5px;
 }
 
 .row-action:hover {
@@ -2473,7 +2512,7 @@ body.resizing .panel-resizer {
 #tabs {
   display: flex;
   align-items: stretch;
-  height: 40px;
+  height: 44px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -2483,16 +2522,20 @@ body.resizing .panel-resizer {
 .tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 14px;
-  font-size: 12px;
-  font-family: var(--font-mono);
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  font-size: 13px;
+  font-family: var(--font-ui);
   color: var(--text-muted);
   cursor: pointer;
   border-right: 1px solid var(--border);
   /* Reserve the active tab's 2px accent so switching tabs doesn't shift them. */
   border-top: 2px solid transparent;
   white-space: nowrap;
+}
+
+.tab-label {
+  font-weight: 500;
 }
 
 .tab.active {
@@ -2514,9 +2557,9 @@ body.resizing .panel-resizer {
   border-top: 2px solid transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
-  padding: 0 12px;
+  padding: 0 14px;
 }
 
 .tab-new:hover {
@@ -2540,6 +2583,14 @@ body.resizing .panel-resizer {
 .tab-glyph {
   font-size: 10px;
   line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Shell-tab marker: the shared "❯ Shell" chip, shrunk to sit in the tab strip
+   (replaces the — hidden — liveness dot a sessionless shell tab would carry). */
+.tab .status-chip.tab-shell {
+  padding: 2px 9px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 

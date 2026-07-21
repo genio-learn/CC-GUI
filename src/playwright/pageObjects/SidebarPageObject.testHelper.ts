@@ -274,9 +274,10 @@ export class SidebarPageObject extends AppPageObject {
     return this.row(title).locator(".row-chips .status-chip.tone-info");
   }
 
-  /** A row's leading liveness status chip (shape + colour + word). */
+  /** A row's liveness status chip (shape + colour + word). It sits on the
+   *  sub-line; the leading dot on the top line carries the same colour. */
   statusChip(title: string): Locator {
-    return this.row(title).locator(".row-line > .status-chip");
+    return this.row(title).locator(".row-sub > .status-chip");
   }
 
   /** The word on a row's status chip (e.g. "Running" / "Done" / "Hibernated"). */
