@@ -94,12 +94,10 @@ pub async fn build_groups(
         let mut rows = Vec::with_capacity(project_sessions.len());
         for (s, stacked_child) in session_display_order(&project_sessions) {
             let agent_state = match detect.as_deref_mut() {
-                Some(d) if s.status.is_active() && s.program.contains("claude") => format!(
-                    "{:?}",
-                    d.detect(AgentKind::from_program(&s.program), &s.tmux_session_name)
-                        .await
-                )
-                .to_lowercase(),
+                Some(d) if s.status.is_active() => {
+                    let kind = AgentKind::from_program(&s.program);
+                    format!("{:?}", d.detect(kind, &s.tmux_session_name).await).to_lowercase()
+                }
                 _ => "unknown".to_string(),
             };
             rows.push(SessionRow {

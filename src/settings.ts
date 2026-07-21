@@ -52,7 +52,7 @@ const COMMANDER_CATEGORIES: Category[] = [
     id: "general",
     label: "General",
     fields: [
-      { path: "default_program", label: "Default program", desc: "Program launched in new sessions.", control: { kind: "text" } },
+      { path: "default_program", label: "Default program", desc: "Legacy fallback program for new sessions; the Programs list (first entry) takes priority when set.", control: { kind: "nullable", placeholder: "claude" } },
       { path: "branch_prefix", label: "Branch prefix", desc: "Prefix for new session branch names (blank = none).", control: { kind: "text", placeholder: "(none)" } },
       { path: "shell_program", label: "Shell program", desc: "Shell used for shell sessions.", control: { kind: "text" } },
       { path: "editor", label: "Editor command", desc: "Editor/IDE for opening sessions (e.g. code, zed, nvim). Blank falls back to $VISUAL / $EDITOR.", control: { kind: "nullable", placeholder: "$VISUAL / $EDITOR" } },

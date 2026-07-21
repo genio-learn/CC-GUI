@@ -9,4 +9,8 @@
 # Cargo then transparently substitutes the local crate for the git dependency,
 # with no Cargo.toml change. The local checkout's version must match the pinned
 # tag's version, or Cargo ignores the override with a warning.
-paths = ["../claude-commander"]
+#
+# Since claude-commander v0.24.0 the upstream repo is a workspace; the library
+# CC-GUI consumes is the `claude-commander-core` crate, so the override points
+# at that crate's directory.
+paths = ["../claude-commander/crates/claude-commander-core"]
