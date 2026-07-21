@@ -73,9 +73,10 @@ export class BoardPageObject extends AppPageObject {
   }
 
   /** A card's status-chip label — the shape+colour+word chip that replaced the
-   *  bare liveness dot (e.g. "Running", "Done"). */
+   *  bare liveness dot (e.g. "Running", "Done"). Lives on its own row under
+   *  the title so long session names don't ellipsize early. */
   cardStatus(title: string): Promise<string> {
-    return this.card(title).locator(".card-header .status-chip").innerText();
+    return this.card(title).locator(".card-status-row .status-chip").innerText();
   }
 
   /** A card's quick-action button (▸ Attach / ± Review), always visible on the
