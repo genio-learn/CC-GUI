@@ -136,7 +136,7 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Add-project path: pick / drill into a directory | `↑` / `↓`, then `Enter` |
 | Add-project path: native folder picker | `Browse…` |
 | Project shell | `$` on the project |
-| Switch sidebar grouping (Sections / Projects) | `GROUP BY` control |
+| Switch sidebar grouping (Sections / Projects / Status) | `GROUP BY` control |
 | Move a session to a section | drag its row onto a section header (drop on *In Progress* to unpin) |
 | Save a review comment | `Cmd/Ctrl+Enter` |
 | Review: previous / next file | `↑` / `↓` or `Ctrl-P` / `Ctrl-N` |

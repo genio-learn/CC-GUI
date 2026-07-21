@@ -18,7 +18,7 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     [
       ["⋯ menu", "Add project, scan directory, delete merged-PR sessions"],
       ["Path input", "Type to autocomplete dirs (Tab completes, ↑/↓ pick, Enter drills in/commits, Browse… opens picker)"],
-      ["GROUP BY", "Segmented control: switch sidebar grouping (Sections / Projects)"],
+      ["GROUP BY", "Segmented control: switch sidebar grouping (Sections / Projects / Status)"],
       ["Drag row → section", "Move a session to a section (drop on In Progress to unpin)"],
       ["● (yellow)", "Unread: agent finished while you were away"],
       ["✎", "Session has pending review comments"],
