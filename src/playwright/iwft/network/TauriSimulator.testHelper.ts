@@ -177,6 +177,8 @@ class TauriSimulator {
         return `cc-${args.id as string}-sh`;
       case "prepare_project_shell":
         return `cc-${args.id as string}-proj-sh`;
+      case "prepare_commander":
+        return "cc-commander";
       case "attach":
         this.ptyChannels[args.tmuxSession as string] = {
           channel: args.onData as { id: number },

@@ -32,6 +32,10 @@ export class OnboardingPageObject extends AppPageObject {
     return this.step("clickAddProject", () => this.addProjectButton().click());
   }
 
+  clickCommander(): Promise<void> {
+    return this.step("clickCommander", () => this.commanderButton().click());
+  }
+
   /** Push a snapshot through the real listen() path, exactly as the backend
    *  would — used here to simulate the first project landing. */
   pushSnapshot(snapshot: Snapshot): Promise<void> {
@@ -42,6 +46,19 @@ export class OnboardingPageObject extends AppPageObject {
             .__CC_SIM__.pushSnapshot(snap),
         snapshot,
       ),
+    );
+  }
+
+  /** Projects the fake holds (name + repo_path) — assert the folder-picker
+   *  CTA added one directly, without going through the sidebar's path input. */
+  storedProjects(): Promise<{ id: string; name: string; repo_path: string }[]> {
+    return this.page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __CC_SIM__: { getProjects(): { id: string; name: string; repo_path: string }[] };
+          }
+        ).__CC_SIM__.getProjects(),
     );
   }
 }

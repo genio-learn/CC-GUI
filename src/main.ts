@@ -248,6 +248,16 @@ let rightRowRatio = loadRatio("cc-split-rows-r"); // TR height within right colu
 
 const splitActive = (): boolean => panes.size >= 2;
 
+/** Toggle the "select a session" placeholder for the current terminal count,
+ *  and refresh the onboarding hero alongside it — the hero also gates on
+ *  whether a terminal is attached (not just on project count), so attaching
+ *  one (e.g. via the hero's own commander CTA) yields the hero instead of
+ *  leaving it rendered on top of the newly attached terminal. */
+function updatePlaceholder(): void {
+  placeholderEl.style.display = terminals.size ? "none" : "flex";
+  renderOnboarding();
+}
+
 // Re-theme every live terminal when the GUI theme changes. The DOM renderer
 // repaints automatically on an options.theme assignment.
 onThemeChange((theme) => {
@@ -272,7 +282,7 @@ function activateTerminal(name: string): void {
     entry.container.classList.toggle("active", active);
     entry.tab.classList.toggle("active", active);
   }
-  placeholderEl.style.display = terminals.size ? "none" : "flex";
+  updatePlaceholder();
   const entry = terminals.get(name);
   if (entry) {
     // In board mode the terminal lives in the dock; dock+fit there (fitting in
@@ -312,14 +322,14 @@ function closeTerminal(name: string): void {
   if (splitActive()) {
     if (focusedSlot === slot) focusedSlot = firstSlot();
     renderPanes();
-    placeholderEl.style.display = "none";
+    updatePlaceholder();
     renderSidebar();
     return;
   }
   if (wasSplit) {
     // Dropped below two panes: leave split, keeping the remaining session.
     exitSplit([...panes.values()][0] ?? terminals.keys().next().value ?? null);
-    placeholderEl.style.display = terminals.size ? "none" : "flex";
+    updatePlaceholder();
     renderSidebar();
     return;
   }
@@ -329,7 +339,7 @@ function closeTerminal(name: string): void {
     if (activeTerm) activateTerminal(activeTerm);
     else if (layout === "board") updateDockHeader(); // no terminal left → dock placeholder
   }
-  placeholderEl.style.display = terminals.size ? "none" : "flex";
+  updatePlaceholder();
   renderSidebar();
 }
 
@@ -1102,7 +1112,7 @@ function renderPanes(): void {
   for (const el of terminalsEl.querySelectorAll(".split-col, .col-divider")) el.remove();
 
   terminalsEl.classList.add("split");
-  placeholderEl.style.display = "none";
+  updatePlaceholder();
 
   const leftSlots = (["TL", "BL"] as Slot[]).filter((s) => panes.has(s));
   const rightSlots = (["TR", "BR"] as Slot[]).filter((s) => panes.has(s));
@@ -1150,7 +1160,7 @@ function exitSplit(keep: string | null): void {
   activeTerm = null; // force activateTerminal to re-show the kept terminal
   if (target) activateTerminal(target);
   else {
-    placeholderEl.style.display = terminals.size ? "none" : "flex";
+    updatePlaceholder();
     if (layout === "board") updateDockHeader();
   }
 }
@@ -2926,26 +2936,45 @@ document.querySelector<HTMLButtonElement>("#sidebar-menu")!.addEventListener("cl
 
 // ------------------------------------------------------------- onboarding
 //
-// First-run hero over the terminal pane, shown whenever there are zero
-// projects and hidden the instant the first one lands — no persisted flag,
-// purely driven by the live snapshot (see applySnapshot).
+// First-run hero over the terminal pane. Shown whenever there are zero
+// projects AND no terminal is attached — attaching one (e.g. via the hero's
+// own commander CTA) must yield the hero, not leave it rendered on top of
+// the freshly attached terminal (see updatePlaceholder). No persisted flag;
+// purely driven by the live snapshot (applySnapshot) and terminal attach/detach.
 
 const onboardingEl = document.querySelector<HTMLDivElement>("#onboarding")!;
+const onboardingCommanderBtn = document.querySelector<HTMLButtonElement>("#onboarding-commander")!;
+let commanderEnabled = false; // mirrors renderCommander's gate; set in applySnapshot
 
 function renderOnboarding(): void {
-  onboardingEl.classList.toggle("hidden", groups.length > 0);
+  onboardingEl.classList.toggle("hidden", !(groups.length === 0 && terminals.size === 0));
+  // Card 3 is only a live control when the commander is actually configured —
+  // otherwise it reads inert, like card 2's "After a project" placeholder,
+  // rather than firing prepare_commander into a raw error toast.
+  onboardingCommanderBtn.disabled = !commanderEnabled;
+  onboardingCommanderBtn.classList.toggle("outline", commanderEnabled);
+  onboardingCommanderBtn.classList.toggle("muted", !commanderEnabled);
 }
 
 document
   .querySelector<HTMLButtonElement>("#onboarding-add-project")!
   .addEventListener("click", () => {
-    topInput = "add";
-    renderSidebar();
+    // Same native folder-picker the sidebar's Browse… uses; a cancel (no path
+    // picked) falls back to revealing the sidebar's path input so they can
+    // type it instead.
+    void openFolderDialog({ directory: true }).then((picked) => {
+      if (typeof picked === "string") {
+        invoke("add_project", { path: picked })
+          .catch((err) => toast(`add project failed: ${err}`, "error"))
+          .finally(() => void refreshNow());
+      } else {
+        topInput = "add";
+        renderSidebar();
+      }
+    });
   });
 
-document
-  .querySelector<HTMLButtonElement>("#onboarding-commander")!
-  .addEventListener("click", () => commanderChip.click());
+onboardingCommanderBtn.addEventListener("click", () => commanderChip.click());
 
 // ----------------------------------------------------------------- title bar
 
@@ -3697,6 +3726,7 @@ function applySnapshot(snap: Snapshot): void {
   viewMode = snap.view_mode;
   sections = snap.sections;
   sectionNames = snap.section_names;
+  commanderEnabled = snap.commander.enabled;
   updateTitleBarCounts();
   renderSidebar();
   renderBoard();
