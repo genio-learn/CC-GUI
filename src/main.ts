@@ -2990,13 +2990,33 @@ const boardDockPlaceholderEl = document.querySelector<HTMLDivElement>("#board-do
 const boardDockNameEl = document.querySelector<HTMLSpanElement>("#board-dock-name")!;
 const boardDockBranchEl = document.querySelector<HTMLSpanElement>("#board-dock-branch")!;
 const tbCount = document.querySelector<HTMLElement>("#tb-count")!;
+const tbAttention = document.querySelector<HTMLElement>("#tb-attention")!;
+// The board's mirror of the attention pill; created with the filter bar.
+let boardAttentionEl: HTMLSpanElement | null = null;
 const tbConsole = document.querySelector<HTMLButtonElement>("#tb-console")!;
 const tbBoard = document.querySelector<HTMLButtonElement>("#tb-board")!;
+
+/** Sessions waiting on the user: the agent asked for input, or finished while
+ *  away (unread) — the audit's at-a-glance attention queue. In lockstep with
+ *  the status-chip vocabulary via sessionStateKey. */
+function attentionCount(): number {
+  return groups.flatMap((g) => g.sessions).filter((s) => {
+    const key = sessionStateKey(s);
+    return key === "waiting" || key === "finished";
+  }).length;
+}
 
 function updateTitleBarCounts(): void {
   const total = groups.reduce((n, g) => n + g.sessions.length, 0);
   const live = groups.flatMap((g) => g.sessions).filter((s) => s.status === "running").length;
   tbCount.textContent = `${total} sessions · ${live} live`;
+  const waiting = attentionCount();
+  tbAttention.textContent = `${waiting} waiting on you`;
+  tbAttention.classList.toggle("hidden", waiting === 0);
+  if (boardAttentionEl) {
+    boardAttentionEl.textContent = `${waiting} waiting on you`;
+    boardAttentionEl.classList.toggle("hidden", waiting === 0);
+  }
 }
 
 function setLayout(next: "console" | "board"): void {
@@ -3559,6 +3579,12 @@ function renderBoardFilterBar(): void {
   const pills = document.createElement("div");
   pills.className = "board-pills";
 
+  // Attention summary at the top of the Board, mirroring the title-bar pill
+  // (updateTitleBarCounts fills both). Hidden while nothing waits.
+  boardAttentionEl = document.createElement("span");
+  boardAttentionEl.className = "board-attention hidden";
+  pills.appendChild(boardAttentionEl);
+
   // Toggle: hide section columns with zero visible cards.
   const hideEmpty = document.createElement("button");
   hideEmpty.className = "board-pill hide-empty";
@@ -3736,9 +3762,11 @@ function applySnapshot(snap: Snapshot): void {
   sections = snap.sections;
   sectionNames = snap.section_names;
   commanderEnabled = snap.commander.enabled;
-  updateTitleBarCounts();
   renderSidebar();
   renderBoard();
+  // After renderBoard: the board's attention pill is created with the filter
+  // bar, and updateTitleBarCounts fills both pills.
+  updateTitleBarCounts();
   renderOnboarding();
   updateTabGlyphs();
   renderCommander(snap.commander);

@@ -209,6 +209,18 @@ body {
   background: var(--bg-inset);
 }
 
+/* "N waiting on you" — the at-a-glance attention queue. Warning-toned to
+   match the Done/Waiting chip hue; hidden entirely at zero. */
+.tb-pill.attention {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.tb-pill.hidden {
+  display: none;
+}
+
 .tb-segment {
   display: flex;
   gap: 2px;
@@ -315,7 +327,25 @@ body {
 
 .board-pills {
   display: flex;
+  align-items: center;
   gap: 6px;
+}
+
+/* The board's attention summary — same "N waiting on you" as the title-bar
+   pill, warning-toned, hidden at zero. A summary, not a control. */
+.board-attention {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  white-space: nowrap;
+}
+
+.board-attention.hidden {
+  display: none;
 }
 
 .board-pill {

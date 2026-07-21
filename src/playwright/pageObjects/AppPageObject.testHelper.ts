@@ -10,6 +10,12 @@ export abstract class AppPageObject {
     return test.step(`${this.constructor.name}.${name}`, body);
   }
 
+  /** The title-bar "N waiting on you" attention pill (app chrome, so shared
+   *  across page objects). Hidden while nothing waits on the user. */
+  attentionPill(): Locator {
+    return this.page.locator("#tb-attention");
+  }
+
   /** Pointer-based drag from one element's centre to another's. Native HTML5 DnD
    *  is disabled (Tauri's OS drag-drop handler swallows it — see main.ts
    *  `draggable`), so drags are driven by real pointer events: press, cross the
