@@ -25,6 +25,7 @@ import {
   overlayOpen as keyOverlayOpen,
 } from "./keys";
 import { openSettings } from "./settings";
+import { statusChip, commentsChip, pullBlockedChip, type StatusState } from "./status";
 import { noTextAssist } from "./dom";
 import {
   initTheme,
@@ -1725,6 +1726,29 @@ function statusGlyph(s: SessionRow): HTMLSpanElement {
   return el;
 }
 
+/** Derive a session's liveness state key by reading applyStatusGlyph's own
+ *  output (probe → `dot-running` → "running"), so the status chips, the board
+ *  accent bar, and the terminal-tab dots all stay in lockstep with one mapping.
+ *  Mirrors boardStateClass's probe. */
+function sessionStateKey(s: SessionRow): StatusState {
+  const probe = document.createElement("span");
+  applyStatusGlyph(probe, s);
+  for (const cls of STATUS_GLYPH_CLASSES) {
+    if (probe.classList.contains(cls)) return cls.slice(4) as StatusState; // dot-running → running
+  }
+  return "idle";
+}
+
+/** The shared shape+colour+word chip for a session's liveness state. Transient
+ *  states (creating/merging/pushing/…) carry the humanized status as their word
+ *  rather than a fixed one. */
+function sessionStatusChip(s: SessionRow): HTMLSpanElement {
+  const key = sessionStateKey(s);
+  const word =
+    key === "transient" ? s.status.charAt(0).toUpperCase() + s.status.slice(1).replace(/_/g, " ") : undefined;
+  return statusChip(key, { word });
+}
+
 /** Number of project-identity palette slots (--proj-0..--proj-7 in :root). */
 const PROJ_COLORS = 8;
 
@@ -1962,31 +1986,25 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   title.className = "title";
   title.textContent = s.title;
   title.title = `Branch: ${s.branch}`;
-  line.append(statusGlyph(s), title);
+  line.append(sessionStatusChip(s), title);
 
   const badge = prBadge(s);
   if (badge) line.appendChild(badge);
 
-  // Right-side chips: ✎ pending comments (mauve), ⚠ blocked (maroon, project
-  // -level auto-pull block). Pushed right by .row-chips margin-left:auto.
+  // Right-side chips: ✎ pending comments, ⚠ pull blocked (project-level auto
+  // -pull block). Pushed right by .row-chips margin-left:auto.
   const chips = document.createElement("span");
   chips.className = "row-chips";
+  // SessionRow carries only has_pending_comments (no count), so the chip reads
+  // "✎ Comments" rather than spelling out a number.
   if (s.has_pending_comments) {
-    const c = document.createElement("span");
-    c.className = "comment-badge";
-    c.textContent = "✎";
-    c.title = "Has pending review comments";
-    chips.appendChild(c);
+    chips.appendChild(commentsChip(undefined, "Has pending review comments"));
   }
   // pull_blocked is a project-level field; surface ⚠ on rows of a blocked
   // project. (No session-level blocked flag exists — see recon risks.)
   const blocked = groupOf(s.id)?.pull_blocked;
   if (blocked) {
-    const b = document.createElement("span");
-    b.className = "blocked-badge";
-    b.textContent = "⚠";
-    b.title = `Auto-pull blocked: ${blocked}`;
-    chips.appendChild(b);
+    chips.appendChild(pullBlockedChip(`Auto-pull blocked: ${blocked}`));
   }
   if (chips.childElementCount) line.appendChild(chips);
 
@@ -2804,13 +2822,11 @@ function renderSidebar(): void {
     square.className = `proj-square ${projClass(group.id)}`;
     const name = document.createElement("span");
     name.textContent = group.name;
-    if (group.pull_blocked) {
-      const blocked = document.createElement("span");
-      blocked.className = "pull-blocked";
-      blocked.textContent = "⇣!";
-      blocked.title = `Auto-pull of main blocked: ${group.pull_blocked}`;
-      name.appendChild(blocked);
-    }
+    // ⚠ pull-blocked chip sits beside the name (its own header child so it gets
+    // the row gap and escapes the header's uppercase transform).
+    const blockedChip = group.pull_blocked
+      ? pullBlockedChip(`Auto-pull of main blocked: ${group.pull_blocked}`)
+      : null;
     const buttons = document.createElement("span");
     buttons.className = "header-buttons";
     const shell = document.createElement("button");
@@ -2835,7 +2851,9 @@ function renderSidebar(): void {
     const count = document.createElement("span");
     count.className = "meta";
     count.textContent = String(group.sessions.length);
-    header.append(square, name, count, headerRule(), buttons);
+    header.append(square, name, count);
+    if (blockedChip) header.append(blockedChip);
+    header.append(headerRule(), buttons);
     const isCollapsed = makeCollapsible(header, name, `proj:${group.id}`);
     header.addEventListener("contextmenu", (e) => showContextMenu(e, projectMenuItems(group)));
     sessionsEl.appendChild(header);
@@ -3059,12 +3077,7 @@ const boardDiffPending = new Set<string>();
  *  bar / state pill use. Keeps the board in lockstep with the dot colours
  *  without re-deriving the status logic (we read applyStatusGlyph's output). */
 function boardStateClass(s: SessionRow): string {
-  const probe = document.createElement("span");
-  applyStatusGlyph(probe, s);
-  for (const cls of STATUS_GLYPH_CLASSES) {
-    if (probe.classList.contains(cls)) return `state-${cls.slice(4)}`; // dot-running → state-running
-  }
-  return "state-idle";
+  return `state-${sessionStateKey(s)}`; // running → state-running, in lockstep with the dot/chip mapping
 }
 
 /** Every project id known to the current snapshot, in board order. */
@@ -3260,7 +3273,9 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     e.stopPropagation();
     showContextMenu(e, sessionMenuItems(cardRefs(s)));
   });
-  header.append(statusGlyph(s), heading, menu);
+  // Status chip trails the title block; the 3px top accent bar reinforces its
+  // colour. Replaces the old leading colour-only dot.
+  header.append(heading, sessionStatusChip(s), menu);
   card.appendChild(header);
 
   // Branch line under the title — only when it diverges from the title (it's
@@ -3293,19 +3308,11 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   const prChip = prBadge(s);
   if (prChip) chips.appendChild(prChip);
   if (s.has_pending_comments) {
-    const c = document.createElement("span");
-    c.className = "comment-badge";
-    c.textContent = "✎";
-    c.title = "Has pending review comments";
-    chips.appendChild(c);
+    chips.appendChild(commentsChip(undefined, "Has pending review comments"));
   }
   const blocked = groupOf(s.id)?.pull_blocked;
   if (blocked) {
-    const b = document.createElement("span");
-    b.className = "blocked-badge";
-    b.textContent = "⚠";
-    b.title = `Auto-pull blocked: ${blocked}`;
-    chips.appendChild(b);
+    chips.appendChild(pullBlockedChip(`Auto-pull blocked: ${blocked}`));
   }
   const actions = document.createElement("span");
   actions.className = "card-actions";
