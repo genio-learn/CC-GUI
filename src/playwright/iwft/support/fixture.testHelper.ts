@@ -15,6 +15,7 @@ import { DialogsPageObject } from "../../pageObjects/DialogsPageObject.testHelpe
 import { TerminalPageObject } from "../../pageObjects/TerminalPageObject.testHelper";
 import { BoardPageObject } from "../../pageObjects/BoardPageObject.testHelper";
 import { FileExplorerPageObject } from "../../pageObjects/FileExplorerPageObject.testHelper";
+import { OnboardingPageObject } from "../../pageObjects/OnboardingPageObject.testHelper";
 
 interface Fixtures {
   /** Override in a test via `test.use({ seed: customSeed })` for bespoke state. */
@@ -38,6 +39,9 @@ interface Fixtures {
   /** App booted against `seed` with the first session attached (so a terminal is
    *  active), file explorer object ready (overlay starts closed; call open()). */
   fileExplorer: FileExplorerPageObject;
+  /** App booted against `seed`, onboarding hero object ready (visible only
+   *  while `seed.snapshot.groups` is empty). */
+  onboarding: OnboardingPageObject;
 }
 
 export const test = base.extend<Fixtures>({
@@ -84,6 +88,10 @@ export const test = base.extend<Fixtures>({
     // the active session's repo.
     await new TerminalPageObject(page).attach("fix login bug");
     await use(new FileExplorerPageObject(page));
+  },
+  onboarding: async ({ page, seed }, use) => {
+    await launchApp(page, seed);
+    await use(new OnboardingPageObject(page));
   },
 });
 
