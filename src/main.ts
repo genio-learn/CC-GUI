@@ -2963,8 +2963,19 @@ const onboardingEl = document.querySelector<HTMLDivElement>("#onboarding")!;
 const onboardingCommanderBtn = document.querySelector<HTMLButtonElement>("#onboarding-commander")!;
 let commanderEnabled = false; // mirrors renderCommander's gate; set in applySnapshot
 
+/** First-run hero state: no projects and nothing attached. */
+function onboardingActive(): boolean {
+  return groups.length === 0 && terminals.size === 0;
+}
+
 function renderOnboarding(): void {
-  onboardingEl.classList.toggle("hidden", !(groups.length === 0 && terminals.size === 0));
+  const show = onboardingActive();
+  onboardingEl.classList.toggle("hidden", !show);
+  // Board layout hides #terminal-pane, which hosts the hero — so a persisted
+  // Board layout (or deleting the last project while on the Board) would show
+  // a blank surface instead of first-run guidance. Yield to Console while the
+  // hero is up; the Board segment is guarded below for the same reason.
+  if (show && layout === "board") setLayout("console");
   // Card 3 is only a live control when the commander is actually configured —
   // otherwise it reads inert, like card 2's "After a project" placeholder,
   // rather than firing prepare_commander into a raw error toast.
@@ -3058,7 +3069,15 @@ function setLayout(next: "console" | "board"): void {
 }
 
 tbConsole.addEventListener("click", () => setLayout("console"));
-tbBoard.addEventListener("click", () => setLayout("board"));
+tbBoard.addEventListener("click", () => {
+  // The Board has nothing to show before the first project — keep the hero
+  // (which lives in the Console's terminal pane) instead of a blank surface.
+  if (onboardingActive()) {
+    toast("Add a project first — the Board shows your sessions.");
+    return;
+  }
+  setLayout("board");
+});
 document.querySelector<HTMLButtonElement>("#tb-jump")!.addEventListener("click", () => togglePalette());
 document
   .querySelector<HTMLButtonElement>("#tb-theme")!

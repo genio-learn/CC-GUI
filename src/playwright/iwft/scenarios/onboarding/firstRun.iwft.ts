@@ -1,5 +1,7 @@
 import { test, expect } from "../../support/fixture.testHelper";
 import { makeSnapshot } from "../../network/seed.testHelper";
+import { launchApp } from "../../support/launchApp.testHelper";
+import { OnboardingPageObject } from "../../../pageObjects/OnboardingPageObject.testHelper";
 import { TerminalPageObject } from "../../../pageObjects/TerminalPageObject.testHelper";
 
 // First-run onboarding (design_handoff §07): zero projects renders a welcome
@@ -34,6 +36,37 @@ test.describe("zero projects, commander disabled (default)", () => {
     // Same treatment as card 2's "After a project" placeholder — no live CTA,
     // so it can never fire prepare_commander into a raw error toast.
     await expect(onboarding.commanderButton()).toBeDisabled();
+  });
+
+  test("the Board segment yields to the hero (nothing to show yet)", async ({
+    onboarding,
+    page,
+  }) => {
+    await expect.poll(() => onboarding.isVisible()).toBe(true);
+    await page.locator("#tb-board").click();
+
+    // Board mode would hide the terminal pane that hosts the hero, so the
+    // switch is refused with a hint instead of a blank surface.
+    await expect(page.locator("#toast-stack .toast")).toHaveText(
+      "Add a project first — the Board shows your sessions.",
+    );
+    await expect(page.locator("#board")).toBeHidden();
+    await expect.poll(() => onboarding.isVisible()).toBe(true);
+    await expect(page.locator("#tb-console")).toHaveClass(/active/);
+  });
+
+  test("a persisted Board layout falls back to Console for the hero", async ({
+    page,
+    seed,
+  }) => {
+    // Boot as a user who last used the Board, then lost their projects.
+    await page.addInitScript(() => localStorage.setItem("cc-layout", "board"));
+    await launchApp(page, seed);
+    const onboarding = new OnboardingPageObject(page);
+
+    await expect.poll(() => onboarding.isVisible()).toBe(true);
+    await expect(page.locator("#board")).toBeHidden();
+    await expect(page.locator("#tb-console")).toHaveClass(/active/);
   });
 
   test("Choose folder… cancelled falls back to the sidebar's path input", async ({
