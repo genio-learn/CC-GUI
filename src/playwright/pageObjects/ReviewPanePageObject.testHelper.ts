@@ -8,8 +8,11 @@ export class ReviewPanePageObject extends AppPageObject {
   private readonly pane = this.page.locator("#review");
   private readonly files = this.page.locator("#review-files");
   private readonly diff = this.page.locator("#review-diff");
+  private readonly applyBar = this.page.locator("#review-apply-bar");
   private readonly applyButton = this.page.locator("#review-apply");
+  private readonly applySummary = this.page.locator("#review-apply-summary");
   private readonly status = this.page.locator("#review-status");
+  private readonly progressCount = this.page.locator(".progress-ring-count");
 
   /** Hover the first session row (its actions are hidden until hover) and open
    *  its review diff. */
@@ -38,7 +41,7 @@ export class ReviewPanePageObject extends AppPageObject {
   writeComment(text: string): Promise<void> {
     return this.step(`writeComment: ${text}`, async () => {
       await this.diff.locator("textarea").fill(text);
-      await this.diff.locator(".editor-buttons button", { hasText: "Comment" }).click();
+      await this.diff.locator(".editor-buttons button", { hasText: "Save" }).click();
       await expect(this.diff.locator("textarea")).toHaveCount(0);
     });
   }
@@ -68,6 +71,15 @@ export class ReviewPanePageObject extends AppPageObject {
     return this.applyButton;
   }
 
+  /** The sticky bottom apply bar — hidden while there are no staged comments. */
+  applyBarLocator(): Locator {
+    return this.applyBar;
+  }
+
+  applySummaryText(): Promise<string> {
+    return this.applySummary.innerText();
+  }
+
   /** The review overlay itself — hidden once a successful apply returns to the
    *  workspace. */
   paneLocator(): Locator {
@@ -76,6 +88,11 @@ export class ReviewPanePageObject extends AppPageObject {
 
   statusText(): Promise<string> {
     return this.status.innerText();
+  }
+
+  /** The progress ring's "N/total" mono count. */
+  progressCountText(): Promise<string> {
+    return this.progressCount.innerText();
   }
 
   /** What the fake backend now holds for this session — the state-based assertion. */

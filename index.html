@@ -77,13 +77,19 @@
           <span id="review-base"></span>
           <span class="spacer"></span>
           <span id="review-status"></span>
-          <button id="review-apply" class="row-action hidden" title="Send staged comments to the agent"></button>
           <button id="review-refresh" class="row-action" title="Refresh diff">↻</button>
           <button id="review-close" title="Close (Esc)">×</button>
         </header>
         <div id="review-body">
-          <div id="review-files"></div>
+          <div id="review-sidebar">
+            <div id="review-progress"></div>
+            <div id="review-files"></div>
+          </div>
           <div id="review-diff"></div>
+        </div>
+        <div id="review-apply-bar" class="hidden">
+          <span id="review-apply-summary"></span>
+          <button id="review-apply" class="apply-btn" title="Send staged comments to the agent"></button>
         </div>
       </div>
       <div id="file-explorer" class="hidden">
