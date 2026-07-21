@@ -36,6 +36,31 @@ test("Enter runs the selected entry's action", async ({ palette, page }) => {
   await expect(page.locator("#settings-overlay")).toBeVisible();
 });
 
+test("session rows carry a project square and a labeled state pill", async ({ palette }) => {
+  await palette.open();
+
+  // Project identity: a square whose proj-N class carries the hashed colour.
+  await expect(palette.projSquare("fix login bug")).toHaveClass(/proj-\d/);
+  // Seeded session is running with an idle agent → the shared chip vocabulary
+  // renders a cyan "Idle" pill (same word + tone as the sidebar and board).
+  const pill = palette.statePill("fix login bug");
+  await expect(pill).toHaveText("Idle");
+  await expect(pill).toHaveClass(/tone-cyan/);
+  // The label is still the row's first <span> (page-object contract).
+  expect(await palette.selectedLabel()).toBe("fix login bug");
+});
+
+test("command rows carry tinted action icons", async ({ palette }) => {
+  await palette.open();
+
+  const add = palette.commandIcon("Add project…");
+  await expect(add).toHaveText("＋");
+  await expect(add).toHaveClass(/tone-success/);
+  const del = palette.commandIcon("Delete merged-PR sessions…");
+  await expect(del).toHaveText("⌦");
+  await expect(del).toHaveClass(/tone-danger/);
+});
+
 test("Escape closes the palette", async ({ palette }) => {
   await palette.open();
   await palette.closeWithEscape();

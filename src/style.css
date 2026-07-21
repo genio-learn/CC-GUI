@@ -1711,16 +1711,48 @@ body {
   white-space: nowrap;
 }
 
-.palette-dot {
+.palette-proj {
   flex: none;
 }
 
+/* Command icons: a tinted rounded square when the entry declares a tone,
+   the bare ⌥ glyph otherwise. Tones reuse the status-chip names. */
 .palette-icon {
   flex: none;
-  width: 14px;
-  text-align: center;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 12px;
   color: var(--text-dim);
   font-style: normal;
+}
+
+.palette-icon.tone-success {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.palette-icon.tone-info {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+.palette-icon.tone-danger {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
+.palette-icon.tone-warning {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+}
+
+.palette-icon.tone-dim {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-dim) 15%, transparent);
 }
 
 .palette-meta {
@@ -1732,12 +1764,11 @@ body {
   white-space: nowrap;
 }
 
+/* Positioning only — the pill's colour/size come from its status-chip
+   classes (which this selector must not override). */
 .palette-state {
   flex: none;
   margin-left: auto;
-  color: var(--text-dim);
-  font-size: 11px;
-  white-space: nowrap;
 }
 
 .palette-hint {
