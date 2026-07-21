@@ -116,13 +116,46 @@ test("unrendered keys (keybindings, theme) survive the save untouched", async ({
   expect(saved?.theme).toEqual({ accent: "#89b4fa" });
 });
 
-test("the CC-GUI tab switches theme mode (localStorage, not save_config)", async ({
+test("the Appearance category switches theme mode (localStorage, not save_config)", async ({
   settings,
 }) => {
   await settings.open();
-  await settings.selectTab("gui");
+  await settings.selectCategory("theme");
   await settings.setThemeMode("dark");
   expect(await settings.themeMode()).toBe("dark");
   // Theme prefs never go through save_config.
   expect(await settings.savedConfig()).toBeNull();
+});
+
+test("search filters the nav to matching categories", async ({ settings }) => {
+  await settings.open();
+  await settings.search("hibern");
+
+  await expect(settings.panelHeading()).toHaveText("Hibernation");
+  expect(await settings.navLabels()).toEqual(["Hibernation"]);
+  // The filtered-to category is live — its fields render and are editable.
+  expect(await settings.fieldKind("hibernate_enabled")).toBe("toggle");
+});
+
+test("search matches field labels, not just category names", async ({ settings }) => {
+  await settings.open();
+  // "Branch prefix" lives in General; "prefix" appears in no category label.
+  await settings.search("branch prefix");
+
+  expect(await settings.navLabels()).toContain("General");
+  await expect(settings.panelHeading()).toHaveText("General");
+});
+
+test("clearing the search restores every category", async ({ settings }) => {
+  await settings.open();
+  await settings.search("hibern");
+  await settings.search("");
+
+  const labels = await settings.navLabels();
+  expect(labels.length).toBeGreaterThan(10);
+  expect(labels).toContain("Appearance");
+  // The single nav starts with General and holds the GUI-only Appearance
+  // right after it — no tabs.
+  expect(labels[0]).toBe("General");
+  expect(labels[1]).toBe("Appearance");
 });

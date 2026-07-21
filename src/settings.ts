@@ -1,10 +1,11 @@
-// Settings modal: a categorized, typed editor.
+// Settings modal: a categorized, typed editor behind a single searchable nav.
 //
-// Two tabs: "claude-commander" (the shared Config, round-tripped through
-// `save_config`) and "CC-GUI" (GUI-only preferences — currently theming, which
-// applies live to localStorage and never touches `save_config`).
+// One nav lists every category: the claude-commander Config ones (round-tripped
+// through `save_config`) plus Appearance (GUI-only theming, which applies live
+// to localStorage and never touches `save_config`). The search box filters
+// categories by their label and their fields' labels/descriptions.
 //
-// The commander tab is schema-driven: each field declares a control (toggle,
+// Config categories are schema-driven: each field declares a control (toggle,
 // number, select, string-list, …) and a dot-path into the config. On save we
 // deep-clone the loaded config and overwrite only the edited leaves, so keys we
 // don't render (keybindings, theme overrides) survive untouched.
@@ -182,15 +183,42 @@ const COMMANDER_CATEGORIES: Category[] = [
   },
 ];
 
-const GUI_CATEGORIES: Category[] = [
-  { id: "theme", label: "Theme", custom: "theme", note: "Theme preferences are stored locally for this GUI and don't affect the claude-commander config." },
+const THEME_CATEGORY: Category = {
+  id: "theme",
+  label: "Appearance",
+  custom: "theme",
+  note: "Theme preferences are stored locally for this GUI and don't affect the claude-commander config.",
+};
+
+// One nav for everything: Appearance sits with the config categories, right
+// after General (it's the GUI-local odd one out; its note says so).
+const CATEGORIES: Category[] = [
+  COMMANDER_CATEGORIES[0],
+  THEME_CATEGORY,
+  ...COMMANDER_CATEGORIES.slice(1),
 ];
+
+const CATEGORY_ICONS: Record<string, string> = {
+  general: "⚙",
+  theme: "◐",
+  sessions: "⧉",
+  hibernation: "☾",
+  git: "±",
+  ai: "✦",
+  commander: "◎",
+  conversation: "♪",
+  stt: "◉",
+  telemetry: "◈",
+  sections: "▤",
+  tui: "❯",
+  advanced: "≡",
+};
 
 // ----------------------------------------------------------------- state
 
 let working: Config = {};
-let activeTab: "commander" | "gui" = "commander";
 let activeCat = "general";
+let searchQuery = "";
 
 // Section rows held as UI-friendly drafts; encoded to SectionConfig on save.
 type Tri = "any" | "yes" | "no";
@@ -362,55 +390,56 @@ function makeControl(field: Field): HTMLElement {
 
 /** Whether toggling `path` should re-render (because some field is gated by it). */
 function categoryGatesOn(path: string): boolean {
-  const cat = activeCategories().find((c) => c.id === activeCat);
+  const cat = CATEGORIES.find((c) => c.id === activeCat);
   if (!cat || !("fields" in cat)) return false;
   return cat.fields.some((f) => f.enabledBy === path);
 }
 
 // ----------------------------------------------------------------- render
 
-function activeCategories(): Category[] {
-  return activeTab === "gui" ? GUI_CATEGORIES : COMMANDER_CATEGORIES;
+/** Categories whose label — or any field label/description — matches the
+ *  search query. All of them when the query is blank. */
+function visibleCategories(): Category[] {
+  const q = searchQuery.trim().toLowerCase();
+  if (!q) return CATEGORIES;
+  return CATEGORIES.filter((cat) => {
+    if (cat.label.toLowerCase().includes(q)) return true;
+    if (!("fields" in cat)) return false;
+    return cat.fields.some(
+      (f) => f.label.toLowerCase().includes(q) || (f.desc ?? "").toLowerCase().includes(q),
+    );
+  });
 }
 
 function render(): void {
   box.innerHTML = "";
-
-  const tabs = document.createElement("div");
-  tabs.className = "settings-tabs";
-  for (const [id, label] of [["gui", "CC-GUI"], ["commander", "claude-commander"]] as const) {
-    const btn = document.createElement("button");
-    btn.className = "settings-tab";
-    btn.classList.toggle("active", activeTab === id);
-    btn.textContent = label;
-    btn.dataset.tab = id;
-    btn.addEventListener("click", () => {
-      if (activeTab === id) return;
-      activeTab = id;
-      activeCat = activeCategories()[0].id;
-      render();
-    });
-    tabs.appendChild(btn);
-  }
-  box.appendChild(tabs);
 
   const body = document.createElement("div");
   body.className = "settings-body";
 
   const nav = document.createElement("div");
   nav.className = "settings-nav";
-  for (const cat of activeCategories()) {
-    const item = document.createElement("button");
-    item.className = "settings-nav-item";
-    item.classList.toggle("active", cat.id === activeCat);
-    item.textContent = cat.label;
-    item.dataset.cat = cat.id;
-    item.addEventListener("click", () => {
-      activeCat = cat.id;
-      render();
-    });
-    nav.appendChild(item);
-  }
+
+  const title = document.createElement("div");
+  title.className = "settings-nav-title";
+  title.textContent = "Settings";
+
+  const search = noTextAssist(document.createElement("input"));
+  search.type = "text";
+  search.className = "settings-search";
+  search.placeholder = "⌕ Search settings…";
+  search.value = searchQuery;
+  search.addEventListener("input", () => {
+    searchQuery = search.value;
+    renderNav(navList);
+    renderPanel();
+  });
+
+  const navList = document.createElement("div");
+  navList.className = "settings-nav-list";
+  renderNav(navList);
+
+  nav.append(title, search, navList);
 
   const panel = document.createElement("div");
   panel.className = "settings-panel";
@@ -433,13 +462,49 @@ function render(): void {
   renderPanel();
 }
 
-/** Re-render just the content panel (nav/tabs/footer stay). */
+/** Fill the nav list with the categories matching the current search. When the
+ *  active category is filtered out, the first match becomes active. */
+function renderNav(navList: HTMLElement): void {
+  navList.innerHTML = "";
+  const cats = visibleCategories();
+  if (cats.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "settings-nav-empty";
+    empty.textContent = "No matches";
+    navList.appendChild(empty);
+    return;
+  }
+  if (!cats.some((c) => c.id === activeCat)) activeCat = cats[0].id;
+  for (const cat of cats) {
+    const item = document.createElement("button");
+    item.className = "settings-nav-item";
+    item.classList.toggle("active", cat.id === activeCat);
+    const icon = document.createElement("span");
+    icon.className = "settings-nav-icon";
+    icon.textContent = CATEGORY_ICONS[cat.id] ?? "·";
+    item.append(icon, document.createTextNode(cat.label));
+    item.dataset.cat = cat.id;
+    item.addEventListener("click", () => {
+      activeCat = cat.id;
+      renderNav(navList);
+      renderPanel();
+    });
+    navList.appendChild(item);
+  }
+}
+
+/** Re-render just the content panel (nav/footer stay). */
 function renderPanel(): void {
   const panel = box.querySelector<HTMLElement>(".settings-panel");
   if (!panel) return;
   panel.innerHTML = "";
-  const cat = activeCategories().find((c) => c.id === activeCat);
+  const cat = CATEGORIES.find((c) => c.id === activeCat);
   if (!cat) return;
+
+  const heading = document.createElement("div");
+  heading.className = "settings-panel-heading";
+  heading.textContent = cat.label;
+  panel.appendChild(heading);
 
   if (cat.note) {
     const note = document.createElement("p");
@@ -828,8 +893,8 @@ export async function openSettings(): Promise<void> {
   }
   working = structuredClone(config);
   sectionDrafts = decodeSections(working.sections);
-  activeTab = "commander";
-  activeCat = COMMANDER_CATEGORIES[0].id;
+  activeCat = CATEGORIES[0].id;
+  searchQuery = "";
   render();
   overlay.classList.remove("hidden");
 }
