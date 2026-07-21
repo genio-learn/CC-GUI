@@ -30,6 +30,14 @@ test("attaching opens a tab and streamed PTY bytes render", async ({ terminal })
   await terminal.expectScreenContains("hello-term");
 });
 
+test("opening a shell tags its tab with the ❯ Shell chip, not a status dot", async ({ terminal }) => {
+  await terminal.openShell("fix login bug");
+
+  // The chip carries the "Shell" word, so the label drops the "— shell" suffix.
+  await expect(terminal.shellTabChipLabel()).toHaveText("Shell");
+  await expect(terminal.tabLabels()).toHaveText(["fix login bug"]);
+});
+
 test("Cmd+W closes the active terminal tab", async ({ terminal }) => {
   await terminal.attach("fix login bug");
   await terminal.closeWithCmdW();

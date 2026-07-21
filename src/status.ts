@@ -9,7 +9,7 @@
 // compact dots stay in lockstep without a circular import.
 
 /** Semantic colour role a chip paints itself with (background is a wash of it). */
-type ChipTone = "success" | "warning" | "cyan" | "dim" | "danger" | "info" | "accent";
+type ChipTone = "success" | "warning" | "cyan" | "dim" | "danger" | "info";
 
 /** Liveness states, mirroring applyStatusGlyph's `dot-*` classes 1:1
  *  (`dot-running` → "running", …). main.ts derives these from a session. */
@@ -123,7 +123,10 @@ export function stackChip(count: number, title?: string): HTMLSpanElement {
   return makeChip({ tone: "info", glyph: "⌗", label: "Stack of", count, title });
 }
 
-/** ❯ shell badge. */
+/** ❯ shell badge. Purple/info tone, grouping it with ✎ comments and ⌗ stack
+ *  (all the "meta" glyphs in the decoded vocabulary are mauve) and keeping the
+ *  blue --accent reserved for primary actions. The prototype's #8a7cff sits in
+ *  that mauve family, not the accent blue. */
 export function shellChip(title?: string): HTMLSpanElement {
-  return makeChip({ tone: "accent", glyph: "❯", label: "Shell", title });
+  return makeChip({ tone: "info", glyph: "❯", label: "Shell", title });
 }

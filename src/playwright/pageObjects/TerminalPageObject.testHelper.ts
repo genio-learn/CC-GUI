@@ -30,6 +30,22 @@ export class TerminalPageObject extends AppPageObject {
     return this.tabs.locator(".tab-label");
   }
 
+  /** Open a session's worktree shell via its row context menu. */
+  openShell(rowTitle: string): Promise<void> {
+    return this.step(`openShell: ${rowTitle}`, async () => {
+      await this.page
+        .locator(".session-row")
+        .filter({ has: this.page.locator(".title", { hasText: rowTitle }) })
+        .click({ button: "right" });
+      await this.page.locator(".context-menu .menu-item", { hasText: "Open shell" }).click();
+    });
+  }
+
+  /** The "❯ Shell" chip a shell tab carries in place of a liveness dot. */
+  shellTabChipLabel(): Locator {
+    return this.tabsEl.locator(".tab .status-chip.tab-shell .chip-label");
+  }
+
   placeholderVisible(): Promise<boolean> {
     return this.placeholder.isVisible();
   }
