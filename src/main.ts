@@ -2924,6 +2924,29 @@ document.querySelector<HTMLButtonElement>("#sidebar-menu")!.addEventListener("cl
   showContextMenu(e, sidebarMenuItems());
 });
 
+// ------------------------------------------------------------- onboarding
+//
+// First-run hero over the terminal pane, shown whenever there are zero
+// projects and hidden the instant the first one lands — no persisted flag,
+// purely driven by the live snapshot (see applySnapshot).
+
+const onboardingEl = document.querySelector<HTMLDivElement>("#onboarding")!;
+
+function renderOnboarding(): void {
+  onboardingEl.classList.toggle("hidden", groups.length > 0);
+}
+
+document
+  .querySelector<HTMLButtonElement>("#onboarding-add-project")!
+  .addEventListener("click", () => {
+    topInput = "add";
+    renderSidebar();
+  });
+
+document
+  .querySelector<HTMLButtonElement>("#onboarding-commander")!
+  .addEventListener("click", () => commanderChip.click());
+
 // ----------------------------------------------------------------- title bar
 
 const appEl = document.querySelector<HTMLElement>("#app")!;
@@ -3677,6 +3700,7 @@ function applySnapshot(snap: Snapshot): void {
   updateTitleBarCounts();
   renderSidebar();
   renderBoard();
+  renderOnboarding();
   updateTabGlyphs();
   renderCommander(snap.commander);
 }
