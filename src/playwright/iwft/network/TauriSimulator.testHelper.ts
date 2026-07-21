@@ -6,7 +6,7 @@
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import { confirmDialog, promptDialog } from "../../../toast";
+import { confirmDialog, promptDialog, deleteSessionDialog } from "../../../toast";
 import type { Comment, ReviewSnapshot } from "../../../review/model";
 import type { FsEntry, Seed, SessionRow, Snapshot } from "./types.testHelper";
 
@@ -447,15 +447,19 @@ declare global {
   interface Window {
     __CC_IWFT_SEED__: Seed;
     __CC_SIM__: TauriSimulator;
-    /** The app's real confirm/prompt dialogs, exposed for the Dialogs POM to
-     *  drive directly (they're pure DOM + Promise, no trigger flow needed). */
-    __CC_DIALOGS__: { confirmDialog: typeof confirmDialog; promptDialog: typeof promptDialog };
+    /** The app's real confirm/prompt/delete dialogs, exposed for the Dialogs
+     *  POM to drive directly (pure DOM + Promise, no trigger flow needed). */
+    __CC_DIALOGS__: {
+      confirmDialog: typeof confirmDialog;
+      promptDialog: typeof promptDialog;
+      deleteSessionDialog: typeof deleteSessionDialog;
+    };
   }
 }
 
 const sim = new TauriSimulator(window.__CC_IWFT_SEED__);
 window.__CC_SIM__ = sim;
-window.__CC_DIALOGS__ = { confirmDialog, promptDialog };
+window.__CC_DIALOGS__ = { confirmDialog, promptDialog, deleteSessionDialog };
 // metadata for getCurrentWindow() (main.ts wires onThemeChanged at module load);
 // mockIPC handles invoke + the event plugin.
 mockWindows("main");
