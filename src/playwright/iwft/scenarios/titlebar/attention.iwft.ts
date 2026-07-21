@@ -49,6 +49,11 @@ test.describe("with a waiting and an unread session", () => {
   test("mirrors the count at the top of the Board", async ({ board }) => {
     await board.enter();
     await expect(board.boardAttention()).toHaveText("2 waiting on you");
+    // A filter-bar rebuild (Hide empty) recreates the pill — it must be
+    // refilled immediately, not sit blank until the next poll snapshot.
+    await board.toggleHideEmpty();
+    await expect(board.boardAttention()).toHaveText("2 waiting on you");
+    await expect(board.boardAttention()).toBeVisible();
   });
 
   test("clears when the queue drains (event push)", async ({ sidebar }) => {

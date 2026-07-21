@@ -3595,6 +3595,9 @@ function renderBoardFilterBar(): void {
     hideEmptyColumns = !hideEmptyColumns;
     localStorage.setItem("cc-board-hide-empty", hideEmptyColumns ? "1" : "0");
     renderBoardFilterBar();
+    // The rebuild recreated the attention pill blank — refill it now rather
+    // than leaving it empty until the next poll snapshot.
+    updateTitleBarCounts();
     renderBoardColumns();
   });
   pills.appendChild(hideEmpty);
