@@ -115,7 +115,7 @@ test("cards carry a labeled status chip and always-visible labeled actions", asy
   const review = board.cardAction("fix login bug", "review");
   await expect(attach).toBeVisible();
   await expect(review).toBeVisible();
-  await expect(attach).toHaveText("▸ Attach");
+  await expect(attach).toHaveText("Attach");
   await expect(review).toHaveText("± Review");
   const box = await attach.boundingBox();
   expect(box!.height).toBeGreaterThanOrEqual(28);

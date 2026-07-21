@@ -297,6 +297,9 @@ body {
 .state-transient {
   --state-color: var(--warning);
 }
+.state-hibernated {
+  --state-color: var(--text-dim);
+}
 
 /* ── Filter bar ──────────────────────────────────────────────────────────── */
 #board-filter {
@@ -689,6 +692,7 @@ body {
    fill, the primary action) and ± Review (info outline). */
 .card-action {
   flex: 1;
+  min-height: 28px;
   padding: 7px;
   border-radius: 8px;
   border: 1px solid transparent;

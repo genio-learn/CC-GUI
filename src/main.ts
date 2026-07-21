@@ -3363,7 +3363,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   ensureBoardDiffStat(s.id, diff);
 
   // Footer: PR badge + ✎/⚠ chips over an always-visible action row of labeled
-  // buttons — ▸ Attach (accent, the primary action) / ± Review (info). The chips
+  // buttons — Attach (accent, the primary action) / ± Review (info). The chips
   // row collapses when empty, so cards without badges lose no vertical budget.
   const footer = document.createElement("div");
   footer.className = "card-footer";
@@ -3389,7 +3389,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   };
   const attach = document.createElement("button");
   attach.className = "card-action attach";
-  attach.textContent = "▸ Attach";
+  attach.textContent = "Attach";
   attach.title = "Attach";
   attach.addEventListener("click", (e) => {
     e.stopPropagation();
