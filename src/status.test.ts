@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip } from "./status";
+import {
+  statusChip,
+  commentsChip,
+  pullBlockedChip,
+  stackChip,
+  shellChip,
+  stateTier,
+  STATUS_TIERS,
+  type StatusState,
+} from "./status";
 
 /** The chip's leading shape: a colour dot, a glyph, or nothing. */
 function shape(chip: HTMLElement): "dot" | string | null {
@@ -74,5 +83,36 @@ describe("status chip vocabulary", () => {
     expect(label(chip)).toBe("Shell");
     // Info (mauve), grouped with ✎ comments / ⌗ stack — see shellChip's note.
     expect(tone(chip)).toBe("info");
+  });
+});
+
+describe("activity tiers (Status grouping)", () => {
+  it("sends turn-end states to attention, parked states to parked, the rest to active", () => {
+    expect(stateTier("waiting")).toBe("attention");
+    expect(stateTier("finished")).toBe("attention");
+    expect(stateTier("stopped")).toBe("parked");
+    expect(stateTier("hibernated")).toBe("parked");
+    expect(stateTier("running")).toBe("active");
+    expect(stateTier("idle")).toBe("active");
+    expect(stateTier("transient")).toBe("active");
+  });
+
+  it("keeps the working ⇄ idle flicker inside one tier, so rows never shuffle on it", () => {
+    expect(stateTier("running")).toBe(stateTier("idle"));
+  });
+
+  it("covers every liveness state with a tier from the ordered display list", () => {
+    const states: StatusState[] = [
+      "running",
+      "finished",
+      "idle",
+      "stopped",
+      "waiting",
+      "hibernated",
+      "transient",
+    ];
+    const tiers = STATUS_TIERS.map((t) => t.tier);
+    for (const s of states) expect(tiers).toContain(stateTier(s));
+    expect(STATUS_TIERS.map((t) => t.label)).toEqual(["Needs you", "Active", "Parked"]);
   });
 });

@@ -30,9 +30,10 @@ export class SidebarPageObject extends AppPageObject {
     return this.sessions.locator(".group-by-bar .segment.active").innerText();
   }
 
-  /** Drive the GROUP BY segmented control to a side ("Sections" | "Projects").
-   *  Round-trips through set_view_mode, like the old cycle toggle did. */
-  setGrouping(segment: "Sections" | "Projects"): Promise<void> {
+  /** Drive the GROUP BY segmented control to a side. Sections/Projects
+   *  round-trip through set_view_mode, like the old cycle toggle did; Status
+   *  is GUI-only and re-renders without touching the backend mode. */
+  setGrouping(segment: "Sections" | "Projects" | "Status"): Promise<void> {
     return this.step(`setGrouping: ${segment}`, () =>
       this.sessions
         .locator(".group-by-bar .segment", { hasText: segment })
@@ -355,6 +356,13 @@ export class SidebarPageObject extends AppPageObject {
       }
       return null;
     }, title);
+  }
+
+  /** The tier header a row renders under in the Status grouping ("Needs you" /
+   *  "Active" / "Parked") — tier headers reuse .project-header, so this is the
+   *  same nearest-preceding-header walk as renderedSectionOf. */
+  renderedTierOf(title: string): Promise<string | null> {
+    return this.renderedSectionOf(title);
   }
 
   /** Section moves the frontend dispatched — empty after a no-op drop. */

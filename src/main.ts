@@ -25,7 +25,7 @@ import {
   overlayOpen as keyOverlayOpen,
 } from "./keys";
 import { openSettings } from "./settings";
-import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip, stateChipInfo, type StatusState } from "./status";
+import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip, stateChipInfo, stateTier, STATUS_TIERS, type StatusState, type StatusTier } from "./status";
 import { noTextAssist } from "./dom";
 import {
   initTheme,
@@ -1574,6 +1574,19 @@ let topInput: "add" | "scan" | null = null; // sidebar-top path input mode
 // null for "all projects". Composes with whichever grouping is active.
 let projectFilter: string | null = null;
 
+// GUI-only "Status" grouping override (the GROUP BY control's third segment):
+// groups the sidebar by activity tier instead of the backend-owned viewMode —
+// the crate's ViewMode has no status variant, so like the layout preference
+// this lives in localStorage and leaves the backend mode untouched underneath.
+let statusGrouping = localStorage.getItem("cc-status-grouping") === "1";
+
+function setStatusGrouping(on: boolean): void {
+  if (on === statusGrouping) return;
+  statusGrouping = on;
+  localStorage.setItem("cc-status-grouping", on ? "1" : "0");
+  renderSidebar();
+}
+
 // Board layout: which cards are visible (filter pills) + a name search. Mirrors
 // projectFilter's "local UI state, re-render on change" shape.
 let boardSearch = "";
@@ -1775,6 +1788,12 @@ function sessionStateKey(s: SessionRow): StatusState {
     if (probe.classList.contains(cls)) return cls.slice(4) as StatusState; // dot-running → running
   }
   return "idle";
+}
+
+/** A session's activity tier for the Status grouping, via the shared state
+ *  key so it stays in lockstep with the dots and chips. */
+function sessionTier(s: SessionRow): StatusTier {
+  return stateTier(sessionStateKey(s));
 }
 
 /** The chip word for a session's state. Transient states (creating/merging/
@@ -2645,6 +2664,19 @@ async function createSessionInProject(group: ProjectGroup): Promise<void> {
 }
 
 function cycleViewMode(): void {
+  if (statusGrouping) {
+    // Status (GUI-only) is the cycle's last stop; leaving it restarts the
+    // backend cycle at "project".
+    setStatusGrouping(false);
+    invoke("set_view_mode", { mode: "project" })
+      .then(() => refreshNow())
+      .catch((e) => toast(`${e}`, "error"));
+    return;
+  }
+  if (viewMode === "section_stacks") {
+    setStatusGrouping(true);
+    return;
+  }
   const order = ["project", "sections", "section_stacks"];
   const next = order[(order.indexOf(viewMode) + 1) % order.length];
   invoke("set_view_mode", { mode: next })
@@ -2656,15 +2688,18 @@ function cycleViewMode(): void {
  *  viewMode is backend-owned — never set locally — so we round-trip through
  *  set_view_mode and let the next snapshot reflect it (mirror cycleViewMode). */
 function setViewMode(mode: string): void {
+  setStatusGrouping(false); // leaving the GUI-only Status override, if it's on
   if (mode === viewMode) return;
   invoke("set_view_mode", { mode })
     .then(() => refreshNow())
     .catch((e) => toast(`${e}`, "error"));
 }
 
-/** GROUP BY segmented control. Binary [Sections | Projects], bound to viewMode
- *  (Projects→"project", Sections→"sections"). "section_stacks" still counts as
- *  the Sections side and stays reachable via the palette's cycleViewMode. */
+/** GROUP BY segmented control: [Sections | Projects | Status]. Sections and
+ *  Projects are bound to the backend viewMode (Projects→"project",
+ *  Sections→"sections"; "section_stacks" still counts as the Sections side and
+ *  stays reachable via the palette's cycleViewMode). Status is the GUI-only
+ *  tier grouping and overrides whichever backend mode sits underneath. */
 function renderGroupByBar(): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "group-by-bar";
@@ -2674,7 +2709,7 @@ function renderGroupByBar(): HTMLElement {
 
   const seg = document.createElement("div");
   seg.className = "segmented";
-  const sectionsActive = viewMode === "sections" || viewMode === "section_stacks";
+  const sectionsActive = !statusGrouping && (viewMode === "sections" || viewMode === "section_stacks");
 
   const sectionsBtn = document.createElement("button");
   sectionsBtn.className = "segment";
@@ -2685,10 +2720,16 @@ function renderGroupByBar(): HTMLElement {
   const projectsBtn = document.createElement("button");
   projectsBtn.className = "segment";
   projectsBtn.textContent = "Projects";
-  projectsBtn.classList.toggle("active", !sectionsActive);
+  projectsBtn.classList.toggle("active", !statusGrouping && !sectionsActive);
   projectsBtn.addEventListener("click", () => setViewMode("project"));
 
-  seg.append(sectionsBtn, projectsBtn);
+  const statusBtn = document.createElement("button");
+  statusBtn.className = "segment";
+  statusBtn.textContent = "Status";
+  statusBtn.classList.toggle("active", statusGrouping);
+  statusBtn.addEventListener("click", () => setStatusGrouping(true));
+
+  seg.append(sectionsBtn, projectsBtn, statusBtn);
   bar.append(label, seg);
   return bar;
 }
@@ -2804,6 +2845,9 @@ function renderSidebar(): void {
       .join("|") +
     `#${newSessionProject}#${renamingId}#${topInput}#${viewMode}#${projectFilter}` +
     `#${sections?.map((b) => `${b.name}=${b.session_ids.join(",")}`).join("|") ?? ""}` +
+    // Status grouping: tier membership must force a rebuild (a status flip has
+    // to move the row between tiers, which updateRow alone can't do).
+    `#${statusGrouping ? "status:" + groups.flatMap((g) => g.sessions.map((s) => `${s.id}=${sessionTier(s)}`)).join(",") : ""}` +
     `#${[...collapsed].sort().join(",")}`;
 
   if (signature === sidebarSignature) {
@@ -2833,15 +2877,15 @@ function renderSidebar(): void {
     sessionsEl.appendChild(renderFilterBanner(filterGroup));
   }
 
+  // The GUI-only Status grouping overrides whichever backend mode is active.
+  if (statusGrouping) {
+    sessionsEl.appendChild(renderNewSessionButton());
+    renderStatusTiers();
+    return;
+  }
+
   if (sections) {
-    // Section views group by section, so an empty project has no sub-header to
-    // hang a "+" on. This full-width button is the universal create path there:
-    // pick any project (incl. sessionless ones), then enter a title.
-    const newBtn = document.createElement("button");
-    newBtn.className = "new-session-btn";
-    newBtn.textContent = "+ New session";
-    newBtn.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
-    sessionsEl.appendChild(newBtn);
+    sessionsEl.appendChild(renderNewSessionButton());
     renderSections(sections);
     return;
   }
@@ -2900,6 +2944,82 @@ function renderSidebar(): void {
     }
     renderRows(group.sessions);
     visibleGroups.push(group.sessions.map((s) => s.id));
+  }
+}
+
+/** Full-width create button for groupings without project headers (section and
+ *  status views): pick any project (incl. sessionless ones), then a title. */
+function renderNewSessionButton(): HTMLButtonElement {
+  const newBtn = document.createElement("button");
+  newBtn.className = "new-session-btn";
+  newBtn.textContent = "+ New session";
+  newBtn.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
+  return newBtn;
+}
+
+/** Render the GUI-only Status grouping: sessions bucketed into coarse activity
+ *  tiers (Needs you / Active / Parked; see stateTier). Tier membership only
+ *  changes on meaningful events — a turn ending, a session stopped or resumed —
+ *  never on the working ⇄ idle flicker, so rows don't shuffle underneath the
+ *  user. Within a tier, rows cluster by project in snapshot order (mirroring
+ *  renderSections). Empty tiers are hidden. Tier headers are not section drop
+ *  targets: status changes machine-side, so there's nothing to drag onto. */
+function renderStatusTiers(): void {
+  const buckets = new Map<StatusTier, SessionRow[]>();
+  for (const g of groups) {
+    if (projectFilter && g.id !== projectFilter) continue;
+    for (const s of g.sessions) {
+      const tier = sessionTier(s);
+      let rows = buckets.get(tier);
+      if (!rows) {
+        rows = [];
+        buckets.set(tier, rows);
+      }
+      rows.push(s);
+    }
+  }
+
+  const projById = new Map(groups.map((g) => [g.id, g]));
+  for (const { tier, label } of STATUS_TIERS) {
+    const tierRows = buckets.get(tier);
+    if (!tierRows?.length) continue;
+    const header = document.createElement("div");
+    header.className = "project-header";
+    const name = document.createElement("span");
+    name.textContent = label;
+    const count = document.createElement("span");
+    count.className = "meta";
+    count.textContent = String(tierRows.length);
+    header.append(name, count, headerRule());
+    const isCollapsed = makeCollapsible(header, name, `tier:${tier}`);
+    sessionsEl.appendChild(header);
+    if (isCollapsed) continue;
+
+    // Cluster the tier's sessions by project, preserving snapshot order.
+    const order: string[] = [];
+    const byProject = new Map<string, SessionRow[]>();
+    for (const s of tierRows) {
+      let rows = byProject.get(s.project_id);
+      if (!rows) {
+        rows = [];
+        byProject.set(s.project_id, rows);
+        order.push(s.project_id);
+      }
+      rows.push(s);
+    }
+
+    for (const pid of order) {
+      const rows = byProject.get(pid)!;
+      const group = projById.get(pid);
+      if (group) {
+        sessionsEl.appendChild(renderProjectSubheader(group, label));
+        if (newSessionProject === sectionCreateKey(label, group.id)) {
+          sessionsEl.appendChild(renderCreateInput(group));
+        }
+      }
+      renderRows(rows);
+      visibleGroups.push(rows.map((s) => s.id));
+    }
   }
 }
 
@@ -3928,6 +4048,16 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
       const s = targetSession();
       const g = s ? groupOf(s.id) : groups[0];
       if (!g) return;
+      // In the Status grouping the create-input lives under the cursor
+      // session's project sub-header within its tier, so scope the key to it.
+      if (statusGrouping && s) {
+        const tier = sessionTier(s);
+        const label = STATUS_TIERS.find((t) => t.tier === tier)!.label;
+        newSessionProject = sectionCreateKey(label, g.id);
+        collapsed.delete(`tier:${tier}`);
+        renderSidebar();
+        return;
+      }
       // In a section view the create-input lives under the cursor session's
       // project sub-header within its section bucket, so scope the key to it.
       if (SECTION_VIEW() && s && sections) {
@@ -4056,7 +4186,13 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
     label: "Collapse/expand cursor group",
     run: () => {
       const s = targetSession();
-      if (SECTION_VIEW() && sections) {
+      if (statusGrouping) {
+        // Cursor session's tier, else the first tier that actually rendered.
+        const tier = s
+          ? sessionTier(s)
+          : STATUS_TIERS.find((t) => groups.some((g) => g.sessions.some((x) => sessionTier(x) === t.tier)))?.tier;
+        if (tier) toggleCollapsed(`tier:${tier}`);
+      } else if (SECTION_VIEW() && sections) {
         const b = s ? sections.find((b) => b.session_ids.includes(s.id)) : sections[0];
         if (b) toggleCollapsed(`sect:${b.name}`);
       } else {

@@ -83,6 +83,34 @@ const STATE_CHIP: Record<StatusState, { tone: ChipTone; word: string; dot?: bool
   transient: { tone: "warning", word: "Working", dot: true },
 };
 
+/** Coarse activity tier for the sidebar's Status grouping. Deliberately
+ *  coarser than StatusState so tier membership only changes on meaningful
+ *  events — a turn ending ("attention"), the user stopping/resuming a session
+ *  ("parked") — never on the working ⇄ idle flicker (both are "active"). */
+export type StatusTier = "attention" | "active" | "parked";
+
+/** Tier display order + header labels for the Status grouping. */
+export const STATUS_TIERS: readonly { tier: StatusTier; label: string }[] = [
+  { tier: "attention", label: "Needs you" },
+  { tier: "active", label: "Active" },
+  { tier: "parked", label: "Parked" },
+];
+
+/** state → tier: waiting/finished need the user; stopped/hibernated are
+ *  parked; everything running (working, idle, transients) is the "now" set. */
+export function stateTier(state: StatusState): StatusTier {
+  switch (state) {
+    case "waiting":
+    case "finished":
+      return "attention";
+    case "stopped":
+    case "hibernated":
+      return "parked";
+    default:
+      return "active";
+  }
+}
+
 /** A state's chip tone + default word, for surfaces that build their own pill
  *  markup (the ⌘K palette) but must stay in the shared chip vocabulary. */
 export function stateChipInfo(state: StatusState): { tone: string; word: string } {
