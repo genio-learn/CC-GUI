@@ -28,6 +28,12 @@ export class BoardPageObject extends AppPageObject {
     });
   }
 
+  /** The board's "N waiting on you" attention summary (top of the Board,
+   *  mirroring the title-bar pill). */
+  boardAttention(): Locator {
+    return this.board.locator("#board-filter .board-attention");
+  }
+
   // ----- columns -----
   columnCount(): Promise<number> {
     return this.columns.count();
