@@ -2080,13 +2080,15 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
       },
     },
     {
-      label: "Kill — stop process",
+      label: "Kill",
+      sublabel: "stops the process, keeps the worktree",
       warning: true,
       action: () => void lifecycle("kill_session", s.id),
     },
     "separator",
     {
       label: "Delete session…",
+      sublabel: "removes worktree, branch, tmux",
       danger: true,
       shortcut: kb("delete_session"),
       action: () => {

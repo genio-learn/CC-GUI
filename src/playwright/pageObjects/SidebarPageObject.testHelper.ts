@@ -262,6 +262,17 @@ export class SidebarPageObject extends AppPageObject {
     return this.page.locator(".context-menu .menu-item", { hasText: label });
   }
 
+  /** Open a row's context menu, left open for further reads (e.g. menuItemText). */
+  openContextMenu(title: string): Promise<void> {
+    return this.step(`openContextMenu: ${title}`, () => this.openRowMenu(title));
+  }
+
+  /** Full text (label + consequence sublabel) of an already-open menu's item —
+   *  used to assert Kill/Delete each name what they actually do. */
+  menuItemText(label: string): Promise<string> {
+    return this.step(`menuItemText: ${label}`, async () => (await this.menuItem(label).textContent()) ?? "");
+  }
+
   // ----- status chip / badges -----
   /** The ⚠ pull-blocked chip on a row in an auto-pull-blocked project
    *  (--danger tone, in the trailing chip cluster). */

@@ -41,6 +41,16 @@ test("renames a session inline", async ({ sidebar }) => {
   expect(stored[0].title).toBe("fix logout bug");
 });
 
+test("context menu names the Kill/Delete consequence on each row", async ({ sidebar }) => {
+  await sidebar.openContextMenu("fix login bug");
+  await expect(sidebar.menuItemText("Kill")).resolves.toContain(
+    "stops the process, keeps the worktree",
+  );
+  await expect(sidebar.menuItemText("Delete session")).resolves.toContain(
+    "removes worktree, branch, tmux",
+  );
+});
+
 test("delete optimistically removes the row and the fake confirms it gone", async ({
   sidebar,
 }) => {
