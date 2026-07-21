@@ -102,6 +102,25 @@ test("each card names its own project in the header", async ({ board }) => {
   expect(await board.cardProject("tune cache")).toBe("beacon");
 });
 
+test("cards carry a labeled status chip and always-visible labeled actions", async ({ board }) => {
+  await board.enter();
+
+  // The liveness dot is now a shape+colour+word chip: each card carries a word
+  // from the decoded vocabulary rather than a bare colour-only dot.
+  expect(await board.cardStatus("update docs")).toContain("Finished");
+  expect(await board.cardStatus("fix login bug")).toMatch(/Running|Idle|Waiting|Finished|Stopped/);
+
+  // Quick actions are labeled and visible without hovering, at the ≥28px target.
+  const attach = board.cardAction("fix login bug", "attach");
+  const review = board.cardAction("fix login bug", "review");
+  await expect(attach).toBeVisible();
+  await expect(review).toBeVisible();
+  await expect(attach).toHaveText("Attach");
+  await expect(review).toHaveText("± Review");
+  const box = await attach.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(28);
+});
+
 test("the project filter narrows cards to the selected projects", async ({ board }) => {
   await board.enter();
 

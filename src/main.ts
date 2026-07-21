@@ -3259,13 +3259,18 @@ function fillDiffstatBar(container: HTMLElement, diffStat: string | null): void 
   r.className = "removed";
   r.style.width = `${(dels / total) * 100}%`;
   bar.append(a, r);
-  container.append(counts, bar);
+  // Bar on top, counts below (the Refined board layout): the proportional bar
+  // spans the card, then the +adds/−dels counts sit on their own line and wrap
+  // rather than clipping at the column edge.
+  container.append(bar, counts);
 }
 
 /** One agent card for a session. */
 function renderAgentCard(s: SessionRow): HTMLDivElement {
   const card = document.createElement("div");
-  card.className = "agent-card";
+  // State class drives the 3px left accent border (--state-color); in lockstep
+  // with the status chip's colour.
+  card.className = `agent-card ${boardStateClass(s)}`;
   card.classList.toggle("selected", selectedId === s.id);
   boardCardRefs.set(s.id, card);
 
@@ -3300,15 +3305,9 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     };
   });
 
-  // 3px top accent bar in the liveness state colour.
-  const accent = document.createElement("div");
-  accent.className = `card-accent ${boardStateClass(s)}`;
-  card.appendChild(accent);
-
-  // Header: liveness dot + a title block (session name over its project) + ⋯
+  // Header: a title block (session name over its project) + status chip + ⋯
   // menu. Cards now group by section, not project, so the project is named on
   // each card: the session title is primary (h1), the project secondary (h2).
-  // The dot (and accent bar) already convey state, so no textual state pill.
   const header = document.createElement("div");
   header.className = "card-header";
   const heading = document.createElement("div");
@@ -3335,9 +3334,12 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     e.stopPropagation();
     showContextMenu(e, sessionMenuItems(cardRefs(s)));
   });
-  // Status chip trails the title block; the 3px top accent bar reinforces its
-  // colour. Replaces the old leading colour-only dot.
-  header.append(heading, sessionStatusChip(s), menu);
+  // Status chip trails the title block; the 3px left accent border reinforces
+  // its colour. The board uses the compact chip variant (pill + dot at a smaller
+  // scale) so the word fits beside the title without crowding it.
+  const chip = sessionStatusChip(s);
+  chip.classList.add("compact");
+  header.append(heading, chip, menu);
   card.appendChild(header);
 
   // Branch line under the title — only when it diverges from the title (it's
@@ -3360,9 +3362,9 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   card.appendChild(diff);
   ensureBoardDiffStat(s.id, diff);
 
-  // Footer: PR badge + ✎/⚠ chips + quick actions ▸ attach (success) / ± review
-  // (info). Keeping the PR badge on this always-present row keeps cards a
-  // consistent shape rather than adding a variable extra line above.
+  // Footer: PR badge + ✎/⚠ chips over an always-visible action row of labeled
+  // buttons — Attach (accent, the primary action) / ± Review (info). The chips
+  // row collapses when empty, so cards without badges lose no vertical budget.
   const footer = document.createElement("div");
   footer.className = "card-footer";
   const chips = document.createElement("span");
@@ -3387,7 +3389,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   };
   const attach = document.createElement("button");
   attach.className = "card-action attach";
-  attach.textContent = "▸";
+  attach.textContent = "Attach";
   attach.title = "Attach";
   attach.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -3395,7 +3397,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   });
   const review = document.createElement("button");
   review.className = "card-action review";
-  review.textContent = "±";
+  review.textContent = "± Review";
   review.title = "Review diff";
   review.addEventListener("click", (e) => {
     e.stopPropagation();
