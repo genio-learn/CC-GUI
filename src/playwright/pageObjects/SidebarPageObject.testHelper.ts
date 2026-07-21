@@ -30,9 +30,10 @@ export class SidebarPageObject extends AppPageObject {
     return this.sessions.locator(".group-by-bar .segment.active").innerText();
   }
 
-  /** Drive the GROUP BY segmented control to a side ("Sections" | "Projects").
-   *  Round-trips through set_view_mode, like the old cycle toggle did. */
-  setGrouping(segment: "Sections" | "Projects"): Promise<void> {
+  /** Drive the GROUP BY segmented control to a side. Sections/Projects
+   *  round-trip through set_view_mode, like the old cycle toggle did; Status
+   *  is GUI-only and re-renders without touching the backend mode. */
+  setGrouping(segment: "Sections" | "Projects" | "Status"): Promise<void> {
     return this.step(`setGrouping: ${segment}`, () =>
       this.sessions
         .locator(".group-by-bar .segment", { hasText: segment })
@@ -209,9 +210,19 @@ export class SidebarPageObject extends AppPageObject {
     return this.step(`deleteViaRowAction: ${title}`, async () => {
       const row = this.row(title);
       await row.hover();
-      const del = row.getByTitle("Delete session (removes worktree + branch)");
+      const del = row.getByTitle("Delete session (removes worktree + tmux, keeps the branch)");
       await del.click(); // arms the confirm state
       await del.click(); // confirms
+    });
+  }
+
+  /** Wake a hibernated session via its row action (the ▶ button, titled
+   *  "Wake session" when hibernated). Not a confirm button — one click. */
+  wakeViaRowAction(title: string): Promise<void> {
+    return this.step(`wakeViaRowAction: ${title}`, async () => {
+      const row = this.row(title);
+      await row.hover();
+      await row.getByTitle("Wake session").click();
     });
   }
 
@@ -234,33 +245,11 @@ export class SidebarPageObject extends AppPageObject {
       .filter({ has: this.page.locator("span", { hasText: name }) });
   }
 
-  /** Dispatch the HTML5 DnD sequence the handlers listen for — dragstart on the
-   *  row, dragover+drop on the target section header, dragend on the row.
-   *  Playwright can't fire trusted native DnD from mouse moves, and the synthetic
-   *  DragEvents carry no dataTransfer (which the guarded handlers must tolerate). */
+  /** Drag a session row onto a section header (pointer-based; see AppPageObject
+   *  .pointerDragElement). Releasing over the header commits the re-pin. */
   dragSessionToSection(title: string, sectionName: string): Promise<void> {
     return this.step(`dragSessionToSection: ${title} → ${sectionName}`, () =>
-      this.page.evaluate(
-        ({ title, sectionName }) => {
-          const rows = [...document.querySelectorAll<HTMLElement>("#sessions .session-row")];
-          const row = rows.find((r) => r.querySelector(".title")?.textContent?.trim() === title);
-          const headers = [
-            ...document.querySelectorAll<HTMLElement>("#sessions .project-header"),
-          ];
-          // The name span is prefixed with a collapse chevron ("▾ " / "▸ ").
-          const headerName = (h: HTMLElement) =>
-            h.querySelector("span")?.textContent?.replace(/^[▾▸]\s*/, "").trim();
-          const header = headers.find((h) => headerName(h) === sectionName);
-          if (!row || !header) {
-            throw new Error(`drag target missing: "${title}" → "${sectionName}"`);
-          }
-          row.dispatchEvent(new DragEvent("dragstart", { bubbles: true }));
-          header.dispatchEvent(new DragEvent("dragover", { bubbles: true }));
-          header.dispatchEvent(new DragEvent("drop", { bubbles: true }));
-          row.dispatchEvent(new DragEvent("dragend", { bubbles: true }));
-        },
-        { title, sectionName },
-      ),
+      this.pointerDragElement(this.row(title), this.sectionHeader(sectionName)),
     );
   }
 
@@ -274,27 +263,38 @@ export class SidebarPageObject extends AppPageObject {
     return this.page.locator(".context-menu .menu-item", { hasText: label });
   }
 
-  // ----- glyphs / badges -----
-  /** The maroon ⚠ blocked chip on a row in an auto-pull-blocked project. */
+  /** Open a row's context menu, left open for further reads (e.g. menuItemText). */
+  openContextMenu(title: string): Promise<void> {
+    return this.step(`openContextMenu: ${title}`, () => this.openRowMenu(title));
+  }
+
+  /** Full text (label + consequence sublabel) of an already-open menu's item —
+   *  used to assert Kill/Delete each name what they actually do. */
+  menuItemText(label: string): Promise<string> {
+    return this.step(`menuItemText: ${label}`, async () => (await this.menuItem(label).textContent()) ?? "");
+  }
+
+  // ----- status chip / badges -----
+  /** The ⚠ pull-blocked chip on a row in an auto-pull-blocked project
+   *  (--danger tone, in the trailing chip cluster). */
   blockedBadge(title: string): Locator {
-    return this.row(title).locator(".blocked-badge");
+    return this.row(title).locator(".row-chips .status-chip.tone-danger");
   }
 
-  /** The mauve ✎ pending-comments chip on a row. */
+  /** The ✎ pending-comments chip on a row (--info tone, trailing cluster). */
   commentBadge(title: string): Locator {
-    return this.row(title).locator(".comment-badge");
+    return this.row(title).locator(".row-chips .status-chip.tone-info");
   }
 
-  /** A row's 8px liveness dot. Its state class (dot-running/finished/idle/
-   *  stopped/transient) carries the colour; an unread (finished-while-away)
-   *  session shows as dot-finished. */
-  statusDot(title: string): Locator {
-    return this.row(title).locator(".glyph.dot");
+  /** A row's liveness status chip (shape + colour + word). It sits on the
+   *  sub-line; the leading dot on the top line carries the same colour. */
+  statusChip(title: string): Locator {
+    return this.row(title).locator(".row-sub > .status-chip");
   }
 
-  /** Class on a row's liveness dot (e.g. "glyph dot dot-finished"). */
-  dotClass(title: string): Promise<string> {
-    return this.statusDot(title).getAttribute("class") as Promise<string>;
+  /** The word on a row's status chip (e.g. "Running" / "Done" / "Hibernated"). */
+  statusLabel(title: string): Promise<string> {
+    return this.statusChip(title).locator(".chip-label").innerText();
   }
 
   // ----- event push (drives the backend's sessions-updated path) -----
@@ -356,6 +356,13 @@ export class SidebarPageObject extends AppPageObject {
       }
       return null;
     }, title);
+  }
+
+  /** The tier header a row renders under in the Status grouping ("Needs you" /
+   *  "Active" / "Parked") — tier headers reuse .project-header, so this is the
+   *  same nearest-preceding-header walk as renderedSectionOf. */
+  renderedTierOf(title: string): Promise<string | null> {
+    return this.renderedSectionOf(title);
   }
 
   /** Section moves the frontend dispatched — empty after a no-op drop. */

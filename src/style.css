@@ -20,32 +20,86 @@
   src: url("./assets/fonts/MesloLGSNF-Bold.woff2") format("woff2");
 }
 
+/* Bundled chrome fonts: IBM Plex Sans (UI) + IBM Plex Mono (mono chrome —
+   diffs, counters, badges). Self-hosted (SIL OFL 1.1) so the interface renders
+   identically regardless of installed fonts. See --font-ui / --font-mono. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexSans-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/IBMPlexMono-Bold.woff2") format("woff2");
+}
+
 :root {
+  /* Type stacks. --font-ui is the UI/chrome face; --font-mono covers mono
+     chrome (diffs, counters, badges, palette shortcuts). Both self-hosted
+     above; the xterm terminal keeps its own MesloLGS NF stack. Static boot
+     defaults — not part of the Theme.cssVars contract. */
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
   /* Backgrounds */
   --bg-base: #1e1e2e;
-  --bg-elevated: #181825;
+  --bg-elevated: #191926;
   --bg-inset: #11111b;
 
   /* Borders / surfaces */
-  --border: #313244;
-  --border-strong: #45475a;
-  --surface2: #585b70;
+  --border: #343650;
+  --border-strong: #4a4c68;
+  --surface2: #5c5f78;
 
   /* Text */
-  --text: #cdd6f4;
-  --text-muted: #a6adc8;
-  --text-dim: #6c7086;
+  --text: #e4e8fb;
+  --text-muted: #b7bedd;
+  --text-dim: #8a90ad;
   --overlay1: #7f849c;
   --subtext1: #bac2de;
 
   /* Accents */
-  --accent: #89b4fa;
-  --success: #a6e3a1;
-  --danger: #f38ba8;
-  --warning: #f9e2af;
+  --accent: #8fb8ff;
+  --success: #a9e6a4;
+  --danger: #f58fab;
+  --warning: #f6dd9c;
   --attention: #fab387;
   --info: #cba6f7;
-  --cyan: #89dceb;
+  --cyan: #8fe0ee;
   --accent-tool: #b4befe;
   --attn-blocked: #eba0ac;
   --tag-cool: #94e2d5;
@@ -60,7 +114,7 @@
   --proj-4: #cba6f7; /* mauve */
   --proj-5: #94e2d5; /* teal */
   --proj-6: #fab387; /* peach */
-  --proj-7: #eba0ac; /* maroon */
+  --proj-7: #f0a7b2; /* maroon */
 
   /* Alpha tints derived from base tokens (color-mix, so they reskin with the
      theme — never raw rgba as a consumer). */
@@ -78,6 +132,13 @@
   --shadow-terminal: 0 8px 30px rgba(0, 0, 0, 0.25);
   --shadow-popover: 0 20px 50px rgba(0, 0, 0, 0.5);
   --shadow-dialog: 0 28px 70px rgba(0, 0, 0, 0.6);
+
+  /* Shape + elevation scale (Refined). Adopted opportunistically by later
+     phases — defined here as static boot defaults, not swept in yet. */
+  --radius-1: 7px; /* chips, small buttons */
+  --radius-2: 10px; /* cards, composer */
+  --radius-3: 12px; /* panels, wells */
+  --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -91,7 +152,7 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg-base);
   color: var(--text);
   overflow: hidden;
@@ -139,13 +200,25 @@ body {
 }
 
 .tb-pill {
-  font-family: "MesloLGS NF Embedded", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg-inset);
+}
+
+/* "N waiting on you" — the at-a-glance attention queue. Warning-toned to
+   match the Done/Waiting chip hue; hidden entirely at zero. */
+.tb-pill.attention {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.tb-pill.hidden {
+  display: none;
 }
 
 .tb-segment {
@@ -236,6 +309,9 @@ body {
 .state-transient {
   --state-color: var(--warning);
 }
+.state-hibernated {
+  --state-color: var(--text-dim);
+}
 
 /* ── Filter bar ──────────────────────────────────────────────────────────── */
 #board-filter {
@@ -251,7 +327,25 @@ body {
 
 .board-pills {
   display: flex;
+  align-items: center;
   gap: 6px;
+}
+
+/* The board's attention summary — same "N waiting on you" as the title-bar
+   pill, warning-toned, hidden at zero. A summary, not a control. */
+.board-attention {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  white-space: nowrap;
+}
+
+.board-attention.hidden {
+  display: none;
 }
 
 .board-pill {
@@ -273,13 +367,6 @@ body {
   color: var(--text);
 }
 
-/* Separate the hide-empty toggle from the filter/section pills. */
-.board-pill.hide-empty {
-  margin-left: 6px;
-  border-left: 1px solid var(--border);
-  border-radius: 0 8px 8px 0;
-  padding-left: 12px;
-}
 
 .board-search {
   flex: 1;
@@ -311,12 +398,89 @@ body {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
+/* ── Project filter dropdown ─────────────────────────────────────────────── */
+.board-project-filter {
+  position: relative;
+}
+
+.board-project-btn {
+  border-color: var(--border);
+}
+
+.board-project-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 210px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+}
+
+.board-project-panel.hidden {
+  display: none;
+}
+
+.board-project-tools {
+  display: flex;
+  gap: 6px;
+  padding: 4px 4px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-project-tool {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.board-project-tool:hover {
+  background: var(--row-hover-bg);
+  color: var(--text);
+}
+
+.board-project-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.board-project-row:hover {
+  background: var(--border);
+}
+
+.board-project-row input {
+  cursor: pointer;
+}
+
+.board-project-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Columns ─────────────────────────────────────────────────────────────── */
 #board-columns {
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 12px;
+  gap: 14px;
   padding: 14px;
   overflow-x: auto;
 }
@@ -335,8 +499,8 @@ body {
 .board-col-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 9px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   cursor: grab;
 }
@@ -353,36 +517,31 @@ body {
   box-shadow: inset -3px 0 0 var(--accent);
 }
 
+/* Whole column highlighted in accent blue while a card is dragged over it. */
+.board-col.card-drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--row-selected-bg);
+}
+
 .board-col-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
 }
 
+/* Visible-card count as an inset pill badge (Refined column header). */
 .board-col-count {
   font-size: 11px;
   color: var(--text-dim);
-}
-
-.board-col-header .proj-btn {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  padding: 2px 4px;
-}
-
-.board-col-header .proj-btn.add {
+  background: var(--bg-inset);
+  padding: 2px 8px;
+  border-radius: 999px;
   margin-left: auto;
-}
-
-.board-col-header .proj-btn:hover {
-  color: var(--text);
 }
 
 .board-col-body {
@@ -390,8 +549,8 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
   overflow-y: auto;
 }
 
@@ -402,34 +561,46 @@ body {
   flex-shrink: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
+  /* 3px left accent in the liveness colour (Refined: "left accent + pill"). */
+  border-left: 3px solid var(--state-color);
   border-radius: 11px;
   overflow: hidden;
   cursor: pointer;
 }
 
+/* Hover/selected recolour the hairline but keep the state accent on the left. */
 .agent-card:hover {
   border-color: var(--border-strong);
+  border-left-color: var(--state-color);
+}
+
+.agent-card.dragging {
+  opacity: 0.5;
 }
 
 .agent-card.selected {
   border-color: var(--surface2);
-}
-
-.card-accent {
-  height: 3px;
-  flex-shrink: 0;
-  background: var(--state-color);
+  border-left-color: var(--state-color);
 }
 
 .card-header {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 10px 6px;
+  gap: 8px;
+  padding: 10px 13px 8px;
+}
+
+/* Title block: session name (primary) stacked over its project (secondary). */
+.card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
 }
 
 .card-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -437,10 +608,39 @@ body {
   text-overflow: ellipsis;
 }
 
+.card-project {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.card-project-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ⋯ menu sits top-right of the header at the ≥28px hit-target floor. */
 .card-menu {
   margin-left: auto;
   flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 15px;
   border-color: transparent;
+}
+
+.card-status-row {
+  display: flex;
+  margin: 0 13px;
+  padding-bottom: 4px;
 }
 
 .card-subtitle {
@@ -448,7 +648,7 @@ body {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  margin: 0 10px 2px;
+  margin: 0 13px 2px;
   padding-bottom: 4px;
   font-size: 11px;
   color: var(--text-dim);
@@ -466,18 +666,29 @@ body {
 }
 
 .card-diffstat {
-  margin: 8px 10px 0;
+  margin: 10px 13px 0;
 }
 
 .card-diffstat.hidden {
   display: none;
 }
 
+/* Board bar: taller/rounder than the detail-pane bar, and it leads the counts
+   line below it (Refined). */
+.card-diffstat .diffstat-bar {
+  height: 6px;
+  border-radius: 4px;
+  margin: 0 0 7px;
+}
+
+/* Counts wrap onto a second line rather than clipping at the column edge — the
+   audit's "−44 gets cut off" fix. */
 .card-diffcounts {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
 }
 
 .card-diffcounts .added {
@@ -488,45 +699,59 @@ body {
   color: var(--danger);
 }
 
+/* Footer stacks an optional chip row over the always-visible action row. */
 .card-footer {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px 9px;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 13px 12px;
 }
 
 .card-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Collapse the chip row when a card carries no PR/comment/blocked badges, so
+   badge-less cards spend no vertical budget on an empty line. */
+.card-chips:empty {
+  display: none;
 }
 
 .card-actions {
   display: flex;
-  gap: 6px;
-  margin-left: auto;
+  gap: 7px;
 }
 
+/* Labeled quick-action buttons at the ≥28px target floor: ▸ Attach (accent
+   fill, the primary action) and ± Review (info outline). */
 .card-action {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
+  flex: 1;
+  min-height: 28px;
+  padding: 7px;
+  border-radius: 8px;
+  border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
+  text-align: center;
   font-size: 12px;
+  font-weight: 500;
   line-height: 1;
 }
 
 .card-action.attach {
-  color: var(--success);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .card-action.attach:hover {
-  background: color-mix(in srgb, var(--success) 15%, transparent);
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .card-action.review {
   color: var(--info);
+  border-color: var(--border-strong);
 }
 
 .card-action.review:hover {
@@ -541,6 +766,11 @@ body {
   flex-direction: column;
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
+}
+
+/* Closed via "×": collapse the whole dock so the board columns fill the space. */
+#board-dock.dock-closed {
+  display: none;
 }
 
 /* Fullscreen overlay: float the dock into a centred ~85% dialog over a dimmed
@@ -586,8 +816,10 @@ body {
   padding: 3px 8px;
 }
 
+/* Same "attach/go" accent as .card-action.attach (Phase 4) — not success green,
+   which is reserved for the Running liveness state. */
 #board-dock-attached {
-  color: var(--success);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -668,7 +900,7 @@ body {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 
@@ -750,33 +982,38 @@ body {
 .group-by-label {
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 
 .segmented {
   display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
+  border-radius: var(--radius-1);
 }
 
 .segment {
-  padding: 3px 10px;
+  padding: 4px 12px;
   border: none;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 .segment:hover {
   background: var(--row-hover-bg);
 }
 
+/* Active segment: accent fill with the dark inset label (Phase 0 accent-label
+   rule), matching the console mockup's segmented control. */
 .segment.active {
-  background: var(--row-selected-bg);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--bg-inset);
 }
 
 /* ── Active project-filter banner ────────────────────────────────────────── */
@@ -802,10 +1039,9 @@ body {
 
 .session-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  border-radius: 6px;
+  flex-direction: column;
+  padding: 6px 10px;
+  border-radius: 9px;
   cursor: pointer;
 }
 
@@ -831,7 +1067,7 @@ body {
 .session-row.selected {
   background: var(--row-selected-bg);
   border-left: 2px solid var(--accent);
-  padding-left: 6px; /* 8px − 2px border so content doesn't shift */
+  padding-left: 8px; /* 10px − 2px border so content doesn't shift */
 }
 
 .session-row.attached .title {
@@ -854,14 +1090,8 @@ body {
   padding: 4px 6px;
 }
 
-.stack-glyph {
-  color: var(--info);
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
 .stack-name {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text);
   white-space: nowrap;
@@ -928,33 +1158,63 @@ body {
 .row-main {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 6px; /* title → sub-line, per the mockup */
   min-width: 0;
-  flex: 1;
 }
 
-/* Top line of a row: dot · name · tag · PR badge · right-side chips. */
+/* Top line of a row: dot · name · PR badge · right-side chips. */
 .row-line {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 9px;
   min-width: 0;
 }
 
+/* Sidebar-row leading dot is 9px per the mockup; the base .dot stays 8px for
+   tabs/palette. :where() keeps this at .glyph.dot specificity, so the later
+   .dot-waiting / .dot-hibernated rules (which size those glyph states to auto)
+   still win for them. */
+:where(.row-line) > .glyph.dot {
+  width: 9px;
+  height: 9px;
+}
+
 .row-main .title {
-  font-family: Menlo, Monaco, monospace;
-  font-size: 13px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Sub-line: the diverging branch only (the liveness dot conveys state). */
+/* Sub-line: the labeled status chip (word-only — see below) plus the diverging
+   branch. Aligned under the leading dot (the chip's left edge sits at row-main's
+   left, past the dot on the line above). */
 .row-sub {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  /* Reserve the hover-action button height so revealing them doesn't grow
+     the line (see .row-actions). */
+  min-height: 18px;
+}
+
+/* On a row, the leading dot already carries shape+colour, so the sub-line chip
+   is the word only: hide its own dot/glyph and shrink it to the compact inline
+   form the console mockup uses (radius-1, not the 999px vocabulary pill). */
+.row-sub .status-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-1);
+  font-size: 11px;
+}
+
+.row-sub .status-chip .chip-dot,
+.row-sub .status-chip .chip-glyph {
+  display: none;
 }
 
 .row-main .meta {
@@ -963,6 +1223,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0; /* yield to the hover actions instead of overflowing the row */
 }
 
 /* Right-side chips (✎ / ⚠) pushed to the row's trailing edge. */
@@ -1022,6 +1283,19 @@ body {
   line-height: 1;
 }
 
+/* Hibernated: a dim moon glyph rather than a circle, so an auto-suspended
+   session reads distinctly from a plainly-stopped (grey dot) one. Same
+   glyph-override shape as .dot-waiting. */
+.dot.dot-hibernated {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+}
+
 @keyframes dot-pulse {
   0%,
   100% {
@@ -1041,6 +1315,77 @@ body {
     opacity: 1;
     transform: none;
   }
+}
+
+/* ── Status chip: shape + colour + word (shared vocabulary, screen 08) ───────
+   The labeled replacement for colour-only dots and bare glyph badges. Painted
+   from a single --chip-color token so a tone class only sets the hue; the
+   background is a wash of the same colour. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  /* Chips carry their own casing/tracking even inside uppercase headers. */
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--chip-color);
+  background: color-mix(in srgb, var(--chip-color) 14%, transparent);
+}
+
+.status-chip .chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--chip-color);
+}
+
+/* Counters (comment counts, stack depth) render in the mono face. */
+.status-chip .chip-count {
+  font-family: var(--font-mono);
+}
+
+/* Compact variant (board cards): the pill shape and dot are kept — the left
+   accent border reinforces the colour — but scaled down so the word fits beside
+   the card title. Distinct from the row sub-line chip, which drops the dot. */
+.status-chip.compact {
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.status-chip.compact .chip-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.status-chip.tone-success {
+  --chip-color: var(--success);
+}
+.status-chip.tone-warning {
+  --chip-color: var(--warning);
+}
+.status-chip.tone-cyan {
+  --chip-color: var(--cyan);
+}
+.status-chip.tone-danger {
+  --chip-color: var(--danger);
+}
+.status-chip.tone-info {
+  --chip-color: var(--info);
+}
+/* Stopped/hibernated: dim hue with a slightly stronger wash so the low-contrast
+   text stays legible (matches the decoded grid's .16 on the stopped state). */
+.status-chip.tone-dim {
+  --chip-color: var(--text-dim);
+  background: color-mix(in srgb, var(--chip-color) 16%, transparent);
 }
 
 /* ── Project identity colour (hashed per project_id → --proj-0..7) ───────── */
@@ -1077,14 +1422,26 @@ body {
   background: var(--proj-color);
 }
 
+/* Inline row actions: compact buttons at the sub-line's trailing edge (in line
+   with the status chip), revealed on the row you're pointing at (or the
+   selected one). Riding the sub-line — with its min-height reserving the
+   button height — means revealing them never changes the row's height. */
 .row-actions {
   display: none;
   gap: 4px;
+  margin-left: auto;
   flex-shrink: 0;
 }
 
-.session-row:hover .row-actions {
+.session-row:hover .row-actions,
+.session-row.selected .row-actions {
   display: flex;
+}
+
+/* Pointer-capture holds :hover on the source row while dragging; hide the
+   actions so the ghosting row reads as pure content. */
+.session-row.dragging .row-actions {
+  display: none;
 }
 
 .row-action {
@@ -1096,6 +1453,17 @@ body {
   font-size: 11px;
   line-height: 1.4;
   padding: 0 6px;
+}
+
+/* Sized to the sub-line: min-width (not width) so the delete button's "sure?"
+   confirm text still fits. */
+.row-actions .row-action {
+  height: 18px;
+  min-width: 24px;
+  padding: 0 4px;
+  border-radius: var(--radius-1);
+  font-size: 10.5px;
+  line-height: 1;
 }
 
 .row-action:hover {
@@ -1234,26 +1602,6 @@ body {
   border-color: var(--text-dim);
 }
 
-.comment-badge {
-  color: var(--info);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-.blocked-badge {
-  color: var(--attn-blocked);
-  font-size: 11px;
-  flex-shrink: 0;
-  cursor: help;
-}
-
-.pull-blocked {
-  color: var(--attention);
-  font-size: 10px;
-  margin-left: 6px;
-  cursor: help;
-}
-
 /* ── Sidebar footer: commander chip ──────────────────────────────────────── */
 #sidebar-footer {
   border-top: 1px solid var(--border);
@@ -1288,7 +1636,7 @@ body {
 }
 
 .commander-label {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
 }
 
 .commander-attach {
@@ -1322,8 +1670,8 @@ body {
   max-height: 60vh;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   display: flex;
   flex-direction: column;
@@ -1401,16 +1749,48 @@ body {
   white-space: nowrap;
 }
 
-.palette-dot {
+.palette-proj {
   flex: none;
 }
 
+/* Command icons: a tinted rounded square when the entry declares a tone,
+   the bare ⌥ glyph otherwise. Tones reuse the status-chip names. */
 .palette-icon {
   flex: none;
-  width: 14px;
-  text-align: center;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 12px;
   color: var(--text-dim);
   font-style: normal;
+}
+
+.palette-icon.tone-success {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.palette-icon.tone-info {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+.palette-icon.tone-danger {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
+.palette-icon.tone-warning {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+}
+
+.palette-icon.tone-dim {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-dim) 15%, transparent);
 }
 
 .palette-meta {
@@ -1422,12 +1802,11 @@ body {
   white-space: nowrap;
 }
 
+/* Positioning only — the pill's colour/size come from its status-chip
+   classes (which this selector must not override). */
 .palette-state {
   flex: none;
   margin-left: auto;
-  color: var(--text-dim);
-  font-size: 11px;
-  white-space: nowrap;
 }
 
 .palette-hint {
@@ -1440,6 +1819,15 @@ body {
   text-overflow: ellipsis;
 }
 
+.palette-shortcut {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
 .help-box {
   margin-top: 8vh;
   width: 520px;
@@ -1448,8 +1836,8 @@ body {
   overflow-y: auto;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   padding: 18px 22px;
 }
@@ -1487,7 +1875,7 @@ body {
 
 .help-table dt {
   color: var(--subtext1);
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -1521,40 +1909,13 @@ body {
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   overflow: hidden;
 }
 
-/* tabs */
-.settings-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 12px 16px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.settings-tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 6px 10px 8px;
-}
-
-.settings-tab.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.settings-tab:hover {
-  color: var(--text-muted);
-}
-
-/* two-pane body */
+/* two-pane body: one searchable nav + the panel */
 .settings-body {
   display: flex;
   flex: 1;
@@ -1562,24 +1923,80 @@ body {
 }
 
 .settings-nav {
-  width: 180px;
+  width: 190px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px;
+}
+
+.settings-nav-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 6px 12px;
+}
+
+.settings-search {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.settings-search::placeholder {
+  color: var(--text-dim);
+}
+
+.settings-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-nav-list {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 8px 10px;
 }
 
 .settings-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-2);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 12px;
-  padding: 6px 9px;
+  font-size: 12.5px;
+  padding: 8px 10px;
+}
+
+.settings-nav-icon {
+  width: 15px;
+  flex-shrink: 0;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.settings-nav-item.active .settings-nav-icon {
+  color: var(--text);
 }
 
 .settings-nav-item:hover {
@@ -1597,6 +2014,15 @@ body {
   padding: 16px 20px;
 }
 
+.settings-panel-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
 .settings-note {
   font-size: 11px;
   color: var(--text-dim);
@@ -1610,7 +2036,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 9px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1629,6 +2055,7 @@ body {
 .settings-field-label {
   display: block;
   font-size: 12px;
+  font-weight: 500;
   color: var(--text);
 }
 
@@ -1652,7 +2079,7 @@ body {
   font-size: 12px;
   padding: 4px 8px;
   outline: none;
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
 }
 
 .settings-field > textarea {
@@ -1663,6 +2090,48 @@ body {
 .settings-field > select:focus,
 .settings-field > textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* --------------------------------------------------- custom select styling */
+
+/* Native selects render WebKit's dated arrow-button chrome; strip it and draw
+   our own chevron with two gradients so it reskins with the theme (a data-URI
+   SVG can't read var()). Shared by both the settings and section-grid selects. */
+.settings-field > select,
+.section-grid select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 26px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) center,
+    calc(100% - 9px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+
+.settings-field > select:hover,
+.section-grid select:hover {
+  border-color: var(--surface2);
+}
+
+.settings-field > select:focus,
+.section-grid select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* dropdown option list — WebKit renders these with system chrome, but styling
+   the option elements themselves keeps the open menu on-theme. */
+.settings-field > select option,
+.section-grid select option {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 /* toggle switch */
@@ -1734,7 +2203,7 @@ body {
 
 .settings-segment button.active {
   background: var(--accent);
-  color: var(--bg-base);
+  color: var(--bg-inset);
 }
 
 .settings-theme-actions {
@@ -1813,7 +2282,7 @@ body {
 .section-grid input[type="text"],
 .section-grid input[type="number"],
 .section-grid select {
-  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   color: var(--text);
@@ -1954,8 +2423,8 @@ body.resizing .panel-resizer {
   width: 380px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   padding: 16px 18px;
 }
@@ -1970,40 +2439,91 @@ body.resizing .panel-resizer {
   margin-bottom: 14px;
 }
 
-.delete-dialog {
-  text-align: center;
+/* Delete-session dialog: icon badge + titles side by side, then the
+   consequences as a checklist (one line per effect, not prose). */
+.delete-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
 }
 
 .delete-icon {
-  font-size: 28px;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-3);
+  font-size: 19px;
   line-height: 1;
   color: var(--danger);
-  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.delete-titles {
+  min-width: 0;
 }
 
 .delete-heading {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  margin-bottom: 6px;
 }
 
 .delete-name {
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--danger);
-  margin-bottom: 12px;
+  margin-top: 2px;
   word-break: break-all;
 }
 
-.delete-body {
-  font-size: 12px;
+.delete-intro {
+  font-size: 12.5px;
   color: var(--text-muted);
-  line-height: 1.5;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
-.delete-dialog .confirm-buttons {
-  justify-content: center;
+.delete-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 16px;
+  font-size: 12.5px;
+}
+
+.delete-check {
+  display: flex;
+  gap: 9px;
+}
+
+.delete-check .check-cut {
+  color: var(--danger);
+}
+
+.delete-check .check-keep {
+  color: var(--success);
+}
+
+.delete-check .check-mono {
+  font-family: var(--font-mono);
+}
+
+/* Scoped button overrides (shared .confirm-buttons stays untouched): equal-
+   width pair, calm Cancel, solid-danger Delete — no ambiguous twins. */
+.delete-dialog .confirm-buttons button {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: var(--radius-2);
+  font-size: 13px;
+}
+
+.delete-dialog .confirm-buttons button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--bg-inset);
+  font-weight: 600;
 }
 
 /* ----------------------------------------------------- theme picker popover */
@@ -2136,7 +2656,7 @@ body.resizing .panel-resizer {
 .confirm-buttons button {
   background: var(--border);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-1);
   color: var(--text);
   cursor: pointer;
   font-size: 12px;
@@ -2160,15 +2680,18 @@ body.resizing .panel-resizer {
   min-width: 180px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-3);
   padding: 4px;
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--shadow-raised);
   font-size: 12px;
 }
 
 .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 24px;
   padding: 6px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-1);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2177,8 +2700,26 @@ body.resizing .panel-resizer {
   background: var(--border);
 }
 
+.menu-shortcut {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.menu-sublabel {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .menu-item.danger {
   color: var(--danger);
+}
+
+/* Delete sits in its own tinted zone, one clear step below Kill/Stop — the
+   two destructive-looking rows no longer read as twins. */
+.menu-item.danger:not(:hover) {
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 
 .menu-item.warning {
@@ -2198,12 +2739,13 @@ body.resizing .panel-resizer {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative; /* lets #onboarding overlay the tab strip + terminals */
 }
 
 #tabs {
   display: flex;
   align-items: stretch;
-  height: 40px;
+  height: 44px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -2213,16 +2755,20 @@ body.resizing .panel-resizer {
 .tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 14px;
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  font-size: 13px;
+  font-family: var(--font-ui);
   color: var(--text-muted);
   cursor: pointer;
   border-right: 1px solid var(--border);
   /* Reserve the active tab's 2px accent so switching tabs doesn't shift them. */
   border-top: 2px solid transparent;
   white-space: nowrap;
+}
+
+.tab-label {
+  font-weight: 500;
 }
 
 .tab.active {
@@ -2244,9 +2790,9 @@ body.resizing .panel-resizer {
   border-top: 2px solid transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
-  padding: 0 12px;
+  padding: 0 14px;
 }
 
 .tab-new:hover {
@@ -2270,6 +2816,14 @@ body.resizing .panel-resizer {
 .tab-glyph {
   font-size: 10px;
   line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Shell-tab marker: the shared "❯ Shell" chip, shrunk to sit in the tab strip
+   (replaces the — hidden — liveness dot a sessionless shell tab would carry). */
+.tab .status-chip.tab-shell {
+  padding: 2px 9px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 
@@ -2329,6 +2883,152 @@ body.resizing .panel-resizer {
   font-size: 13px;
 }
 
+/* -------------------------------------------------------- first-run hero */
+/* Shown over the whole terminal pane (covering #tabs + #terminals) when
+   there are zero projects — the missing onramp (design_handoff §07). */
+
+#onboarding {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: radial-gradient(
+    120% 90% at 50% -10%,
+    color-mix(in srgb, var(--accent) 12%, var(--bg-base)),
+    var(--bg-base)
+  );
+}
+
+#onboarding.hidden {
+  display: none;
+}
+
+.onboarding-hero {
+  text-align: center;
+  max-width: 720px;
+  width: 100%;
+}
+
+.onboarding-title {
+  font: 700 34px/1.1 var(--font-ui);
+  letter-spacing: -0.02em;
+}
+
+.onboarding-sub {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 560px;
+  margin: 14px auto 0;
+}
+
+.onboarding-cards {
+  display: flex;
+  gap: 16px;
+  margin-top: 34px;
+  width: 100%;
+}
+
+.onboarding-card {
+  flex: 1;
+  text-align: left;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: 20px;
+  opacity: 0.85;
+}
+
+.onboarding-card.primary {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  opacity: 1;
+}
+
+.onboarding-icon {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-2);
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.onboarding-icon.accent {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.onboarding-icon.success {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+
+.onboarding-icon.info {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  color: var(--info);
+}
+
+.onboarding-card-title {
+  font: 600 15px/1.2 var(--font-ui);
+}
+
+.onboarding-card-sub {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 7px 0 14px;
+}
+
+.onboarding-cta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font: 600 13px/1 var(--font-ui);
+  padding: 10px;
+  border-radius: var(--radius-2);
+  border: none;
+  cursor: pointer;
+}
+
+.onboarding-cta.primary {
+  background: var(--accent);
+  color: var(--bg-inset);
+}
+
+.onboarding-cta.outline {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+.onboarding-cta.muted {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.onboarding-hint {
+  margin-top: 26px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.onboarding-kbd {
+  font-family: var(--font-mono);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: var(--radius-1);
+  color: var(--text-muted);
+}
+
 /* ---------------------------------------------------------- split panes */
 /* Console split: #terminals becomes a row of columns-of-stacks. Each pane
    hosts a re-parented .term-container (one PTY each). Per-quadrant colour
@@ -2366,7 +3066,7 @@ body.resizing .panel-resizer {
   flex-shrink: 0;
   padding: 0 8px;
   font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: var(--text-muted);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -2480,6 +3180,150 @@ body.resizing .row-divider {
   color: var(--text);
 }
 
+/* --------------------------------------------------------- file explorer */
+
+#file-explorer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+
+#file-explorer.hidden {
+  display: none;
+}
+
+#file-explorer header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#file-explorer header .spacer {
+  flex: 1;
+}
+
+#fx-crumbs {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fx-crumb {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.fx-crumb:hover {
+  color: var(--text);
+}
+
+.fx-crumb.leaf {
+  color: var(--text);
+  cursor: default;
+}
+
+.fx-sep {
+  color: var(--text-dim);
+  margin: 0 4px;
+}
+
+.fx-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+#fx-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 4px;
+}
+
+#fx-close:hover {
+  color: var(--danger);
+}
+
+#fx-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  outline: none;
+}
+
+.fx-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fx-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.fx-row.cursor {
+  background: var(--row-selected-bg);
+}
+
+.fx-row .fx-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fx-row.dir .fx-name {
+  color: var(--accent);
+}
+
+.fx-row .fx-size {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.fx-empty {
+  padding: 12px;
+  color: var(--text-dim);
+}
+
+#fx-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+#fx-status .spacer {
+  flex: 1;
+}
+
+#fx-filter {
+  color: var(--text);
+}
+
+#fx-filter.hidden {
+  display: none;
+}
+
 /* ------------------------------------------------------------ review view */
 
 #review {
@@ -2537,12 +3381,63 @@ body.resizing .row-divider {
   min-height: 0;
 }
 
-#review-files {
+#review-sidebar {
   width: 280px;
   flex-shrink: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--border);
+}
+
+#review-files {
+  flex: 1;
+  overflow-y: auto;
   padding: 6px;
+}
+
+#review-progress {
+  flex-shrink: 0;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.review-progress {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.progress-ring {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-ring-count {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.progress-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 
 .review-dir {
@@ -2582,19 +3477,26 @@ body.resizing .row-divider {
 }
 
 .file-reviewed-toggle {
-  width: 12px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
-  text-align: center;
-  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  font-size: 9px;
   cursor: pointer;
 }
 
 .file-reviewed-toggle:hover {
-  color: var(--text);
+  border-color: var(--text);
 }
 
 .review-file.reviewed .file-reviewed-toggle {
-  color: var(--success);
+  border: none;
+  background: var(--success);
+  color: var(--bg-inset);
 }
 
 .file-status {
@@ -2656,7 +3558,7 @@ body.resizing .row-divider {
   flex: 1;
   overflow: auto;
   padding: 8px 0;
-  font-family: Menlo, Monaco, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -2726,25 +3628,41 @@ body.resizing .row-divider {
   color: var(--warning);
 }
 
-#review-apply {
-  color: var(--info);
-  border-color: var(--info);
+#review-apply-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+#review-apply-bar.hidden {
+  display: none;
+}
+
+#review-apply-summary {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.apply-btn {
+  margin-left: auto;
+  font-family: var(--font-ui);
+  font-size: 13px;
   font-weight: 600;
+  padding: 9px 18px;
+  border-radius: var(--radius-2);
+  border: none;
+  background: var(--info);
+  color: var(--bg-inset);
+  cursor: pointer;
 }
 
-#review-apply:hover:not(:disabled) {
-  color: var(--info);
-  border-color: var(--info);
-  background: color-mix(in srgb, var(--info) 12%, transparent);
-}
-
-#review-apply:disabled {
+.apply-btn:disabled {
   opacity: 0.6;
   cursor: default;
-}
-
-#review-apply.hidden {
-  display: none;
 }
 
 .review-comment.editor textarea {
@@ -2754,7 +3672,7 @@ body.resizing .row-divider {
   border-radius: 4px;
   color: var(--text);
   font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   padding: 5px 8px;
   outline: none;
   resize: vertical;
@@ -2765,6 +3683,37 @@ body.resizing .row-divider {
   justify-content: flex-end;
   gap: 6px;
   margin-top: 4px;
+}
+
+/* Overrides the shared .editor-buttons rule above (also used by the settings
+   modal footer, which keeps the flex-end alignment): the composer's Save/
+   Cancel sit left-aligned directly under the textarea. */
+.review-comment .editor-buttons {
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.editor-save,
+.editor-cancel {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-1);
+  cursor: pointer;
+}
+
+.editor-save {
+  border: none;
+  background: var(--info);
+  color: var(--bg-inset);
+}
+
+.editor-cancel {
+  border: 1px solid var(--border-strong);
+  background: none;
+  color: var(--text-muted);
 }
 
 .comment-head .spacer {
@@ -2784,71 +3733,77 @@ body.resizing .row-divider {
   color: var(--danger);
 }
 
-/* Inline comment bubble. Staged comments read as authored-by-you drafts:
-   mauve (--info) border + faint mauve tint. Drifted/applied dial the accent
-   back to their own status color. */
+/* Inline comment card. A composer-style card for every comment, staged or
+   not: uniform bg-elevated surface, border colored by status. The open editor
+   additionally gets the raised shadow (screen 05's "actively being placed"
+   look); a saved comment sits flatter. */
 .review-comment {
-  margin: 4px 12px 4px 100px;
+  margin: 6px 12px 6px 100px;
   border: 1px solid var(--info);
-  border-left: 3px solid var(--info);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: color-mix(in srgb, var(--info) 8%, var(--bg-elevated));
+  border-radius: var(--radius-2);
+  padding: 11px 13px;
+  font-family: var(--font-ui);
+  background: var(--bg-elevated);
+}
+
+.review-comment.editor {
+  box-shadow: var(--shadow-raised);
 }
 
 .review-comment.comment-drifted {
   border-color: var(--attention);
-  border-left-color: var(--attention);
-  background: color-mix(in srgb, var(--attention) 8%, var(--bg-elevated));
 }
 
 .review-comment.comment-applied {
   border-color: var(--border-strong);
-  border-left-color: var(--text-dim);
-  background: var(--bg-elevated);
 }
 
 .comment-head {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 7px;
   font-size: 11px;
 }
 
 .comment-avatar {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  color: var(--bg-inset);
+  background: var(--info);
+}
+
+.comment-who {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.comment-tag {
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+.comment-tag.comment-staged {
   color: var(--info);
   background: color-mix(in srgb, var(--info) 15%, transparent);
 }
 
-.comment-status {
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-}
-
-.comment-head .comment-staged {
-  color: var(--info);
-  background: color-mix(in srgb, var(--info) 13%, transparent);
-}
-
-.comment-head .comment-drifted {
+.comment-tag.comment-drifted {
   color: var(--attention);
-  background: color-mix(in srgb, var(--attention) 13%, transparent);
+  background: color-mix(in srgb, var(--attention) 15%, transparent);
 }
 
-.comment-head .comment-applied {
+.comment-tag.comment-applied {
   color: var(--text-dim);
   background: color-mix(in srgb, var(--text-dim) 18%, transparent);
 }
@@ -2866,7 +3821,7 @@ body.resizing .row-divider {
   padding: 16px;
   color: var(--text-dim);
   font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
 }
 
 .review-empty.error {
@@ -2879,7 +3834,7 @@ body.resizing .row-divider {
   display: flex;
   justify-content: center;
   padding: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   /* the wipe-drag must never start a text selection; WKWebView honors the
      prefixed property, and putting it on the pane covers the surround too */
   -webkit-user-select: none;
@@ -3056,11 +4011,29 @@ body.resizing .row-divider {
   word-break: break-all;
 }
 
+#detail-changes-label {
+  padding: 8px 12px 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
 #detail-diffstat {
   padding: 4px 12px 10px;
   font-size: 12px;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+#detail-diffstat .diffstat-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
 }
 
 #detail-diffstat .added {
@@ -3124,7 +4097,7 @@ body.resizing .row-divider {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 0 12px;
+  padding: 0 12px 10px;
 }
 
 #detail-tags:empty {
@@ -3139,11 +4112,11 @@ body.resizing .row-divider {
   color: var(--text-muted);
 }
 
-#detail-footer {
+#detail-actions {
   display: flex;
   gap: 8px;
   padding: 10px 12px;
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .detail-action {

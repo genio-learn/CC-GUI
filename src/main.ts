@@ -1,6 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { writeText, readText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { Terminal } from "@xterm/xterm";
@@ -10,13 +11,21 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { openReview, closeReview } from "./review";
+import { openExplorer, closeExplorer, isExplorerOpen } from "./fileExplorer";
 import { toast, confirmDialog, promptDialog, deleteSessionDialog } from "./toast";
 import { makeResizable, adjustPanelWidth } from "./resize";
 import { showContextMenu, MenuItem } from "./menu";
 import { registerPaletteProvider, togglePalette } from "./palette";
 import { toggleHelp, setHelpKeybindings } from "./help";
-import { initKeybindings, reloadKeybindings, loadedBindings, overlayOpen as keyOverlayOpen } from "./keys";
+import {
+  initKeybindings,
+  reloadKeybindings,
+  loadedBindings,
+  formatBinding,
+  overlayOpen as keyOverlayOpen,
+} from "./keys";
 import { openSettings } from "./settings";
+import { statusChip, commentsChip, pullBlockedChip, stackChip, shellChip, stateChipInfo, stateTier, STATUS_TIERS, type StatusState, type StatusTier } from "./status";
 import { noTextAssist } from "./dom";
 import {
   initTheme,
@@ -36,6 +45,22 @@ import { openThemeModal } from "./themeModal";
 // then follow the OS appearance via the native Tauri theme event when in System mode.
 initTheme();
 void getCurrentWindow().onThemeChanged(() => followSystem());
+
+// Dropping OS files onto the window inserts them as `@<path>` references into the
+// active session's prompt (mirrors the file explorer's reference insertion).
+// Requires `dragDropEnabled: true` in tauri.conf.json.
+void getCurrentWebview().onDragDropEvent((event) => {
+  if (event.payload.type !== "drop") return;
+  if (!activeTerm) {
+    toast("No active session to drop files into", "error");
+    return;
+  }
+  const target = activeTerm;
+  const refs = event.payload.paths.map((p) => `@${p} `).join("");
+  void invoke("write_pty", { tmuxSession: target, data: refs })
+    .then(() => terminals.get(target)?.term.focus())
+    .catch((e) => toast(`could not insert reference: ${e}`, "error"));
+});
 
 // Warm the bundled terminal font (both weights) before any xterm is created, so
 // it measures glyph dimensions against MesloLGS NF rather than the fallback.
@@ -119,6 +144,7 @@ type SessionRow = {
   review_decision: string | null;
   has_pending_comments: boolean;
   unread: boolean;
+  hibernated: boolean;
   stacked_child: boolean;
   project_id: string;
   project_name: string;
@@ -166,6 +192,7 @@ const placeholderEl = document.querySelector<HTMLDivElement>("#placeholder")!;
 const detailEl = document.querySelector<HTMLElement>("#detail")!;
 const detailTitleEl = document.querySelector<HTMLSpanElement>("#detail-title")!;
 const detailMetaEl = document.querySelector<HTMLDListElement>("#detail-meta")!;
+const detailChangesEl = document.querySelector<HTMLDivElement>("#detail-changes-label")!;
 const detailDiffstatEl = document.querySelector<HTMLDivElement>("#detail-diffstat")!;
 const detailSummaryEl = document.querySelector<HTMLDivElement>("#detail-summary")!;
 const detailTagsEl = document.querySelector<HTMLDivElement>("#detail-tags")!;
@@ -222,6 +249,16 @@ let rightRowRatio = loadRatio("cc-split-rows-r"); // TR height within right colu
 
 const splitActive = (): boolean => panes.size >= 2;
 
+/** Toggle the "select a session" placeholder for the current terminal count,
+ *  and refresh the onboarding hero alongside it — the hero also gates on
+ *  whether a terminal is attached (not just on project count), so attaching
+ *  one (e.g. via the hero's own commander CTA) yields the hero instead of
+ *  leaving it rendered on top of the newly attached terminal. */
+function updatePlaceholder(): void {
+  placeholderEl.style.display = terminals.size ? "none" : "flex";
+  renderOnboarding();
+}
+
 // Re-theme every live terminal when the GUI theme changes. The DOM renderer
 // repaints automatically on an options.theme assignment.
 onThemeChange((theme) => {
@@ -246,7 +283,7 @@ function activateTerminal(name: string): void {
     entry.container.classList.toggle("active", active);
     entry.tab.classList.toggle("active", active);
   }
-  placeholderEl.style.display = terminals.size ? "none" : "flex";
+  updatePlaceholder();
   const entry = terminals.get(name);
   if (entry) {
     // In board mode the terminal lives in the dock; dock+fit there (fitting in
@@ -286,14 +323,14 @@ function closeTerminal(name: string): void {
   if (splitActive()) {
     if (focusedSlot === slot) focusedSlot = firstSlot();
     renderPanes();
-    placeholderEl.style.display = "none";
+    updatePlaceholder();
     renderSidebar();
     return;
   }
   if (wasSplit) {
     // Dropped below two panes: leave split, keeping the remaining session.
     exitSplit([...panes.values()][0] ?? terminals.keys().next().value ?? null);
-    placeholderEl.style.display = terminals.size ? "none" : "flex";
+    updatePlaceholder();
     renderSidebar();
     return;
   }
@@ -303,22 +340,95 @@ function closeTerminal(name: string): void {
     if (activeTerm) activateTerminal(activeTerm);
     else if (layout === "board") updateDockHeader(); // no terminal left → dock placeholder
   }
-  placeholderEl.style.display = terminals.size ? "none" : "flex";
+  updatePlaceholder();
   renderSidebar();
 }
 
-// --------------------------------------------------- tab drag-to-reorder
-// HTML5 drag-and-drop reorders the tab strip. `dragover` shows an insertion
-// marker at the drop point; `drop` performs the move and rebuilds the
-// `terminals` Map to match the DOM so index/cycle navigation follows the
-// visible order. Committing on `drop` (not `dragend`) means an Esc-cancelled
-// drag leaves the order untouched.
-let draggingTab: HTMLDivElement | null = null;
+// --------------------------------------------------- pointer drag-and-drop
+// HTML5 native drag-and-drop is unavailable: Tauri's OS drag-drop handler
+// (enabled for file drops in tauri.conf.json) swallows the webview's HTML5
+// drag events. So tab reorder, sidebar row → section, board card → column, and
+// board column reorder are all driven by pointer events instead.
+//
+// A drag begins only once the pointer moves past a small threshold, so plain
+// clicks and context-menus on the handle still work. During a drag the handle
+// captures the pointer and each flow hit-tests its own drop targets (by
+// elementFromPoint or coordinates) in `onMove`/`onDrop`. `onDrop` runs only on
+// release over a target; Esc or pointercancel ends the drag with `onEnd` alone,
+// leaving state untouched — mirroring the old `drop`-vs-`dragend` split.
+interface DragSession {
+  onMove(x: number, y: number): void;
+  onDrop(x: number, y: number): void;
+  onEnd(): void;
+}
 
-// Session rows drag onto section headers to move a session between sections
-// (section view only — headers exist solely in renderSections). The dragged
-// session's id is module state; section-header drop handlers read it.
-let draggingSessionId: string | null = null;
+function draggable(handle: HTMLElement, begin: () => DragSession | null): void {
+  handle.addEventListener("pointerdown", (down) => {
+    if (down.button !== 0) return; // left button only; right-click = context menu
+    const sx = down.clientX;
+    const sy = down.clientY;
+    let sess: DragSession | null = null;
+
+    const move = (e: PointerEvent) => {
+      if (!sess) {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < 4) return; // below threshold: still a click
+        sess = begin();
+        if (!sess) return teardown();
+        handle.setPointerCapture(down.pointerId);
+        document.body.style.userSelect = "none";
+      }
+      e.preventDefault(); // suppress text selection / scroll while dragging
+      sess.onMove(e.clientX, e.clientY);
+    };
+    const end = (drop: PointerEvent | null) => {
+      if (sess) {
+        if (drop) sess.onDrop(drop.clientX, drop.clientY);
+        sess.onEnd();
+        document.body.style.userSelect = "";
+        if (drop) suppressNextClick(handle); // eat the click synthesized by this pointerup
+      }
+      teardown();
+    };
+    const onUp = (e: PointerEvent) => end(e);
+    const onCancel = () => end(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && sess) {
+        e.preventDefault();
+        e.stopPropagation();
+        end(null);
+      }
+    };
+    const teardown = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey, true);
+      try {
+        handle.releasePointerCapture(down.pointerId);
+      } catch {
+        // never captured (drag never crossed the threshold) — nothing to release
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey, true);
+  });
+}
+
+/** Swallow the click synthesized by a drag-ending pointerup, so a drag that
+ *  starts on a clickable handle (tab, card, row) doesn't also fire its click. */
+function suppressNextClick(handle: HTMLElement): void {
+  const eat = (e: Event) => {
+    e.stopPropagation();
+    e.preventDefault();
+    handle.removeEventListener("click", eat, true);
+  };
+  handle.addEventListener("click", eat, true);
+  // If no click follows (release off the handle), drop the listener next tick so
+  // it can't eat an unrelated later click.
+  setTimeout(() => handle.removeEventListener("click", eat, true), 0);
+}
 
 /** The tab to insert the dragged tab before, given the pointer's x (null = end). */
 function tabBeforeX(x: number): HTMLDivElement | null {
@@ -358,24 +468,6 @@ function syncTermOrderFromDom(): void {
   for (const [n, e] of entries) terminals.set(n, e);
 }
 
-tabsEl.addEventListener("dragover", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault(); // mark the strip a valid drop target
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  showDropMarker(tabBeforeX(e.clientX));
-});
-
-tabsEl.addEventListener("drop", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault();
-  const before = tabBeforeX(e.clientX);
-  // Keep the trailing "+" button last: drop "at the end" means before it.
-  if (before) tabsEl.insertBefore(draggingTab, before);
-  else tabsEl.insertBefore(draggingTab, tabNewBtn);
-  clearDropMarker();
-  syncTermOrderFromDom();
-});
-
 // "+" new-terminal button — pinned to the end of the strip. It has no
 // `dataset.term`, so the drag-reorder helpers (tabBeforeX queries `.tab`,
 // syncTermOrderFromDom filters by dataset.term) ignore it; the drop handler
@@ -406,7 +498,10 @@ async function openShell(session: SessionRow): Promise<void> {
     toast(`shell failed: ${e}`, "error");
     return;
   }
-  await attachTerminal(name, `${session.title} — shell`, null);
+  // The tab carries a "❯ Shell" chip (name ends "-sh"), so the title stays the
+  // bare session name — keeping entry.title consistent across the tab, the
+  // split-pane header, and the board dock (all read entry.title).
+  await attachTerminal(name, session.title, null);
 }
 
 async function openProjectShell(group: ProjectGroup): Promise<void> {
@@ -417,7 +512,7 @@ async function openProjectShell(group: ProjectGroup): Promise<void> {
     toast(`project shell failed: ${e}`, "error");
     return;
   }
-  await attachTerminal(name, `${group.name} — shell`, null);
+  await attachTerminal(name, group.name, null); // see openShell re: the bare title
 }
 
 /**
@@ -562,23 +657,44 @@ async function attachTerminal(
 
   const tab = document.createElement("div");
   tab.className = "tab";
-  tab.draggable = true;
   tab.dataset.term = name;
-  tab.addEventListener("dragstart", (e) => {
-    draggingTab = tab;
+  // Drag a tab to reorder it within the strip, or onto #terminals to open it in
+  // a split pane. The move commits on release over a target; an Esc-cancelled
+  // drag leaves both the order and the split layout unchanged.
+  draggable(tab, () => {
     tab.classList.add("dragging");
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      // Some webviews won't fire dragover/drop unless drag data is set.
-      e.dataTransfer.setData("text/plain", name);
-    }
-  });
-  tab.addEventListener("dragend", () => {
-    // Cleanup only — the reorder is committed in the `drop` handler, so an
-    // Esc-cancelled drag (drop never fires) leaves the order unchanged.
-    tab.classList.remove("dragging");
-    draggingTab = null;
-    clearDropMarker();
+    return {
+      onMove(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (el?.closest("#terminals")) {
+          clearDropMarker();
+          showSplitOverlay(quadrantAt(x, y));
+        } else if (el?.closest("#tabs")) {
+          hideSplitOverlay();
+          showDropMarker(tabBeforeX(x));
+        } else {
+          clearDropMarker();
+          hideSplitOverlay();
+        }
+      },
+      onDrop(x, y) {
+        const el = document.elementFromPoint(x, y);
+        if (el?.closest("#terminals")) {
+          assignPane(quadrantAt(x, y), name);
+        } else if (el?.closest("#tabs")) {
+          const before = tabBeforeX(x);
+          // Keep the trailing "+" button last: drop "at the end" means before it.
+          if (before) tabsEl.insertBefore(tab, before);
+          else tabsEl.insertBefore(tab, tabNewBtn);
+          syncTermOrderFromDom();
+        }
+      },
+      onEnd() {
+        tab.classList.remove("dragging");
+        clearDropMarker();
+        hideSplitOverlay();
+      },
+    };
   });
   const glyph = document.createElement("span");
   glyph.className = "tab-glyph dot";
@@ -586,6 +702,10 @@ async function attachTerminal(
   const label = document.createElement("span");
   label.className = "tab-label";
   label.textContent = title;
+  // Shell tabs (tmux name ends "-sh") carry no session status, so the liveness
+  // dot stays hidden; mark them with the shared "❯ Shell" chip instead (the
+  // title is already the bare name — see openShell).
+  const isShell = name.endsWith("-sh");
   const close = document.createElement("button");
   close.className = "tab-close";
   close.textContent = "×";
@@ -593,7 +713,13 @@ async function attachTerminal(
     e.stopPropagation();
     closeTerminal(name);
   });
-  tab.append(glyph, label, close);
+  if (isShell) {
+    const shell = shellChip("Shell terminal");
+    shell.classList.add("tab-shell");
+    tab.append(shell, label, close);
+  } else {
+    tab.append(glyph, label, close);
+  }
   tab.addEventListener("click", () => activateTerminal(name));
   tabsEl.insertBefore(tab, tabNewBtn); // keep the "+" button trailing
 
@@ -643,14 +769,17 @@ function refitActive(): void {
 // after any re-parent it must be re-fit once its new parent is laid out. When
 // switching back to Console the container returns to #terminals.
 
-// The user can "×" detach the dock without killing the PTY: the terminal goes
-// back to #terminals and the dock shows its placeholder even though a terminal
-// is still active. Cleared by attaching from a card or re-entering board mode.
+// The user can "×" close the dock without killing the PTY: the terminal goes
+// back to #terminals and the whole dock panel collapses out of the board so the
+// columns fill the space. The PTY stays attached. Cleared by attaching from a
+// card or re-entering board mode.
 let dockDetached = false;
 
 /** Fill the dock header (session name + branch) from the active terminal's
- *  snapshot row, and toggle the placeholder vs. the docked terminal. */
+ *  snapshot row, toggle the placeholder vs. the docked terminal, and collapse
+ *  the whole dock panel when the user has closed it with "×". */
 function updateDockHeader(): void {
+  boardDockEl.classList.toggle("dock-closed", dockDetached);
   const entry = activeTerm && !dockDetached ? terminals.get(activeTerm) : null;
   if (!entry) {
     boardDockNameEl.textContent = "";
@@ -762,26 +891,6 @@ function hideSplitOverlay(): void {
   splitOverlay.classList.remove("show");
   for (const dz of Object.values(dzEls)) dz.classList.remove("hot");
 }
-
-terminalsEl.addEventListener("dragover", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault(); // mark #terminals a valid drop target for a tab
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  showSplitOverlay(quadrantAt(e.clientX, e.clientY));
-});
-terminalsEl.addEventListener("dragleave", (e) => {
-  // dragleave fires crossing child boundaries; only hide when truly leaving.
-  if (!terminalsEl.contains(e.relatedTarget as Node | null)) hideSplitOverlay();
-});
-terminalsEl.addEventListener("drop", (e) => {
-  if (!draggingTab) return;
-  e.preventDefault();
-  const name = draggingTab.dataset.term;
-  const slot = quadrantAt(e.clientX, e.clientY);
-  hideSplitOverlay();
-  if (name) assignPane(slot, name);
-});
-window.addEventListener("dragend", hideSplitOverlay);
 
 /** Assign a dragged session to a quadrant. From single-pane this seeds a
  *  two-pane vertical split (the on-screen session takes the opposite column),
@@ -1004,7 +1113,7 @@ function renderPanes(): void {
   for (const el of terminalsEl.querySelectorAll(".split-col, .col-divider")) el.remove();
 
   terminalsEl.classList.add("split");
-  placeholderEl.style.display = "none";
+  updatePlaceholder();
 
   const leftSlots = (["TL", "BL"] as Slot[]).filter((s) => panes.has(s));
   const rightSlots = (["TR", "BR"] as Slot[]).filter((s) => panes.has(s));
@@ -1052,7 +1161,7 @@ function exitSplit(keep: string | null): void {
   activeTerm = null; // force activateTerminal to re-show the kept terminal
   if (target) activateTerminal(target);
   else {
-    placeholderEl.style.display = terminals.size ? "none" : "flex";
+    updatePlaceholder();
     if (layout === "board") updateDockHeader();
   }
 }
@@ -1138,6 +1247,43 @@ window.addEventListener(
   true,
 );
 
+/** Open the file explorer rooted at the active session's repo. */
+function openFileExplorer(): void {
+  const name = activeTerm;
+  const s = name
+    ? groups.flatMap((g) => g.sessions).find((x) => x.tmux_session_name === name)
+    : undefined;
+  if (!name || !s) {
+    toast("No active session", "error");
+    return;
+  }
+  void openExplorer({
+    sessionId: s.id,
+    tmuxSession: name,
+    rootLabel: groupOf(s.id)?.name ?? s.title,
+    focusTerminal: () => terminals.get(name)?.term.focus(),
+  });
+}
+
+// Cmd+E toggles the file explorer. Capture phase + Cmd (not Ctrl — Ctrl+E is the
+// terminal's move-to-end-of-line) so it opens even while a terminal is focused,
+// the same technique as Cmd+W / Cmd+1..9 above.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key !== "e" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (isExplorerOpen()) {
+      closeExplorer();
+      if (activeTerm) terminals.get(activeTerm)?.term.focus();
+    } else {
+      openFileExplorer();
+    }
+  },
+  true,
+);
+
 makeResizable({
   key: "cc-sidebar-width",
   target: document.querySelector<HTMLElement>("#sidebar")!,
@@ -1163,6 +1309,32 @@ let detailPrUrl: string | null = null; // PR url from the last fetched detail, f
 
 type Summary = { state: "loading" } | { state: "ready"; text: string } | { state: "error"; text: string };
 const summaries = new Map<string, Summary>(); // keyed by session id, app-session cache
+
+/** Parse the backend's git-style diffstat summary ("3 files changed,
+ *  124 insertions(+), 38 deletions(-)"; zero clauses omitted). Null when the
+ *  string isn't that shape. */
+function parseDiffStat(diffStat: string): { files: number; adds: number; dels: number } | null {
+  const m = diffStat.match(
+    /^(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?$/,
+  );
+  if (!m) return null;
+  return { files: Number(m[1]), adds: Number(m[2] ?? 0), dels: Number(m[3] ?? 0) };
+}
+
+/** Proportional add/remove bar for a parsed diffstat. */
+function diffstatBar(adds: number, dels: number): HTMLDivElement {
+  const bar = document.createElement("div");
+  bar.className = "diffstat-bar";
+  const total = adds + dels;
+  const a = document.createElement("span");
+  a.className = "added";
+  a.style.width = `${(adds / total) * 100}%`;
+  const r = document.createElement("span");
+  r.className = "removed";
+  r.style.width = `${(dels / total) * 100}%`;
+  bar.append(a, r);
+  return bar;
+}
 
 function metaRow(label: string, value: string): [HTMLElement, HTMLElement] {
   const dt = document.createElement("dt");
@@ -1194,37 +1366,24 @@ function renderDetail(d: SessionDetail): void {
   }
 
   detailDiffstatEl.innerHTML = "";
-  if (d.diff_stat) {
-    // Colorize "+N" / "-N" tokens in the diffstat summary.
-    let adds = 0;
-    let dels = 0;
-    for (const token of d.diff_stat.split(/(\+\d+|-\d+)/)) {
-      const span = document.createElement("span");
-      if (/^\+\d+$/.test(token)) {
-        span.className = "added";
-        adds += Number(token.slice(1));
-      }
-      if (/^-\d+$/.test(token)) {
-        span.className = "removed";
-        dels += Number(token.slice(1));
-      }
-      span.textContent = token;
-      detailDiffstatEl.appendChild(span);
-    }
-    // Proportional add/remove bar.
-    const total = adds + dels;
-    if (total > 0) {
-      const bar = document.createElement("div");
-      bar.className = "diffstat-bar";
-      const a = document.createElement("span");
-      a.className = "added";
-      a.style.width = `${(adds / total) * 100}%`;
-      const r = document.createElement("span");
-      r.className = "removed";
-      r.style.width = `${(dels / total) * 100}%`;
-      bar.append(a, r);
-      detailDiffstatEl.appendChild(bar);
-    }
+  const stat = d.diff_stat ? parseDiffStat(d.diff_stat) : null;
+  detailChangesEl.textContent =
+    stat === null ? "Changes" : `Changes · ${stat.files} file${stat.files === 1 ? "" : "s"}`;
+  if (stat) {
+    const counts = document.createElement("div");
+    counts.className = "diffstat-counts";
+    const a = document.createElement("span");
+    a.className = "added";
+    a.textContent = `+${stat.adds}`;
+    const r = document.createElement("span");
+    r.className = "removed";
+    r.textContent = `−${stat.dels}`;
+    counts.append(a, r);
+    detailDiffstatEl.appendChild(counts);
+    if (stat.adds + stat.dels > 0) detailDiffstatEl.appendChild(diffstatBar(stat.adds, stat.dels));
+  } else if (d.diff_stat) {
+    // Unrecognized summary shape — show it verbatim rather than dropping it.
+    detailDiffstatEl.textContent = d.diff_stat;
   } else {
     detailDiffstatEl.textContent = "No changes";
   }
@@ -1316,6 +1475,7 @@ function toggleDetail(s: SessionRow): void {
   detailEl.classList.remove("hidden");
   detailTitleEl.textContent = s.title;
   detailMetaEl.innerHTML = "";
+  detailChangesEl.textContent = "Changes";
   detailDiffstatEl.textContent = "Loading…";
   detailTagsEl.innerHTML = "";
   detailPrEl.disabled = true;
@@ -1414,14 +1574,27 @@ let topInput: "add" | "scan" | null = null; // sidebar-top path input mode
 // null for "all projects". Composes with whichever grouping is active.
 let projectFilter: string | null = null;
 
+// GUI-only "Status" grouping override (the GROUP BY control's third segment):
+// groups the sidebar by activity tier instead of the backend-owned viewMode —
+// the crate's ViewMode has no status variant, so like the layout preference
+// this lives in localStorage and leaves the backend mode untouched underneath.
+let statusGrouping = localStorage.getItem("cc-status-grouping") === "1";
+
+function setStatusGrouping(on: boolean): void {
+  if (on === statusGrouping) return;
+  statusGrouping = on;
+  localStorage.setItem("cc-status-grouping", on ? "1" : "0");
+  renderSidebar();
+}
+
 // Board layout: which cards are visible (filter pills) + a name search. Mirrors
 // projectFilter's "local UI state, re-render on change" shape.
-let boardFilter: "all" | "review" | "running" | "blocked" = "all";
 let boardSearch = "";
-// Custom-section filter (composes with the four base pills + search). null = no
-// section narrowing. Cleared if the section disappears from the snapshot.
-let boardSectionFilter: string | null = null;
-// Hide project columns with zero sessions (persisted).
+// Project multiselect filter: the set of selected project ids, or null for "all
+// projects" (the default). Cards whose project isn't selected are hidden across
+// every section column.
+let boardProjectFilter: Set<string> | null = null;
+// Hide section columns with zero visible cards (persisted).
 let hideEmptyColumns = localStorage.getItem("cc-board-hide-empty") === "1";
 
 const SECTION_VIEW = (): boolean => sections !== null;
@@ -1547,6 +1720,7 @@ const STATUS_GLYPH_CLASSES = [
   "dot-stopped",
   "dot-transient",
   "dot-waiting",
+  "dot-hibernated",
 ];
 
 /** Set `el`'s liveness dot (colour/pulse/tooltip) from a session's status.
@@ -1579,6 +1753,12 @@ function applyStatusGlyph(el: HTMLSpanElement, s: SessionRow): void {
       cls = "dot-idle";
       title = s.agent_state;
     }
+  } else if (s.hibernated) {
+    // Auto-hibernated (status is "stopped"): a moon glyph distinct from a
+    // plainly-stopped session, since it can be woken to resume its agent.
+    cls = "dot-hibernated";
+    el.textContent = "☾";
+    title = "hibernated — wake to resume";
   } else if (s.status === "stopped") {
     cls = "dot-stopped";
     title = "stopped";
@@ -1595,6 +1775,39 @@ function statusGlyph(s: SessionRow): HTMLSpanElement {
   el.className = "glyph dot";
   applyStatusGlyph(el, s);
   return el;
+}
+
+/** Derive a session's liveness state key by reading applyStatusGlyph's own
+ *  output (probe → `dot-running` → "running"), so the status chips, the board
+ *  accent bar, and the terminal-tab dots all stay in lockstep with one mapping.
+ *  Mirrors boardStateClass's probe. */
+function sessionStateKey(s: SessionRow): StatusState {
+  const probe = document.createElement("span");
+  applyStatusGlyph(probe, s);
+  for (const cls of STATUS_GLYPH_CLASSES) {
+    if (probe.classList.contains(cls)) return cls.slice(4) as StatusState; // dot-running → running
+  }
+  return "idle";
+}
+
+/** A session's activity tier for the Status grouping, via the shared state
+ *  key so it stays in lockstep with the dots and chips. */
+function sessionTier(s: SessionRow): StatusTier {
+  return stateTier(sessionStateKey(s));
+}
+
+/** The chip word for a session's state. Transient states (creating/merging/
+ *  pushing/…) carry the humanized status rather than a fixed word. */
+function sessionStateWord(s: SessionRow, key: StatusState): string {
+  return key === "transient"
+    ? s.status.charAt(0).toUpperCase() + s.status.slice(1).replace(/_/g, " ")
+    : stateChipInfo(key).word;
+}
+
+/** The shared shape+colour+word chip for a session's liveness state. */
+function sessionStatusChip(s: SessionRow): HTMLSpanElement {
+  const key = sessionStateKey(s);
+  return statusChip(key, { word: sessionStateWord(s, key) });
 }
 
 /** Number of project-identity palette slots (--proj-0..--proj-7 in :root). */
@@ -1772,16 +1985,20 @@ function buildActions(s: SessionRow): HTMLDivElement {
   actions.appendChild(actionButton("±", "Review diff", () => void openReview(s.id, s.title)));
   if (s.status === "stopped") {
     actions.appendChild(
-      actionButton("▶", "Restart session", () => void lifecycle("restart_session", s.id)),
+      actionButton(
+        "▶",
+        s.hibernated ? "Wake session" : "Restart session",
+        () => void lifecycle("restart_session", s.id),
+      ),
     );
   }
   if (s.status === "running") {
     actions.appendChild(
-      confirmButton("■", "Kill session", () => void lifecycle("kill_session", s.id)),
+      confirmButton("■", "Stop session", () => void lifecycle("kill_session", s.id)),
     );
   }
   actions.appendChild(
-    confirmButton("✕", "Delete session (removes worktree + branch)", () => deleteSession(s)),
+    confirmButton("✕", "Delete session (removes worktree + tmux, keeps the branch)", () => deleteSession(s)),
   );
   return actions;
 }
@@ -1810,19 +2027,15 @@ function branchMatchesTitle(title: string, branch: string): boolean {
   return slug(title) === slug(branch);
 }
 
-/** Humanized liveness label. Mirrors renderDetail's `running · <agent_state>`
- *  shape. Used by the board card pill/preview and the palette
- *  (NOT the sidebar row sub-line — there the liveness dot conveys state). */
-function humanState(s: SessionRow): string {
-  if (s.status === "running") return `running · ${s.agent_state}`;
-  return s.status.replace(/_/g, " ");
-}
-
-/** Rebuild the inner content of a row's main span (cheap; no input state). */
-function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
+/** Rebuild the inner content of a row's main span (cheap; no input state).
+ *  `actions` is the row's persistent hover-action element (see RowRefs): it's
+ *  re-appended at the sub-line's trailing edge so confirm state survives. */
+function fillRowMain(main: HTMLDivElement, s: SessionRow, actions: HTMLDivElement): void {
   main.innerHTML = "";
 
-  // Top line: liveness dot · name · project tag · PR badge · right-side chips.
+  // Top line: liveness dot · name · PR badge · right-side chips. The dot is the
+  // fast-scan colour at the row's fixed left edge; the labeled word (Running /
+  // Done / …) lives on the sub-line so the title gets the full line width.
   const line = document.createElement("div");
   line.className = "row-line";
   const title = document.createElement("span");
@@ -1834,66 +2047,64 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
   const badge = prBadge(s);
   if (badge) line.appendChild(badge);
 
-  // Right-side chips: ✎ pending comments (mauve), ⚠ blocked (maroon, project
-  // -level auto-pull block). Pushed right by .row-chips margin-left:auto.
+  // Right-side chips: ✎ pending comments, ⚠ pull blocked (project-level auto
+  // -pull block). Pushed right by .row-chips margin-left:auto.
   const chips = document.createElement("span");
   chips.className = "row-chips";
+  // SessionRow carries only has_pending_comments (no count), so the chip reads
+  // "✎ Comments" rather than spelling out a number.
   if (s.has_pending_comments) {
-    const c = document.createElement("span");
-    c.className = "comment-badge";
-    c.textContent = "✎";
-    c.title = "Has pending review comments";
-    chips.appendChild(c);
+    chips.appendChild(commentsChip(undefined, "Has pending review comments"));
   }
   // pull_blocked is a project-level field; surface ⚠ on rows of a blocked
   // project. (No session-level blocked flag exists — see recon risks.)
   const blocked = groupOf(s.id)?.pull_blocked;
   if (blocked) {
-    const b = document.createElement("span");
-    b.className = "blocked-badge";
-    b.textContent = "⚠";
-    b.title = `Auto-pull blocked: ${blocked}`;
-    chips.appendChild(b);
+    chips.appendChild(pullBlockedChip(`Auto-pull blocked: ${blocked}`));
   }
   if (chips.childElementCount) line.appendChild(chips);
 
-  // Sub-line: the 8px liveness dot already conveys state, so no textual state
-  // label here. SessionRow carries no diff_stat (only SessionDetail does, and
-  // we avoid per-row fetches), so there is no "+adds −dels" source for the row;
-  // the sub-line shows only the branch when it diverges from the title
-  // (otherwise it just repeats the name — always in the hover title), and is
-  // omitted entirely when there is nothing to show.
-  const showBranch = !branchMatchesTitle(s.title, s.branch);
-  if (showBranch) {
-    const sub = document.createElement("div");
-    sub.className = "row-sub";
+  // Sub-line: the labeled status chip (word-only here — the leading dot already
+  // carries shape+colour, so the chip's own dot is hidden by a row-scoped rule),
+  // plus the branch when it diverges from the title. SessionRow carries no
+  // diff_stat (only SessionDetail does, and we avoid per-row fetches), so the
+  // prototype's "+adds −dels" beside the chip has no source on a row.
+  const sub = document.createElement("div");
+  sub.className = "row-sub";
+  sub.appendChild(sessionStatusChip(s));
+  if (!branchMatchesTitle(s.title, s.branch)) {
     const branch = document.createElement("span");
     branch.className = "meta";
     branch.textContent = s.branch;
     sub.append(branch);
-    main.append(line, sub);
-    return;
   }
-
-  main.append(line);
+  // Hover actions ride the sub-line (in line with the status chip) so revealing
+  // them doesn't add a line and shift the rows below.
+  sub.appendChild(actions);
+  main.append(line, sub);
 }
 
 function sessionMenuItems(refs: RowRefs): MenuItem[] {
   const s = refs.session;
   // Core actions, in the order from the design brief.
   const items: MenuItem[] = [
-    { label: "Attach", action: () => void openTerminal(s) },
-    { label: "Open shell", action: () => void openShell(s) },
-    { label: "Review diff", action: () => void openReview(s.id, s.title) },
+    { label: "Attach", shortcut: kb("select"), action: () => void openTerminal(s) },
+    { label: "Open shell", shortcut: kb("select_shell"), action: () => void openShell(s) },
+    { label: "Review diff", shortcut: kb("open_review_diff"), action: () => void openReview(s.id, s.title) },
     {
       label: "Rename…",
+      shortcut: kb("rename_session"),
       action: () => {
         renamingId = s.id;
         renderSidebar();
       },
     },
     "separator",
-    { label: "Restart", action: () => void lifecycle("restart_session", s.id) },
+    {
+      label: s.hibernated ? "Wake" : "Restart",
+      shortcut: kb("restart_session"),
+      action: () => void lifecycle("restart_session", s.id),
+    },
     {
       label: "Restart fresh",
       action: () => {
@@ -1903,14 +2114,17 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
       },
     },
     {
-      label: "Kill — stop process",
+      label: "Stop",
+      sublabel: "stops the process, keeps the worktree",
       warning: true,
       action: () => void lifecycle("kill_session", s.id),
     },
     "separator",
     {
       label: "Delete session…",
+      sublabel: "removes worktree + tmux, keeps the branch",
       danger: true,
+      shortcut: kb("delete_session"),
       action: () => {
         void deleteSessionDialog(s.title, s.branch).then((ok) => {
           if (ok) deleteSession(s);
@@ -1923,31 +2137,36 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
   // drop existing functionality (details, editor, PR, cascade, sections).
   const extras: MenuItem[] = [
     { label: "Details", action: () => toggleDetail(s) },
-    { label: "Open in editor", action: () => void lifecycle("open_in_editor", s.id) },
+    { label: "Open in editor", shortcut: kb("open_in_editor"), action: () => void lifecycle("open_in_editor", s.id) },
   ];
   if (s.pr_url) {
     const url = s.pr_url;
     extras.push({
       label: `Open PR #${s.pr_number}`,
+      shortcut: kb("open_pull_request"),
       action: () => void invoke("open_external", { url }),
     });
   }
   extras.push({
     label: "Cascade-merge main → stack",
+    shortcut: kb("cascade_merge_main"),
     action: () => void invokeToast("cascade_merge", { id: s.id }),
   });
   extras.push({
     label: "Push stack to origin",
+    shortcut: kb("push_stack"),
     action: () => void invokeToast("push_stack", { id: s.id }),
   });
   if (s.status === "cascade_paused") {
     extras.push({
       label: "Resume cascade",
+      shortcut: kb("cascade_resume"),
       action: () => void invokeToast("cascade_resume", {}),
     });
     extras.push({
       label: "Abandon cascade",
       danger: true,
+      shortcut: kb("cascade_abandon"),
       action: () => void invokeToast("cascade_abandon", {}),
     });
   }
@@ -2025,25 +2244,38 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
     return row;
   }
 
-  row.append(main, refs.actions);
+  row.append(main); // actions land inside main's sub-line via fillRowMain
   row.addEventListener("click", () => {
     selectRow(refs.session.id);
     void openTerminal(refs.session);
   });
   row.addEventListener("contextmenu", (e) => showContextMenu(e, sessionMenuItems(refs)));
-  // Draggable onto a section header (section view only). Not set in rename mode:
-  // that branch returns above, and draggable=true suppresses input text selection.
-  row.draggable = true;
+  // Draggable onto a section header to re-pin the session (section view only;
+  // headers are annotated with dataset.dropSection in renderSections). Not wired
+  // in rename mode: that branch returns above.
   row.dataset.id = s.id;
-  row.addEventListener("dragstart", (e) => {
-    draggingSessionId = refs.session.id;
+  draggable(row, () => {
     row.classList.add("dragging");
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  });
-  row.addEventListener("dragend", () => {
-    draggingSessionId = null;
-    row.classList.remove("dragging");
-    clearDropTargets();
+    return {
+      onMove(x, y) {
+        clearDropTargets();
+        const header = document.elementFromPoint(x, y)?.closest<HTMLElement>(".project-header");
+        if (header?.dataset.dropSection !== undefined) header.classList.add("drop-target");
+      },
+      onDrop(x, y) {
+        const header = document.elementFromPoint(x, y)?.closest<HTMLElement>(".project-header");
+        if (header?.dataset.dropSection === undefined) return;
+        // dropSection is "" on the index-0 "In Progress" catch-all: clear the pin.
+        const target = header.dataset.dropSection || null;
+        const id = refs.session.id;
+        if ((findSession(id)?.current_section ?? null) === target) return; // no-op drop
+        void lifecycleArgs("move_to_section", { id, section: target });
+      },
+      onEnd() {
+        row.classList.remove("dragging");
+        clearDropTargets();
+      },
+    };
   });
   updateRow(refs, s);
   return row;
@@ -2083,15 +2315,14 @@ function renderStack(parent: SessionRow, children: SessionRow[]): HTMLDivElement
 
   const header = document.createElement("div");
   header.className = "stack-header";
-  const glyph = document.createElement("span");
-  glyph.className = "stack-glyph";
-  glyph.textContent = "⌗";
-  glyph.title = "Cascade stack";
+  // The ⌗ glyph becomes the labeled "⌗ Stack of N" chip (parent + children),
+  // then the parent title names which stack this is.
+  const chip = stackChip(children.length + 1, "Cascade stack");
   const name = document.createElement("span");
   name.className = "stack-name";
   name.textContent = parent.title;
   name.title = parent.title;
-  header.append(glyph, name);
+  header.append(chip, name);
 
   const actions = document.createElement("span");
   actions.className = "stack-actions";
@@ -2133,16 +2364,14 @@ function clearDropTargets(): void {
 function updateRow(refs: RowRefs, s: SessionRow): void {
   refs.session = s;
   if (renamingId === s.id) return; // don't clobber the rename input
-  fillRowMain(refs.main, s);
+  if (refs.status !== s.status) {
+    refs.actions = buildActions(s);
+    refs.status = s.status;
+  }
+  fillRowMain(refs.main, s, refs.actions);
   refs.row.classList.toggle("active", s.tmux_session_name === activeTerm);
   refs.row.classList.toggle("attached", terminals.has(s.tmux_session_name));
   refs.row.classList.toggle("selected", s.id === selectedId);
-  if (refs.status !== s.status) {
-    const actions = buildActions(s);
-    refs.row.replaceChild(actions, refs.actions);
-    refs.actions = actions;
-    refs.status = s.status;
-  }
 }
 
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
@@ -2180,6 +2409,7 @@ function projectMenuItems(group: ProjectGroup, createKey: string = group.id): Me
   return [
     {
       label: "New session…",
+      shortcut: kb("new_session"),
       action: () => {
         newSessionProject = createKey;
         renderSidebar();
@@ -2190,6 +2420,7 @@ function projectMenuItems(group: ProjectGroup, createKey: string = group.id): Me
     {
       label: "Remove project (deletes all its sessions)",
       danger: true,
+      shortcut: kb("remove_project"),
       action: () => {
         void confirmDialog(
           `Remove project "${group.name}" and all ${group.sessions.length} session(s)?\nWorktrees and tmux sessions will be removed.`,
@@ -2387,6 +2618,7 @@ function sidebarMenuItems(): MenuItem[] {
   return [
     {
       label: "Add project…",
+      shortcut: kb("new_project"),
       action: () => {
         topInput = "add";
         renderSidebar();
@@ -2394,18 +2626,20 @@ function sidebarMenuItems(): MenuItem[] {
     },
     {
       label: "Scan directory for repos…",
+      shortcut: kb("scan_directory"),
       action: () => {
         topInput = "scan";
         renderSidebar();
       },
     },
     "separator",
-    { label: "Settings…", action: () => void openSettings() },
-    { label: "Help", action: toggleHelp },
+    { label: "Settings…", shortcut: kb("show_settings"), action: () => void openSettings() },
+    { label: "Help", shortcut: kb("show_help"), action: toggleHelp },
     "separator",
     {
       label: "Delete merged-PR sessions…",
       danger: true,
+      shortcut: kb("delete_merged_pr_sessions"),
       action: () => void deleteMergedSessions(),
     },
   ];
@@ -2433,6 +2667,19 @@ async function createSessionInProject(group: ProjectGroup): Promise<void> {
 }
 
 function cycleViewMode(): void {
+  if (statusGrouping) {
+    // Status (GUI-only) is the cycle's last stop; leaving it restarts the
+    // backend cycle at "project".
+    setStatusGrouping(false);
+    invoke("set_view_mode", { mode: "project" })
+      .then(() => refreshNow())
+      .catch((e) => toast(`${e}`, "error"));
+    return;
+  }
+  if (viewMode === "section_stacks") {
+    setStatusGrouping(true);
+    return;
+  }
   const order = ["project", "sections", "section_stacks"];
   const next = order[(order.indexOf(viewMode) + 1) % order.length];
   invoke("set_view_mode", { mode: next })
@@ -2444,15 +2691,18 @@ function cycleViewMode(): void {
  *  viewMode is backend-owned — never set locally — so we round-trip through
  *  set_view_mode and let the next snapshot reflect it (mirror cycleViewMode). */
 function setViewMode(mode: string): void {
+  setStatusGrouping(false); // leaving the GUI-only Status override, if it's on
   if (mode === viewMode) return;
   invoke("set_view_mode", { mode })
     .then(() => refreshNow())
     .catch((e) => toast(`${e}`, "error"));
 }
 
-/** GROUP BY segmented control. Binary [Sections | Projects], bound to viewMode
- *  (Projects→"project", Sections→"sections"). "section_stacks" still counts as
- *  the Sections side and stays reachable via the palette's cycleViewMode. */
+/** GROUP BY segmented control: [Sections | Projects | Status]. Sections and
+ *  Projects are bound to the backend viewMode (Projects→"project",
+ *  Sections→"sections"; "section_stacks" still counts as the Sections side and
+ *  stays reachable via the palette's cycleViewMode). Status is the GUI-only
+ *  tier grouping and overrides whichever backend mode sits underneath. */
 function renderGroupByBar(): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "group-by-bar";
@@ -2462,7 +2712,7 @@ function renderGroupByBar(): HTMLElement {
 
   const seg = document.createElement("div");
   seg.className = "segmented";
-  const sectionsActive = viewMode === "sections" || viewMode === "section_stacks";
+  const sectionsActive = !statusGrouping && (viewMode === "sections" || viewMode === "section_stacks");
 
   const sectionsBtn = document.createElement("button");
   sectionsBtn.className = "segment";
@@ -2473,10 +2723,16 @@ function renderGroupByBar(): HTMLElement {
   const projectsBtn = document.createElement("button");
   projectsBtn.className = "segment";
   projectsBtn.textContent = "Projects";
-  projectsBtn.classList.toggle("active", !sectionsActive);
+  projectsBtn.classList.toggle("active", !statusGrouping && !sectionsActive);
   projectsBtn.addEventListener("click", () => setViewMode("project"));
 
-  seg.append(sectionsBtn, projectsBtn);
+  const statusBtn = document.createElement("button");
+  statusBtn.className = "segment";
+  statusBtn.textContent = "Status";
+  statusBtn.classList.toggle("active", statusGrouping);
+  statusBtn.addEventListener("click", () => setStatusGrouping(true));
+
+  seg.append(sectionsBtn, projectsBtn, statusBtn);
   bar.append(label, seg);
   return bar;
 }
@@ -2519,7 +2775,9 @@ function renderSections(buckets: SectionBucket[]): void {
     count.textContent = String(ids.length);
     header.append(name, count, headerRule());
     const isCollapsed = makeCollapsible(header, name, `sect:${bucket.name}`);
-    makeSectionDropTarget(header, bucket, bucketIndex);
+    // Annotate as a session drop target for the row drag (see renderRow): "" on
+    // the index-0 "In Progress" catch-all clears the pin, else the section name.
+    header.dataset.dropSection = bucketIndex === 0 ? "" : bucket.name;
     sessionsEl.appendChild(header);
     if (isCollapsed) return;
 
@@ -2583,36 +2841,6 @@ function renderProjectSubheader(group: ProjectGroup, sectionName: string): HTMLD
   return header;
 }
 
-/** Wire a section header as a drop target for a dragged session row. Dropping
- *  pins the session to this section (or clears the pin on the index-0
- *  "In Progress" catch-all). Only headers call preventDefault on dragover, so
- *  drops can't land anywhere else. */
-function makeSectionDropTarget(
-  header: HTMLDivElement,
-  bucket: SectionBucket,
-  bucketIndex: number,
-): void {
-  header.addEventListener("dragover", (e) => {
-    if (!draggingSessionId) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    header.classList.add("drop-target");
-  });
-  header.addEventListener("dragleave", () => header.classList.remove("drop-target"));
-  header.addEventListener("drop", (e) => {
-    if (!draggingSessionId) return;
-    e.preventDefault();
-    header.classList.remove("drop-target");
-    const id = draggingSessionId;
-    // buckets[0] is always the reserved "In Progress" catch-all; dropping there
-    // clears the pin (section: null), which the backend re-runs predicates on.
-    const target = bucketIndex === 0 ? null : bucket.name;
-    const current = findSession(id)?.current_section ?? null;
-    if (current === target) return; // no-op drop
-    void lifecycleArgs("move_to_section", { id, section: target });
-  });
-}
-
 function renderSidebar(): void {
   const signature =
     groups
@@ -2620,6 +2848,9 @@ function renderSidebar(): void {
       .join("|") +
     `#${newSessionProject}#${renamingId}#${topInput}#${viewMode}#${projectFilter}` +
     `#${sections?.map((b) => `${b.name}=${b.session_ids.join(",")}`).join("|") ?? ""}` +
+    // Status grouping: tier membership must force a rebuild (a status flip has
+    // to move the row between tiers, which updateRow alone can't do).
+    `#${statusGrouping ? "status:" + groups.flatMap((g) => g.sessions.map((s) => `${s.id}=${sessionTier(s)}`)).join(",") : ""}` +
     `#${[...collapsed].sort().join(",")}`;
 
   if (signature === sidebarSignature) {
@@ -2635,9 +2866,6 @@ function renderSidebar(): void {
   sidebarSignature = signature;
   rowRefs.clear();
   visibleGroups = [];
-  // A rebuild (e.g. a poll refresh mid-drag) discards the dragged row's node, so
-  // dragend may never fire — drop the stale id rather than leave it dangling.
-  draggingSessionId = null;
   sessionsEl.innerHTML = "";
   if (topInput) {
     sessionsEl.appendChild(renderTopInput(topInput));
@@ -2652,15 +2880,15 @@ function renderSidebar(): void {
     sessionsEl.appendChild(renderFilterBanner(filterGroup));
   }
 
+  // The GUI-only Status grouping overrides whichever backend mode is active.
+  if (statusGrouping) {
+    sessionsEl.appendChild(renderNewSessionButton());
+    renderStatusTiers();
+    return;
+  }
+
   if (sections) {
-    // Section views group by section, so an empty project has no sub-header to
-    // hang a "+" on. This full-width button is the universal create path there:
-    // pick any project (incl. sessionless ones), then enter a title.
-    const newBtn = document.createElement("button");
-    newBtn.className = "new-session-btn";
-    newBtn.textContent = "+ New session";
-    newBtn.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
-    sessionsEl.appendChild(newBtn);
+    sessionsEl.appendChild(renderNewSessionButton());
     renderSections(sections);
     return;
   }
@@ -2673,13 +2901,11 @@ function renderSidebar(): void {
     square.className = `proj-square ${projClass(group.id)}`;
     const name = document.createElement("span");
     name.textContent = group.name;
-    if (group.pull_blocked) {
-      const blocked = document.createElement("span");
-      blocked.className = "pull-blocked";
-      blocked.textContent = "⇣!";
-      blocked.title = `Auto-pull of main blocked: ${group.pull_blocked}`;
-      name.appendChild(blocked);
-    }
+    // ⚠ pull-blocked chip sits beside the name (its own header child so it gets
+    // the row gap and escapes the header's uppercase transform).
+    const blockedChip = group.pull_blocked
+      ? pullBlockedChip(`Auto-pull of main blocked: ${group.pull_blocked}`)
+      : null;
     const buttons = document.createElement("span");
     buttons.className = "header-buttons";
     const shell = document.createElement("button");
@@ -2704,7 +2930,9 @@ function renderSidebar(): void {
     const count = document.createElement("span");
     count.className = "meta";
     count.textContent = String(group.sessions.length);
-    header.append(square, name, count, headerRule(), buttons);
+    header.append(square, name, count);
+    if (blockedChip) header.append(blockedChip);
+    header.append(headerRule(), buttons);
     const isCollapsed = makeCollapsible(header, name, `proj:${group.id}`);
     header.addEventListener("contextmenu", (e) => showContextMenu(e, projectMenuItems(group)));
     sessionsEl.appendChild(header);
@@ -2719,6 +2947,82 @@ function renderSidebar(): void {
     }
     renderRows(group.sessions);
     visibleGroups.push(group.sessions.map((s) => s.id));
+  }
+}
+
+/** Full-width create button for groupings without project headers (section and
+ *  status views): pick any project (incl. sessionless ones), then a title. */
+function renderNewSessionButton(): HTMLButtonElement {
+  const newBtn = document.createElement("button");
+  newBtn.className = "new-session-btn";
+  newBtn.textContent = "+ New session";
+  newBtn.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
+  return newBtn;
+}
+
+/** Render the GUI-only Status grouping: sessions bucketed into coarse activity
+ *  tiers (Needs you / Active / Parked; see stateTier). Tier membership only
+ *  changes on meaningful events — a turn ending, a session stopped or resumed —
+ *  never on the working ⇄ idle flicker, so rows don't shuffle underneath the
+ *  user. Within a tier, rows cluster by project in snapshot order (mirroring
+ *  renderSections). Empty tiers are hidden. Tier headers are not section drop
+ *  targets: status changes machine-side, so there's nothing to drag onto. */
+function renderStatusTiers(): void {
+  const buckets = new Map<StatusTier, SessionRow[]>();
+  for (const g of groups) {
+    if (projectFilter && g.id !== projectFilter) continue;
+    for (const s of g.sessions) {
+      const tier = sessionTier(s);
+      let rows = buckets.get(tier);
+      if (!rows) {
+        rows = [];
+        buckets.set(tier, rows);
+      }
+      rows.push(s);
+    }
+  }
+
+  const projById = new Map(groups.map((g) => [g.id, g]));
+  for (const { tier, label } of STATUS_TIERS) {
+    const tierRows = buckets.get(tier);
+    if (!tierRows?.length) continue;
+    const header = document.createElement("div");
+    header.className = "project-header";
+    const name = document.createElement("span");
+    name.textContent = label;
+    const count = document.createElement("span");
+    count.className = "meta";
+    count.textContent = String(tierRows.length);
+    header.append(name, count, headerRule());
+    const isCollapsed = makeCollapsible(header, name, `tier:${tier}`);
+    sessionsEl.appendChild(header);
+    if (isCollapsed) continue;
+
+    // Cluster the tier's sessions by project, preserving snapshot order.
+    const order: string[] = [];
+    const byProject = new Map<string, SessionRow[]>();
+    for (const s of tierRows) {
+      let rows = byProject.get(s.project_id);
+      if (!rows) {
+        rows = [];
+        byProject.set(s.project_id, rows);
+        order.push(s.project_id);
+      }
+      rows.push(s);
+    }
+
+    for (const pid of order) {
+      const rows = byProject.get(pid)!;
+      const group = projById.get(pid);
+      if (group) {
+        sessionsEl.appendChild(renderProjectSubheader(group, label));
+        if (newSessionProject === sectionCreateKey(label, group.id)) {
+          sessionsEl.appendChild(renderCreateInput(group));
+        }
+      }
+      renderRows(rows);
+      visibleGroups.push(rows.map((s) => s.id));
+    }
   }
 }
 
@@ -2765,6 +3069,59 @@ document.querySelector<HTMLButtonElement>("#sidebar-menu")!.addEventListener("cl
   showContextMenu(e, sidebarMenuItems());
 });
 
+// ------------------------------------------------------------- onboarding
+//
+// First-run hero over the terminal pane. Shown whenever there are zero
+// projects AND no terminal is attached — attaching one (e.g. via the hero's
+// own commander CTA) must yield the hero, not leave it rendered on top of
+// the freshly attached terminal (see updatePlaceholder). No persisted flag;
+// purely driven by the live snapshot (applySnapshot) and terminal attach/detach.
+
+const onboardingEl = document.querySelector<HTMLDivElement>("#onboarding")!;
+const onboardingCommanderBtn = document.querySelector<HTMLButtonElement>("#onboarding-commander")!;
+let commanderEnabled = false; // mirrors renderCommander's gate; set in applySnapshot
+
+/** First-run hero state: no projects and nothing attached. */
+function onboardingActive(): boolean {
+  return groups.length === 0 && terminals.size === 0;
+}
+
+function renderOnboarding(): void {
+  const show = onboardingActive();
+  onboardingEl.classList.toggle("hidden", !show);
+  // Board layout hides #terminal-pane, which hosts the hero — so a persisted
+  // Board layout (or deleting the last project while on the Board) would show
+  // a blank surface instead of first-run guidance. Yield to Console while the
+  // hero is up; the Board segment is guarded below for the same reason.
+  if (show && layout === "board") setLayout("console");
+  // Card 3 is only a live control when the commander is actually configured —
+  // otherwise it reads inert, like card 2's "After a project" placeholder,
+  // rather than firing prepare_commander into a raw error toast.
+  onboardingCommanderBtn.disabled = !commanderEnabled;
+  onboardingCommanderBtn.classList.toggle("outline", commanderEnabled);
+  onboardingCommanderBtn.classList.toggle("muted", !commanderEnabled);
+}
+
+document
+  .querySelector<HTMLButtonElement>("#onboarding-add-project")!
+  .addEventListener("click", () => {
+    // Same native folder-picker the sidebar's Browse… uses; a cancel (no path
+    // picked) falls back to revealing the sidebar's path input so they can
+    // type it instead.
+    void openFolderDialog({ directory: true }).then((picked) => {
+      if (typeof picked === "string") {
+        invoke("add_project", { path: picked })
+          .catch((err) => toast(`add project failed: ${err}`, "error"))
+          .finally(() => void refreshNow());
+      } else {
+        topInput = "add";
+        renderSidebar();
+      }
+    });
+  });
+
+onboardingCommanderBtn.addEventListener("click", () => commanderChip.click());
+
 // ----------------------------------------------------------------- title bar
 
 const appEl = document.querySelector<HTMLElement>("#app")!;
@@ -2777,13 +3134,33 @@ const boardDockPlaceholderEl = document.querySelector<HTMLDivElement>("#board-do
 const boardDockNameEl = document.querySelector<HTMLSpanElement>("#board-dock-name")!;
 const boardDockBranchEl = document.querySelector<HTMLSpanElement>("#board-dock-branch")!;
 const tbCount = document.querySelector<HTMLElement>("#tb-count")!;
+const tbAttention = document.querySelector<HTMLElement>("#tb-attention")!;
+// The board's mirror of the attention pill; created with the filter bar.
+let boardAttentionEl: HTMLSpanElement | null = null;
 const tbConsole = document.querySelector<HTMLButtonElement>("#tb-console")!;
 const tbBoard = document.querySelector<HTMLButtonElement>("#tb-board")!;
+
+/** Sessions waiting on the user: the agent asked for input, or finished while
+ *  away (unread) — the audit's at-a-glance attention queue. In lockstep with
+ *  the status-chip vocabulary via sessionStateKey. */
+function attentionCount(): number {
+  return groups.flatMap((g) => g.sessions).filter((s) => {
+    const key = sessionStateKey(s);
+    return key === "waiting" || key === "finished";
+  }).length;
+}
 
 function updateTitleBarCounts(): void {
   const total = groups.reduce((n, g) => n + g.sessions.length, 0);
   const live = groups.flatMap((g) => g.sessions).filter((s) => s.status === "running").length;
   tbCount.textContent = `${total} sessions · ${live} live`;
+  const waiting = attentionCount();
+  tbAttention.textContent = `${waiting} waiting on you`;
+  tbAttention.classList.toggle("hidden", waiting === 0);
+  if (boardAttentionEl) {
+    boardAttentionEl.textContent = `${waiting} waiting on you`;
+    boardAttentionEl.classList.toggle("hidden", waiting === 0);
+  }
 }
 
 function setLayout(next: "console" | "board"): void {
@@ -2810,7 +3187,15 @@ function setLayout(next: "console" | "board"): void {
 }
 
 tbConsole.addEventListener("click", () => setLayout("console"));
-tbBoard.addEventListener("click", () => setLayout("board"));
+tbBoard.addEventListener("click", () => {
+  // The Board has nothing to show before the first project — keep the hero
+  // (which lives in the Console's terminal pane) instead of a blank surface.
+  if (onboardingActive()) {
+    toast("Add a project first — the Board shows your sessions.");
+    return;
+  }
+  setLayout("board");
+});
 document.querySelector<HTMLButtonElement>("#tb-jump")!.addEventListener("click", () => togglePalette());
 document
   .querySelector<HTMLButtonElement>("#tb-theme")!
@@ -2825,9 +3210,10 @@ tbBoard.classList.toggle("active", layout === "board");
 // Dock the active terminal (if any) when booting straight into board mode.
 if (layout === "board") dockActiveTerminal();
 
-// Dock "×" detaches: undock the terminal back to #terminals and show the dock
-// placeholder. It does NOT kill the PTY — the session stays attached and the
-// terminal reappears in Console (or on the next card ▸). Also drops out of the
+// Dock "×" closes the preview: undock the terminal back to #terminals and
+// collapse the whole dock panel so the columns fill the board. It does NOT kill
+// the PTY — the session stays attached and the terminal reappears in Console
+// (or on the next card ▸, which reopens the dock). Also drops out of the
 // fullscreen overlay if it was open (nothing left to show fullscreen).
 document.querySelector<HTMLButtonElement>("#board-dock-close")!.addEventListener("click", () => {
   setDockFullscreen(false);
@@ -2910,7 +3296,7 @@ commanderChip.addEventListener("click", () => {
 //
 // The Board layout renders the SAME snapshot `groups` as the sidebar — one
 // column per project, agent cards inside — reusing the Console helpers
-// (projClass / applyStatusGlyph / humanState / sessionMenuItems / openReview /
+// (projClass / applyStatusGlyph / sessionMenuItems / openReview /
 // openTerminal). Selection is shared with the sidebar via `selectedId`.
 
 /** Card DOM refs by session id, so updateSelectionClasses can toggle the
@@ -2927,28 +3313,24 @@ const boardDiffPending = new Set<string>();
  *  bar / state pill use. Keeps the board in lockstep with the dot colours
  *  without re-deriving the status logic (we read applyStatusGlyph's output). */
 function boardStateClass(s: SessionRow): string {
-  const probe = document.createElement("span");
-  applyStatusGlyph(probe, s);
-  for (const cls of STATUS_GLYPH_CLASSES) {
-    if (probe.classList.contains(cls)) return `state-${cls.slice(4)}`; // dot-running → state-running
-  }
-  return "state-idle";
+  return `state-${sessionStateKey(s)}`; // running → state-running, in lockstep with the dot/chip mapping
 }
 
-/** Does a session pass the active board filter pill? The base pill and the
- *  optional custom-section pill both must pass; search composes on top. */
+/** Every project id known to the current snapshot, in board order. */
+function allProjectIds(): string[] {
+  return groups.map((g) => g.id);
+}
+
+/** The selected project ids, bounded to projects still present in the snapshot.
+ *  null (the default) means every project — returned here as the full set. */
+function selectedProjectIds(): Set<string> {
+  const all = allProjectIds();
+  return boardProjectFilter ? new Set(all.filter((id) => boardProjectFilter!.has(id))) : new Set(all);
+}
+
+/** Does a session pass the project filter? Search composes on top. */
 function boardMatchesFilter(s: SessionRow): boolean {
-  if (boardSectionFilter && s.current_section !== boardSectionFilter) return false;
-  switch (boardFilter) {
-    case "review":
-      return s.has_pending_comments;
-    case "running":
-      return s.status === "running";
-    case "blocked":
-      return groupOf(s.id)?.pull_blocked != null;
-    default:
-      return true;
-  }
+  return !boardProjectFilter || boardProjectFilter.has(s.project_id);
 }
 
 function boardMatchesSearch(s: SessionRow): boolean {
@@ -2956,9 +3338,36 @@ function boardMatchesSearch(s: SessionRow): boolean {
   return s.title.toLowerCase().includes(boardSearch.toLowerCase());
 }
 
-/** Sessions of a project visible under the current filter + search. */
-function boardVisibleSessions(g: ProjectGroup): SessionRow[] {
-  return g.sessions.filter((s) => boardMatchesFilter(s) && boardMatchesSearch(s));
+/** A board column: the sessions pinned to one section (or the leading "no
+ *  section" catch-all), already narrowed by filter + search. `key` is the
+ *  section name, or `NO_SECTION_KEY` for the catch-all. */
+type BoardSection = { key: string; name: string; sessions: SessionRow[] };
+
+// Sentinel key for the leading catch-all column (sessions with no section pin,
+// and — when no sections are configured at all — every session).
+const NO_SECTION_KEY = " none";
+const NO_SECTION_LABEL = "No section";
+
+/** All sessions across projects, bucketed into section columns and narrowed by
+ *  the active filter + search. The catch-all "no section" column comes first,
+ *  then one column per configured section in `sectionNames` order. */
+function boardSectionColumns(): BoardSection[] {
+  const none: BoardSection = { key: NO_SECTION_KEY, name: NO_SECTION_LABEL, sessions: [] };
+  const byName = new Map<string, BoardSection>();
+  const cols: BoardSection[] = [none];
+  for (const name of sectionNames) {
+    const col: BoardSection = { key: name, name, sessions: [] };
+    byName.set(name, col);
+    cols.push(col);
+  }
+  for (const g of groups) {
+    for (const s of g.sessions) {
+      if (!(boardMatchesFilter(s) && boardMatchesSearch(s))) continue;
+      const sec = s.current_section;
+      (sec && byName.get(sec) ? byName.get(sec)! : none).sessions.push(s);
+    }
+  }
+  return cols;
 }
 
 /** Lazy-fetch a session's diffstat for its card bar; fill in place when it
@@ -2986,67 +3395,88 @@ function ensureBoardDiffStat(id: string, bar: HTMLElement): void {
  *  there is no diff (graceful — never fabricated). */
 function fillDiffstatBar(container: HTMLElement, diffStat: string | null): void {
   container.innerHTML = "";
-  if (!diffStat) {
-    container.classList.add("hidden");
-    return;
-  }
-  let adds = 0;
-  let dels = 0;
-  const counts = document.createElement("div");
-  counts.className = "card-diffcounts";
-  for (const token of diffStat.split(/(\+\d+|-\d+)/)) {
-    if (/^\+\d+$/.test(token)) {
-      adds += Number(token.slice(1));
-      const span = document.createElement("span");
-      span.className = "added";
-      span.textContent = token;
-      counts.appendChild(span);
-    } else if (/^-\d+$/.test(token)) {
-      dels += Number(token.slice(1));
-      const span = document.createElement("span");
-      span.className = "removed";
-      span.textContent = token;
-      counts.appendChild(span);
-    }
-  }
-  const total = adds + dels;
-  if (total === 0) {
+  const stat = diffStat ? parseDiffStat(diffStat) : null;
+  if (!stat || stat.adds + stat.dels === 0) {
     container.classList.add("hidden");
     return;
   }
   container.classList.remove("hidden");
-  const bar = document.createElement("div");
-  bar.className = "diffstat-bar";
+  const counts = document.createElement("div");
+  counts.className = "card-diffcounts";
   const a = document.createElement("span");
   a.className = "added";
-  a.style.width = `${(adds / total) * 100}%`;
+  a.textContent = `+${stat.adds}`;
   const r = document.createElement("span");
   r.className = "removed";
-  r.style.width = `${(dels / total) * 100}%`;
-  bar.append(a, r);
-  container.append(counts, bar);
+  r.textContent = `−${stat.dels}`;
+  counts.append(a, r);
+  // Bar on top, counts below (the Refined board layout): the proportional bar
+  // spans the card, then the +adds/−dels counts sit on their own line and wrap
+  // rather than clipping at the column edge.
+  container.append(diffstatBar(stat.adds, stat.dels), counts);
 }
 
 /** One agent card for a session. */
 function renderAgentCard(s: SessionRow): HTMLDivElement {
   const card = document.createElement("div");
-  card.className = "agent-card";
+  // State class drives the 3px left accent border (--state-color); in lockstep
+  // with the status chip's colour.
+  card.className = `agent-card ${boardStateClass(s)}`;
   card.classList.toggle("selected", selectedId === s.id);
   boardCardRefs.set(s.id, card);
 
-  // 3px top accent bar in the liveness state colour.
-  const accent = document.createElement("div");
-  accent.className = `card-accent ${boardStateClass(s)}`;
-  card.appendChild(accent);
+  // Drag the card onto another section column to re-pin it. The move commits on
+  // release over a column, so an Esc-cancelled drag is a no-op. The card's own
+  // click/⋯/▸/± handlers still fire when the pointer doesn't move (no drag).
+  card.dataset.id = s.id;
+  draggable(card, () => {
+    card.classList.add("dragging");
+    return {
+      onMove(x, y) {
+        clearCardDropTargets();
+        document
+          .elementFromPoint(x, y)
+          ?.closest<HTMLElement>(".board-col")
+          ?.classList.add("card-drop-target");
+      },
+      onDrop(x, y) {
+        const col = document.elementFromPoint(x, y)?.closest<HTMLElement>(".board-col");
+        const key = col?.dataset.section;
+        if (key === undefined) return;
+        // The catch-all column clears the pin (section: null); real columns pin
+        // to the section name (dataset.section === the section name).
+        const target = key === NO_SECTION_KEY ? null : key;
+        if ((findSession(s.id)?.current_section ?? null) === target) return; // no-op drop
+        void lifecycleArgs("move_to_section", { id: s.id, section: target });
+      },
+      onEnd() {
+        card.classList.remove("dragging");
+        clearCardDropTargets();
+      },
+    };
+  });
 
-  // Header: liveness dot + name + ⋯ menu. The dot (and the accent bar) already
-  // convey the state, so no textual state pill is repeated here.
+  // Header: a title block (session name over its project) + status chip + ⋯
+  // menu. Cards now group by section, not project, so the project is named on
+  // each card: the session title is primary (h1), the project secondary (h2).
   const header = document.createElement("div");
   header.className = "card-header";
+  const heading = document.createElement("div");
+  heading.className = "card-heading";
   const name = document.createElement("span");
   name.className = "card-title";
   name.textContent = s.title;
   name.title = `Branch: ${s.branch}`;
+  const project = document.createElement("span");
+  project.className = "card-project";
+  const square = document.createElement("span");
+  square.className = `proj-square ${projClass(s.project_id)}`;
+  const projName = document.createElement("span");
+  projName.className = "card-project-name";
+  projName.textContent = s.project_name;
+  project.append(square, projName);
+  project.title = s.project_name;
+  heading.append(name, project);
   const menu = document.createElement("button");
   menu.className = "row-action card-menu";
   menu.textContent = "⋯";
@@ -3055,8 +3485,18 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
     e.stopPropagation();
     showContextMenu(e, sessionMenuItems(cardRefs(s)));
   });
-  header.append(statusGlyph(s), name, menu);
+  header.append(heading, menu);
   card.appendChild(header);
+
+  // Status chip on its own row under the title — beside the title it crowded
+  // long session names into early ellipsis. The 3px left accent border
+  // reinforces its colour; the board uses the compact chip variant.
+  const chip = sessionStatusChip(s);
+  chip.classList.add("compact");
+  const statusRow = document.createElement("div");
+  statusRow.className = "card-status-row";
+  statusRow.appendChild(chip);
+  card.appendChild(statusRow);
 
   // Branch line under the title — only when it diverges from the title (it's
   // usually just a slug of the name), mirroring the sidebar row. Omitted
@@ -3078,9 +3518,9 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   card.appendChild(diff);
   ensureBoardDiffStat(s.id, diff);
 
-  // Footer: PR badge + ✎/⚠ chips + quick actions ▸ attach (success) / ± review
-  // (info). Keeping the PR badge on this always-present row keeps cards a
-  // consistent shape rather than adding a variable extra line above.
+  // Footer: PR badge + ✎/⚠ chips over an always-visible action row of labeled
+  // buttons — Attach (accent, the primary action) / ± Review (info). The chips
+  // row collapses when empty, so cards without badges lose no vertical budget.
   const footer = document.createElement("div");
   footer.className = "card-footer";
   const chips = document.createElement("span");
@@ -3088,19 +3528,11 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   const prChip = prBadge(s);
   if (prChip) chips.appendChild(prChip);
   if (s.has_pending_comments) {
-    const c = document.createElement("span");
-    c.className = "comment-badge";
-    c.textContent = "✎";
-    c.title = "Has pending review comments";
-    chips.appendChild(c);
+    chips.appendChild(commentsChip(undefined, "Has pending review comments"));
   }
   const blocked = groupOf(s.id)?.pull_blocked;
   if (blocked) {
-    const b = document.createElement("span");
-    b.className = "blocked-badge";
-    b.textContent = "⚠";
-    b.title = `Auto-pull blocked: ${blocked}`;
-    chips.appendChild(b);
+    chips.appendChild(pullBlockedChip(`Auto-pull blocked: ${blocked}`));
   }
   const actions = document.createElement("span");
   actions.className = "card-actions";
@@ -3113,7 +3545,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   };
   const attach = document.createElement("button");
   attach.className = "card-action attach";
-  attach.textContent = "▸";
+  attach.textContent = "Attach";
   attach.title = "Attach";
   attach.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -3121,7 +3553,7 @@ function renderAgentCard(s: SessionRow): HTMLDivElement {
   });
   const review = document.createElement("button");
   review.className = "card-action review";
-  review.textContent = "±";
+  review.textContent = "± Review";
   review.title = "Review diff";
   review.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -3150,9 +3582,10 @@ function cardRefs(s: SessionRow): RowRefs {
   };
 }
 
-// Board column order is GUI-owned (like theme/layout prefs): the backend always
-// returns projects alphabetically, and we re-sort client-side from a persisted
-// id list so drag-to-reorder sticks across reloads without touching CC config.
+// Board column order is GUI-owned (like theme/layout prefs): the canonical order
+// is the "no section" catch-all first, then sections in their configured order.
+// We re-sort client-side from a persisted key list so drag-to-reorder sticks
+// across reloads without touching CC config.
 const BOARD_ORDER_KEY = "cc-board-col-order";
 function loadBoardOrder(): string[] {
   try {
@@ -3164,18 +3597,17 @@ function loadBoardOrder(): string[] {
 }
 let boardColOrder = loadBoardOrder();
 
-/** `groups` re-sorted by the persisted column order. Projects absent from the
- *  saved order (new ones) keep their backend alphabetical position, after the
+/** Section columns re-sorted by the persisted column order. Columns absent from
+ *  the saved order (new sections) keep their canonical position, after the
  *  ranked ones — Array.sort is stable, so unranked relative order is preserved. */
-function orderedGroups(): ProjectGroup[] {
-  const rank = new Map(boardColOrder.map((id, i) => [id, i] as const));
-  return [...groups].sort(
-    (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity),
+function orderedSectionColumns(): BoardSection[] {
+  const rank = new Map(boardColOrder.map((key, i) => [key, i] as const));
+  return [...boardSectionColumns()].sort(
+    (a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity),
   );
 }
 
 /** The column to drop before, given the pointer's x (null = past the last). */
-let draggingColId: string | null = null;
 function colBeforeX(x: number): HTMLElement | null {
   const cols = [...boardColumnsEl.querySelectorAll<HTMLElement>(".board-col:not(.dragging)")];
   for (const c of cols) {
@@ -3202,118 +3634,99 @@ function clearColDropMarker(): void {
   }
 }
 
-/** One project column: header (color square + name + visible count + +/$) over
- *  a body of stacked agent cards. Rendered for every project incl. sessionless. */
-function renderBoardColumn(g: ProjectGroup): HTMLDivElement {
+/** Remove the card-drop highlight from every column. */
+function clearCardDropTargets(): void {
+  for (const c of boardColumnsEl.querySelectorAll(".board-col.card-drop-target")) {
+    c.classList.remove("card-drop-target");
+  }
+}
+
+/** One section column: header (name + visible count) over a body of stacked
+ *  agent cards. Rendered for every section incl. the "no section" catch-all. */
+function renderBoardColumn(sec: BoardSection): HTMLDivElement {
   const col = document.createElement("div");
   col.className = "board-col";
-  col.dataset.project = g.id;
+  col.dataset.section = sec.key; // read by the card drag (renderAgentCard) as the drop target
 
   const header = document.createElement("div");
   header.className = "board-col-header";
-  // Drag the header to reorder columns. Commit lands on `drop` (see the
-  // boardColumnsEl listeners), so an Esc-cancelled drag leaves the order intact.
-  header.draggable = true;
-  header.addEventListener("dragstart", (e) => {
-    draggingColId = g.id;
+  // Drag the header to reorder columns within the strip. The new order commits
+  // on release over the strip, so an Esc-cancelled drag leaves it intact.
+  draggable(header, () => {
     col.classList.add("dragging");
-    e.dataTransfer?.setData("text/plain", g.id);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    return {
+      onMove(x, y) {
+        if (document.elementFromPoint(x, y)?.closest("#board-columns")) {
+          showColDropMarker(colBeforeX(x));
+        } else {
+          clearColDropMarker();
+        }
+      },
+      onDrop(x, y) {
+        if (!document.elementFromPoint(x, y)?.closest("#board-columns")) return;
+        const beforeKey = colBeforeX(x)?.dataset.section ?? null;
+        const order = orderedSectionColumns()
+          .map((s) => s.key)
+          .filter((key) => key !== sec.key);
+        const idx = beforeKey ? order.indexOf(beforeKey) : order.length;
+        order.splice(idx, 0, sec.key);
+        boardColOrder = order;
+        localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(order));
+        renderBoardColumns();
+      },
+      onEnd() {
+        col.classList.remove("dragging");
+        clearColDropMarker();
+      },
+    };
   });
-  header.addEventListener("dragend", () => {
-    draggingColId = null;
-    col.classList.remove("dragging");
-    clearColDropMarker(); // in case the drop landed outside the strip
-  });
-  const square = document.createElement("span");
-  square.className = `proj-square ${projClass(g.id)}`;
   const name = document.createElement("span");
   name.className = "board-col-name";
-  name.textContent = g.name;
-  name.title = g.name;
+  name.textContent = sec.name;
+  name.title = sec.name;
 
-  const visible = boardVisibleSessions(g);
   const count = document.createElement("span");
   count.className = "board-col-count";
-  count.textContent = String(visible.length);
+  count.textContent = String(sec.sessions.length);
 
-  const add = document.createElement("button");
-  add.className = "proj-btn add";
-  add.textContent = "+";
-  add.title = "New session in this project";
-  add.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void createSessionInProject(g);
-  });
-  const shell = document.createElement("button");
-  shell.className = "proj-btn shell";
-  shell.textContent = "$";
-  shell.title = "Project shell";
-  shell.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void openProjectShell(g);
-  });
-  header.append(square, name, count, add, shell);
+  header.append(name, count);
   col.appendChild(header);
 
   const body = document.createElement("div");
   body.className = "board-col-body";
-  body.dataset.project = g.id;
-  for (const s of visible) body.appendChild(renderAgentCard(s));
+  body.dataset.section = sec.key;
+  for (const s of sec.sessions) body.appendChild(renderAgentCard(s));
   col.appendChild(body);
   return col;
 }
 
-/** Filter bar: pill filters + name search + primary "New session". */
+/** Filter bar: Hide-empty toggle + project filter + name search + primary
+ *  "New session". */
 function renderBoardFilterBar(): void {
   boardFilterEl.innerHTML = "";
 
   const pills = document.createElement("div");
   pills.className = "board-pills";
-  const defs: { key: typeof boardFilter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "review", label: "Needs review" },
-    { key: "running", label: "Running" },
-    { key: "blocked", label: "Blocked" },
-  ];
-  for (const { key, label } of defs) {
-    const pill = document.createElement("button");
-    pill.className = "board-pill";
-    pill.textContent = label;
-    pill.classList.toggle("active", boardFilter === key);
-    pill.addEventListener("click", () => {
-      boardFilter = key;
-      renderBoardFilterBar();
-      renderBoardColumns();
-    });
-    pills.appendChild(pill);
-  }
 
-  // One pill per configured custom section. Selecting toggles a section filter
-  // that narrows cards to that section (composes with the base pills + search).
-  for (const sectionName of sectionNames) {
-    const pill = document.createElement("button");
-    pill.className = "board-pill section";
-    pill.textContent = sectionName;
-    pill.classList.toggle("active", boardSectionFilter === sectionName);
-    pill.addEventListener("click", () => {
-      boardSectionFilter = boardSectionFilter === sectionName ? null : sectionName;
-      renderBoardFilterBar();
-      renderBoardColumns();
-    });
-    pills.appendChild(pill);
-  }
+  // Attention summary at the top of the Board, mirroring the title-bar pill
+  // (updateTitleBarCounts fills both). Hidden while nothing waits.
+  boardAttentionEl = document.createElement("span");
+  boardAttentionEl.className = "board-attention hidden";
+  pills.appendChild(boardAttentionEl);
 
-  // Toggle: hide project columns with zero sessions.
+  // Toggle: hide section columns with zero visible cards.
   const hideEmpty = document.createElement("button");
   hideEmpty.className = "board-pill hide-empty";
   hideEmpty.textContent = "Hide empty";
-  hideEmpty.title = "Hide project columns with no sessions";
+  hideEmpty.title = "Hide section columns with no cards";
   hideEmpty.classList.toggle("active", hideEmptyColumns);
   hideEmpty.addEventListener("click", () => {
     hideEmptyColumns = !hideEmptyColumns;
     localStorage.setItem("cc-board-hide-empty", hideEmptyColumns ? "1" : "0");
     renderBoardFilterBar();
+    // The rebuild recreated the attention pill blank — refill it now rather
+    // than leaving it empty until the next poll snapshot.
+    updateTitleBarCounts();
     renderBoardColumns();
   });
   pills.appendChild(hideEmpty);
@@ -3334,61 +3747,136 @@ function renderBoardFilterBar(): void {
   create.title = "New session";
   create.addEventListener("click", (e) => showContextMenu(e, projectPickerItems()));
 
-  boardFilterEl.append(pills, search, create);
+  boardFilterEl.append(pills, buildProjectFilter(), search, create);
+}
+
+/** Multiselect project filter: a button summarising the selection, over a
+ *  popover of per-project checkboxes with Select-all / Clear-all helpers.
+ *  Defaults to all projects; the selection lives in `boardProjectFilter`. */
+function buildProjectFilter(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "board-project-filter";
+
+  const btn = document.createElement("button");
+  btn.className = "board-pill board-project-btn";
+  btn.title = "Filter by project";
+
+  const panel = document.createElement("div");
+  panel.className = "board-project-panel hidden";
+
+  const updateSummary = (): void => {
+    const total = allProjectIds().length;
+    const sel = selectedProjectIds();
+    btn.classList.toggle("active", sel.size !== total);
+    let label: string;
+    if (sel.size === total) label = "All projects";
+    else if (sel.size === 0) label = "No projects";
+    else if (sel.size === 1) label = groups.find((g) => sel.has(g.id))?.name ?? "1 project";
+    else label = `${sel.size} projects`;
+    btn.textContent = `${label} ▾`;
+  };
+
+  const commit = (next: Set<string> | null): void => {
+    boardProjectFilter = next && next.size === allProjectIds().length ? null : next;
+    updateSummary();
+    renderBoardColumns();
+  };
+
+  const rebuildPanel = (): void => {
+    panel.innerHTML = "";
+    const tools = document.createElement("div");
+    tools.className = "board-project-tools";
+    const selectAll = document.createElement("button");
+    selectAll.className = "board-project-tool";
+    selectAll.textContent = "Select all";
+    selectAll.addEventListener("click", (e) => {
+      e.stopPropagation();
+      commit(null);
+      rebuildPanel();
+    });
+    const clearAll = document.createElement("button");
+    clearAll.className = "board-project-tool";
+    clearAll.textContent = "Clear all";
+    clearAll.addEventListener("click", (e) => {
+      e.stopPropagation();
+      commit(new Set());
+      rebuildPanel();
+    });
+    tools.append(selectAll, clearAll);
+    panel.appendChild(tools);
+
+    const selected = selectedProjectIds();
+    for (const g of groups) {
+      const row = document.createElement("label");
+      row.className = "board-project-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selected.has(g.id);
+      cb.addEventListener("change", () => {
+        const sel = selectedProjectIds();
+        if (cb.checked) sel.add(g.id);
+        else sel.delete(g.id);
+        commit(sel);
+      });
+      const square = document.createElement("span");
+      square.className = `proj-square ${projClass(g.id)}`;
+      const name = document.createElement("span");
+      name.className = "board-project-name";
+      name.textContent = g.name;
+      row.append(cb, square, name);
+      panel.appendChild(row);
+    }
+  };
+
+  const onDocClick = (e: MouseEvent): void => {
+    if (!wrap.contains(e.target as Node)) close();
+  };
+  const close = (): void => {
+    panel.classList.add("hidden");
+    document.removeEventListener("click", onDocClick, true);
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains("hidden")) {
+      rebuildPanel();
+      panel.classList.remove("hidden");
+      document.addEventListener("click", onDocClick, true);
+    } else {
+      close();
+    }
+  });
+
+  updateSummary();
+  wrap.append(btn, panel);
+  return wrap;
 }
 
 /** Rebuild the columns from the current snapshot + filter + search. */
 function renderBoardColumns(): void {
   // Columns are rebuilt wholesale on every snapshot tick (~2s); capture the
-  // per-column vertical scroll (keyed by project) + the strip's horizontal
+  // per-column vertical scroll (keyed by section) + the strip's horizontal
   // scroll so an in-progress session doesn't yank the view back to the top.
   const prevScroll = new Map<string, number>();
   for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
-    if (body.dataset.project) prevScroll.set(body.dataset.project, body.scrollTop);
+    if (body.dataset.section) prevScroll.set(body.dataset.section, body.scrollTop);
   }
   const prevScrollLeft = boardColumnsEl.scrollLeft;
 
   boardCardRefs.clear();
   boardColumnsEl.innerHTML = "";
-  for (const g of orderedGroups()) {
-    // "Hide empty" hides columns with no VISIBLE cards, so a project whose
-    // sessions are all filtered out (e.g. by the section filter) drops too.
-    if (hideEmptyColumns && boardVisibleSessions(g).length === 0) continue;
-    boardColumnsEl.appendChild(renderBoardColumn(g));
+  for (const sec of orderedSectionColumns()) {
+    // "Hide empty" hides columns with no VISIBLE cards, so a section whose
+    // sessions are all filtered out drops too.
+    if (hideEmptyColumns && sec.sessions.length === 0) continue;
+    boardColumnsEl.appendChild(renderBoardColumn(sec));
   }
 
   for (const body of boardColumnsEl.querySelectorAll<HTMLElement>(".board-col-body")) {
-    const top = body.dataset.project ? prevScroll.get(body.dataset.project) : undefined;
+    const top = body.dataset.section ? prevScroll.get(body.dataset.section) : undefined;
     if (top) body.scrollTop = top;
   }
   boardColumnsEl.scrollLeft = prevScrollLeft;
 }
-
-// Column drag-to-reorder: only the strip calls preventDefault on dragover (so it
-// is the drop target), and the new order is committed on `drop` against the full
-// ordered group list — inserting before a visible column is well-defined even
-// when "Hide empty" omits some columns, and a dropped-at-end column lands last.
-boardColumnsEl.addEventListener("dragover", (e) => {
-  if (!draggingColId) return;
-  e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  showColDropMarker(colBeforeX(e.clientX));
-});
-boardColumnsEl.addEventListener("drop", (e) => {
-  if (!draggingColId) return;
-  e.preventDefault();
-  clearColDropMarker();
-  const beforeId = colBeforeX(e.clientX)?.dataset.project ?? null;
-  const order = orderedGroups()
-    .map((g) => g.id)
-    .filter((id) => id !== draggingColId);
-  const idx = beforeId ? order.indexOf(beforeId) : order.length;
-  order.splice(idx, 0, draggingColId);
-  boardColOrder = order;
-  localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(order));
-  draggingColId = null;
-  renderBoardColumns();
-});
 
 /** Full board render. The filter bar is rebuilt only when needed (it owns the
  *  live search input); columns rebuild on every snapshot tick. Preserving the
@@ -3404,19 +3892,14 @@ function applySnapshot(snap: Snapshot): void {
   groups = snap.groups;
   viewMode = snap.view_mode;
   sections = snap.sections;
-  const prevSectionNames = sectionNames;
   sectionNames = snap.section_names;
-  // A section filter referencing a now-removed section can no longer match.
-  if (boardSectionFilter && !sectionNames.includes(boardSectionFilter)) {
-    boardSectionFilter = null;
-  }
-  // Rebuild the (otherwise sticky) filter bar when the section pills change.
-  if (prevSectionNames.join(" ") !== sectionNames.join(" ")) {
-    boardFilterEl.innerHTML = "";
-  }
-  updateTitleBarCounts();
+  commanderEnabled = snap.commander.enabled;
   renderSidebar();
   renderBoard();
+  // After renderBoard: the board's attention pill is created with the filter
+  // bar, and updateTitleBarCounts fills both pills.
+  updateTitleBarCounts();
+  renderOnboarding();
   updateTabGlyphs();
   renderCommander(snap.commander);
 }
@@ -3425,23 +3908,30 @@ function applySnapshot(snap: Snapshot): void {
 
 registerPaletteProvider(() =>
   groups.flatMap((g) =>
-    g.sessions.map((s) => ({
-      kind: "session" as const,
-      label: s.title,
-      hint: `${g.name} · ${s.branch}`,
-      dotClass: statusGlyph(s).className.split(" ").find((c) => c.startsWith("dot-")) ?? "",
-      project: g.name,
-      state: humanState(s),
-      action: () => void openTerminal(s),
-    })),
+    g.sessions.map((s) => {
+      const key = sessionStateKey(s);
+      return {
+        kind: "session" as const,
+        label: s.title,
+        hint: `${g.name} · ${s.branch}`,
+        projClass: projClass(s.project_id),
+        project: g.name,
+        state: sessionStateWord(s, key),
+        stateTone: stateChipInfo(key).tone,
+        action: () => void openTerminal(s),
+      };
+    }),
   ),
 );
 
 registerPaletteProvider(() => [
-  { label: "Cycle view mode", hint: "command", action: cycleViewMode },
+  { label: "Cycle view mode", hint: "command", icon: "⇄", iconTone: "info", shortcut: kb("toggle_view_mode"), action: cycleViewMode },
   {
     label: "Add project…",
     hint: "command",
+    icon: "＋",
+    iconTone: "success",
+    shortcut: kb("new_project"),
     action: () => {
       topInput = "add";
       renderSidebar();
@@ -3450,6 +3940,9 @@ registerPaletteProvider(() => [
   {
     label: "Scan directory for repos…",
     hint: "command",
+    icon: "⌕",
+    iconTone: "success",
+    shortcut: kb("scan_directory"),
     action: () => {
       topInput = "scan";
       renderSidebar();
@@ -3458,11 +3951,16 @@ registerPaletteProvider(() => [
   {
     label: "Delete merged-PR sessions…",
     hint: "command",
+    icon: "⌦",
+    iconTone: "danger",
+    shortcut: kb("delete_merged_pr_sessions"),
     action: () => void deleteMergedSessions(),
   },
   {
     label: "Refresh PR status",
     hint: "command",
+    icon: "↻",
+    iconTone: "info",
     action: () => {
       toast("Refreshing PR status…");
       void invoke("refresh_pr_status").catch((e) => toast(`${e}`, "error"));
@@ -3471,29 +3969,37 @@ registerPaletteProvider(() => [
   {
     label: "Attach commander session",
     hint: "command",
+    icon: "◈",
+    iconTone: "info",
+    shortcut: kb("open_commander"),
     action: () => commanderChip.click(),
   },
-  { label: "Settings", hint: "command", action: () => void openSettings() },
-  { label: "Help", hint: "command", action: toggleHelp },
+  { label: "Open file explorer", hint: "command", icon: "▤", iconTone: "info", shortcut: "⌘E", action: openFileExplorer },
+  { label: "Settings", hint: "command", icon: "⚙", iconTone: "dim", shortcut: kb("show_settings"), action: () => void openSettings() },
+  { label: "Help", hint: "command", icon: "?", iconTone: "dim", shortcut: kb("show_help"), action: toggleHelp },
 ]);
 
 // Theme commands: the two slot pickers (open a modal listing that appearance's
 // themes, with live preview), the mode toggles, and custom-theme management.
 registerPaletteProvider(() => [
-  { label: "Theme: Set dark theme…", hint: "command", action: () => openThemeModal("dark") },
-  { label: "Theme: Set light theme…", hint: "command", action: () => openThemeModal("light") },
-  { label: "Theme: Dark mode", hint: "force dark", action: () => setMode("dark") },
-  { label: "Theme: Light mode", hint: "force light", action: () => setMode("light") },
-  { label: "Theme: Follow system", hint: "follow OS appearance", action: () => setMode("system") },
-  { label: "Theme: Reload custom themes", hint: "command", action: () => void loadCustomThemes(true) },
+  { label: "Theme: Set dark theme…", hint: "command", icon: "◐", iconTone: "dim", action: () => openThemeModal("dark") },
+  { label: "Theme: Set light theme…", hint: "command", icon: "◐", iconTone: "dim", action: () => openThemeModal("light") },
+  { label: "Theme: Dark mode", hint: "force dark", icon: "◐", iconTone: "dim", action: () => setMode("dark") },
+  { label: "Theme: Light mode", hint: "force light", icon: "◐", iconTone: "dim", action: () => setMode("light") },
+  { label: "Theme: Follow system", hint: "follow OS appearance", icon: "◐", iconTone: "dim", action: () => setMode("system") },
+  { label: "Theme: Reload custom themes", hint: "command", icon: "◐", iconTone: "dim", action: () => void loadCustomThemes(true) },
   {
     label: "Theme: Export current theme as template…",
     hint: "command",
+    icon: "◐",
+    iconTone: "dim",
     action: () => void exportThemeTemplate(),
   },
   {
     label: "Theme: Open themes folder…",
     hint: "command",
+    icon: "◐",
+    iconTone: "dim",
     action: () => void invoke("open_themes_dir").catch((e) => toast(`${e}`, "error")),
   },
 ]);
@@ -3545,6 +4051,16 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
       const s = targetSession();
       const g = s ? groupOf(s.id) : groups[0];
       if (!g) return;
+      // In the Status grouping the create-input lives under the cursor
+      // session's project sub-header within its tier, so scope the key to it.
+      if (statusGrouping && s) {
+        const tier = sessionTier(s);
+        const label = STATUS_TIERS.find((t) => t.tier === tier)!.label;
+        newSessionProject = sectionCreateKey(label, g.id);
+        collapsed.delete(`tier:${tier}`);
+        renderSidebar();
+        return;
+      }
       // In a section view the create-input lives under the cursor session's
       // project sub-header within its section bucket, so scope the key to it.
       if (SECTION_VIEW() && s && sections) {
@@ -3673,7 +4189,13 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
     label: "Collapse/expand cursor group",
     run: () => {
       const s = targetSession();
-      if (SECTION_VIEW() && sections) {
+      if (statusGrouping) {
+        // Cursor session's tier, else the first tier that actually rendered.
+        const tier = s
+          ? sessionTier(s)
+          : STATUS_TIERS.find((t) => groups.some((g) => g.sessions.some((x) => sessionTier(x) === t.tier)))?.tier;
+        if (tier) toggleCollapsed(`tier:${tier}`);
+      } else if (SECTION_VIEW() && sections) {
         const b = s ? sections.find((b) => b.session_ids.includes(s.id)) : sections[0];
         if (b) toggleCollapsed(`sect:${b.name}`);
       } else {
@@ -3696,6 +4218,13 @@ const KEY_ACTIONS: Record<string, { label: string; run: () => void }> = {
 // GUI dispatch ignores the Shift bit for single chars — so the commander default
 // binding both "Shift-?" and "?" lists the same physical key twice. Drop the
 // redundant "Shift-" prefix and de-dupe so each key shows once.
+/** Formatted glyphs for an action's primary config binding, for menu/palette
+ *  shortcut hints. Undefined when the action is unbound or unparseable. */
+function kb(action: string): string | undefined {
+  const first = (loadedBindings[action] ?? [])[0];
+  return (first && formatBinding(first)) || undefined;
+}
+
 function helpKeyLabel(keys: string[]): string {
   const seen = new Set(keys.map((k) => k.replace(/^Shift-(?=\S$)/, "")));
   return [...seen].join(", ");

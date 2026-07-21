@@ -18,7 +18,7 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
     [
       ["⋯ menu", "Add project, scan directory, delete merged-PR sessions"],
       ["Path input", "Type to autocomplete dirs (Tab completes, ↑/↓ pick, Enter drills in/commits, Browse… opens picker)"],
-      ["GROUP BY", "Segmented control: switch sidebar grouping (Sections / Projects)"],
+      ["GROUP BY", "Segmented control: switch sidebar grouping (Sections / Projects / Status)"],
       ["Drag row → section", "Move a session to a section (drop on In Progress to unpin)"],
       ["● (yellow)", "Unread: agent finished while you were away"],
       ["✎", "Session has pending review comments"],
@@ -32,9 +32,22 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
       ["Click line", "Select for comment (shift-click extends, Esc clears)"],
       ["Cmd/Ctrl+Enter", "Save comment"],
       ["↑/↓ or Ctrl-P/N", "Previous / next file"],
-      ["○ / ✓", "Toggle file reviewed (bands the row)"],
-      ["Apply (n)", "Send staged comments to the agent"],
+      ["○ / ✓", "Toggle file reviewed (bands the row, fills the ring)"],
+      ["Apply N comments →", "Send staged comments to the agent"],
       ["↻ / Esc", "Refresh diff / close"],
+    ],
+  ],
+  [
+    "File explorer",
+    [
+      ["Cmd+E", "Open/close the file explorer for the active session's repo"],
+      ["↑/↓ or j/k", "Move the cursor"],
+      ["Enter / → / l", "Open a folder, or reference the file as @path in the terminal"],
+      ["Backspace / ← / h", "Up to the parent folder"],
+      ["/", "Filter the current folder (type to narrow, Esc clears)"],
+      [".", "Toggle hidden (dot) files"],
+      ["Click / double-click", "Move cursor / open"],
+      ["Esc", "Close"],
     ],
   ],
   [

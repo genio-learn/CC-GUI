@@ -88,8 +88,9 @@ cd src-tauri
 cargo update -p claude-commander-core
 ```
 
-(`claude-commander-core` is the library crate inside the upstream workspace;
-`src-tauri/Cargo.toml` aliases it back to the `claude-commander` name.)
+(`claude-commander-core` is the library crate inside the upstream workspace —
+since v0.24.0 the repo is a workspace and the TUI binary owns the
+`claude-commander` name.)
 
 Commit the `Cargo.toml` + `Cargo.lock` change together so the pinned commit is
 recorded.

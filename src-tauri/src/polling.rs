@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
-use claude_commander::git::{
+use claude_commander_core::git::{
     check_pr_for_branch, is_gh_available, run_project_pull, PrCheckResult, PullOutcome,
 };
-use claude_commander::session::apply_assignment;
+use claude_commander_core::session::apply_assignment;
 use futures::StreamExt;
 
 use crate::service::service;
@@ -27,6 +27,20 @@ pub static PULL_BLOCKED: LazyLock<Mutex<HashMap<String, String>>> =
 pub fn spawn_polling_loops() {
     spawn_pr_loop();
     spawn_project_pull_loop();
+    spawn_hibernation();
+}
+
+/// Start claude-commander's idle-hibernation policy loop. The service no-ops
+/// unless `hibernate_enabled` is set with a non-zero check interval, so this is
+/// safe to call unconditionally at startup — it mirrors how the TUI starts the
+/// same loop for a long-lived frontend. Hibernated sessions surface as a
+/// distinct sidebar state with a Wake action (see `groups::SessionRow`).
+fn spawn_hibernation() {
+    tauri::async_runtime::spawn(async move {
+        if let Ok(svc) = service().await {
+            svc.start_hibernation_loop();
+        }
+    });
 }
 
 /// True while a manual PR-status refresh is running, so a second trigger is a
@@ -81,9 +95,9 @@ fn spawn_pr_loop() {
     });
 }
 
-async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
+async fn poll_prs_once(svc: &claude_commander_core::api::CommanderService) {
     let sessions: Vec<(
-        claude_commander::session::SessionId,
+        claude_commander_core::session::SessionId,
         String,
         std::path::PathBuf,
     )> = {
@@ -91,7 +105,7 @@ async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
         state
             .sessions
             .values()
-            .filter(|s| s.status != claude_commander::session::SessionStatus::Creating)
+            .filter(|s| s.status != claude_commander_core::session::SessionStatus::Creating)
             .filter_map(|s| {
                 let project = state.projects.get(&s.project_id)?;
                 Some((s.id, s.branch.clone(), project.repo_path.clone()))
@@ -163,7 +177,7 @@ async fn poll_prs_once(svc: &claude_commander::api::CommanderService) {
         state
             .sessions
             .values()
-            .filter(|s| s.status == claude_commander::session::SessionStatus::Running)
+            .filter(|s| s.status == claude_commander_core::session::SessionStatus::Running)
             .map(|s| (s.tmux_session_name.clone(), svc.status_bar_info(s, &state)))
             .collect()
     };

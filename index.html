@@ -11,6 +11,7 @@
         <span class="tb-mark"></span>
         <span class="tb-name">claude-commander</span>
         <span id="tb-count" class="tb-pill"></span>
+        <span id="tb-attention" class="tb-pill attention hidden"></span>
       </div>
       <div class="tb-segment">
         <button id="tb-console">Console</button>
@@ -38,6 +39,38 @@
         <div id="terminals">
           <div id="placeholder">Select a session to attach.</div>
         </div>
+        <div id="onboarding" class="hidden">
+          <div class="onboarding-hero">
+            <div class="onboarding-title">Run your agents, side by side.</div>
+            <p class="onboarding-sub">
+              Point claude-commander at a git repo and it spins up parallel Claude Code
+              sessions in isolated worktrees. Add your first project to begin.
+            </p>
+            <div class="onboarding-cards">
+              <div class="onboarding-card primary">
+                <div class="onboarding-icon accent">＋</div>
+                <div class="onboarding-card-title">1 · Add a project</div>
+                <p class="onboarding-card-sub">Choose a repo folder. It becomes a column of sessions.</p>
+                <button id="onboarding-add-project" class="onboarding-cta primary">Choose folder…</button>
+              </div>
+              <div class="onboarding-card">
+                <div class="onboarding-icon success">❯</div>
+                <div class="onboarding-card-title">2 · Start a session</div>
+                <p class="onboarding-card-sub">Name a task; an agent starts in a fresh branch + worktree.</p>
+                <span class="onboarding-cta muted">After a project</span>
+              </div>
+              <div class="onboarding-card">
+                <div class="onboarding-icon info">◈</div>
+                <div class="onboarding-card-title">3 · Meet commander</div>
+                <p class="onboarding-card-sub">One always-on session to orchestrate the rest.</p>
+                <button id="onboarding-commander" class="onboarding-cta outline">Attach ⏎</button>
+              </div>
+            </div>
+            <div class="onboarding-hint">
+              Prefer the keyboard? Press <span class="onboarding-kbd">⌘K</span> any time to jump or run a command.
+            </div>
+          </div>
+        </div>
       </main>
       <div id="review" class="hidden">
         <header>
@@ -45,13 +78,34 @@
           <span id="review-base"></span>
           <span class="spacer"></span>
           <span id="review-status"></span>
-          <button id="review-apply" class="row-action hidden" title="Send staged comments to the agent"></button>
           <button id="review-refresh" class="row-action" title="Refresh diff">↻</button>
           <button id="review-close" title="Close (Esc)">×</button>
         </header>
         <div id="review-body">
-          <div id="review-files"></div>
+          <div id="review-sidebar">
+            <div id="review-progress"></div>
+            <div id="review-files"></div>
+          </div>
           <div id="review-diff"></div>
+        </div>
+        <div id="review-apply-bar" class="hidden">
+          <span id="review-apply-summary"></span>
+          <button id="review-apply" class="apply-btn" title="Send staged comments to the agent"></button>
+        </div>
+      </div>
+      <div id="file-explorer" class="hidden">
+        <header>
+          <span id="fx-crumbs"></span>
+          <span class="spacer"></span>
+          <span id="fx-hidden-hint" class="fx-hint" title="Toggle hidden files (.)"></span>
+          <button id="fx-close" title="Close (Esc)">×</button>
+        </header>
+        <div id="fx-list" tabindex="-1"></div>
+        <div id="fx-status">
+          <span id="fx-hint">↵ open folder · reference file as @path</span>
+          <span id="fx-filter" class="hidden"></span>
+          <span class="spacer"></span>
+          <span id="fx-count"></span>
         </div>
       </div>
       <aside id="detail" class="hidden">
@@ -60,7 +114,12 @@
           <span id="detail-title"></span>
           <button id="detail-close" title="Close">×</button>
         </header>
+        <div id="detail-actions">
+          <button id="detail-review" class="detail-action primary">± Review diff</button>
+          <button id="detail-pr" class="detail-action">Open PR</button>
+        </div>
         <dl id="detail-meta"></dl>
+        <div id="detail-changes-label"></div>
         <div id="detail-diffstat"></div>
         <div id="detail-summary-label">
           <span>AI summary</span>
@@ -68,10 +127,6 @@
         </div>
         <div id="detail-summary"></div>
         <div id="detail-tags"></div>
-        <footer id="detail-footer">
-          <button id="detail-review" class="detail-action primary">± Review diff</button>
-          <button id="detail-pr" class="detail-action">Open PR</button>
-        </footer>
       </aside>
       <div id="board" class="hidden">
         <div id="board-filter"></div>
@@ -83,7 +138,7 @@
             <span id="board-dock-branch"></span>
             <span class="spacer"></span>
             <button id="board-dock-expand" class="row-action" title="Fullscreen">⤢</button>
-            <button id="board-dock-close" class="row-action" title="Detach">×</button>
+            <button id="board-dock-close" class="row-action" title="Close preview">×</button>
           </div>
           <div id="board-dock-surface">
             <div id="board-dock-placeholder">No session attached. Press ▸ on a card to attach.</div>

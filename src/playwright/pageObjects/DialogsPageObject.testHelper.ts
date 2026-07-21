@@ -46,6 +46,45 @@ export class DialogsPageObject extends AppPageObject {
     });
   }
 
+  /** Open the delete-session dialog; resolves once it's on screen. */
+  openDelete(name: string, branch: string): Promise<void> {
+    return this.step(`openDelete: ${name}`, async () => {
+      await this.page.evaluate(
+        ([n, b, pending]) => {
+          (window as unknown as { __dlg: unknown }).__dlg = pending;
+          window.__CC_DIALOGS__.deleteSessionDialog(n, b).then((r) => {
+            (window as unknown as { __dlg: unknown }).__dlg = r;
+          });
+        },
+        [name, branch, PENDING] as const,
+      );
+      await expect(this.overlay).toBeVisible();
+    });
+  }
+
+  /** The delete dialog's consequence checklist rows, top to bottom. */
+  deleteChecklist(): Locator {
+    return this.overlay.locator(".delete-check");
+  }
+
+  /** The ✓ "kept" line of the delete checklist (the truthful branch line). */
+  deleteKeepLine(): Locator {
+    return this.deleteChecklist().filter({ has: this.page.locator(".check-keep") });
+  }
+
+  /** The delete dialog's icon badge (side-by-side with the titles). */
+  deleteIcon(): Locator {
+    return this.overlay.locator(".delete-head .delete-icon");
+  }
+
+  deleteHeading(): Locator {
+    return this.overlay.locator(".delete-heading");
+  }
+
+  deleteName(): Locator {
+    return this.overlay.locator(".delete-name");
+  }
+
   clickConfirm(): Promise<void> {
     return this.step("clickConfirm", () => this.confirmBtn.click());
   }

@@ -41,6 +41,16 @@ test("renames a session inline", async ({ sidebar }) => {
   expect(stored[0].title).toBe("fix logout bug");
 });
 
+test("context menu names the Stop/Delete consequence on each row", async ({ sidebar }) => {
+  await sidebar.openContextMenu("fix login bug");
+  await expect(sidebar.menuItemText("Stop")).resolves.toContain(
+    "stops the process, keeps the worktree",
+  );
+  await expect(sidebar.menuItemText("Delete session")).resolves.toContain(
+    "removes worktree + tmux, keeps the branch",
+  );
+});
+
 test("delete optimistically removes the row and the fake confirms it gone", async ({
   sidebar,
 }) => {
@@ -96,16 +106,16 @@ test.describe("glyphs and badges", () => {
     },
   });
 
-  test("shows unread, comment, blocked, and status glyphs", async ({ sidebar }) => {
-    // Unread (finished-while-away) surfaces as the dot's "finished" colour,
-    // overriding the underlying agent state.
-    expect(await sidebar.dotClass("needs attention")).toContain("dot-finished");
-    // Mauve ✎ pending-comments chip.
+  test("shows unread, comment, blocked, and status chips", async ({ sidebar }) => {
+    // Unread (finished-while-away) surfaces as the "Done" state, overriding the
+    // underlying agent state.
+    expect(await sidebar.statusLabel("needs attention")).toBe("Done");
+    // ✎ pending-comments chip.
     await expect(sidebar.commentBadge("needs attention")).toBeVisible();
-    // Maroon ⚠ chip on rows of an auto-pull-blocked project.
+    // ⚠ pull-blocked chip on rows of an auto-pull-blocked project.
     await expect(sidebar.blockedBadge("needs attention")).toBeVisible();
-    // A stopped session shows the stopped dot.
-    expect(await sidebar.dotClass("stopped one")).toContain("dot-stopped");
+    // A stopped session reads "Stopped".
+    expect(await sidebar.statusLabel("stopped one")).toBe("Stopped");
   });
 });
 

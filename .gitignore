@@ -15,6 +15,7 @@ docs/PLAN.md
 
 # UI overhaul design brief archive (the unzipped contents are committed)
 docs/ui-overhaul/*.zip
+docs/ui-refactor/*.zip
 
 # Local dependency override (copy from .cargo/config.toml.example)
 .cargo/config.toml

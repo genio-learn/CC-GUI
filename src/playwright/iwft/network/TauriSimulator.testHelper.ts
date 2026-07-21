@@ -6,9 +6,9 @@
 
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import { confirmDialog, promptDialog } from "../../../toast";
+import { confirmDialog, promptDialog, deleteSessionDialog } from "../../../toast";
 import type { Comment, ReviewSnapshot } from "../../../review/model";
-import type { Seed, SessionRow, Snapshot } from "./types.testHelper";
+import type { FsEntry, Seed, SessionRow, Snapshot } from "./types.testHelper";
 
 type CreateCommentArgs = {
   id: string;
@@ -35,7 +35,12 @@ class TauriSimulator {
   private nextProject = 1;
   private dirs: string[];
   private browsePath: string | null;
+  private fileTree: Record<string, FsEntry[]>;
+  private diffStats: Record<string, string>;
   private openedUrls: string[] = [];
+  // Bytes the frontend wrote to a PTY (write_pty) — the file explorer's @path
+  // reference lands here, in order.
+  private ptyWrites: { tmuxSession: string; data: string }[] = [];
   // Section moves the frontend actually dispatched (a no-op drop short-circuits
   // before invoke, so this stays empty — how a negative test tells them apart).
   private sectionMoves: { id: string; section: string | null }[] = [];
@@ -48,6 +53,8 @@ class TauriSimulator {
     this.customThemes = seed.customThemes ?? [];
     this.dirs = seed.dirs ?? [];
     this.browsePath = seed.browsePath ?? null;
+    this.fileTree = seed.fileTree ?? {};
+    this.diffStats = seed.diffStats ?? {};
     this.comments = {};
     this.reviewed = {};
     for (const [id, review] of Object.entries(seed.reviews)) {
@@ -105,6 +112,12 @@ class TauriSimulator {
     return this.openedUrls;
   }
 
+  /** Bytes written to PTYs via write_pty, in order — what a file-explorer test
+   *  asserts the `@path` reference against. */
+  getPtyWrites(): { tmuxSession: string; data: string }[] {
+    return this.ptyWrites;
+  }
+
   // ----- event push (the backend's role; available for sidebar scenarios) -----
   async pushSnapshot(snapshot: Snapshot): Promise<void> {
     this.snapshot = snapshot;
@@ -143,10 +156,14 @@ class TauriSimulator {
         return this.renameSession(args.id as string, args.title as string);
       case "delete_session":
         return this.deleteSession(args.id as string);
+      case "restart_session":
+        return this.restartSession(args.id as string);
       case "move_to_section":
         return this.moveToSection(args.id as string, (args.section as string | null) ?? null);
       case "merged_pr_sessions":
         return this.mergedPrSessions();
+      case "get_session_detail":
+        return this.sessionDetail(args.id as string);
       // ----- add project / scan / path autocomplete -----
       case "complete_path":
         return this.completePath(args.partial as string);
@@ -164,17 +181,26 @@ class TauriSimulator {
         return `cc-${args.id as string}-sh`;
       case "prepare_project_shell":
         return `cc-${args.id as string}-proj-sh`;
+      case "prepare_commander":
+        return "cc-commander";
       case "attach":
         this.ptyChannels[args.tmuxSession as string] = {
           channel: args.onData as { id: number },
           index: 0,
         };
         return null;
+      case "write_pty":
+        this.ptyWrites.push({
+          tmuxSession: args.tmuxSession as string,
+          data: args.data as string,
+        });
+        return null;
       case "restart_fresh":
       case "resize_pty":
-      case "write_pty":
       case "detach":
         return null;
+      case "list_session_dir":
+        return this.listSessionDir(args.subPath as string, args.showHidden as boolean);
       case "open_external":
         this.openedUrls.push(args.url as string);
         return null;
@@ -263,6 +289,20 @@ class TauriSimulator {
     return null;
   }
 
+  /** Restart (also the Wake action for a hibernated session): the backend
+   *  recreates the pane and, when the session was hibernated, resumes the prior
+   *  agent — so status goes Running and the hibernation marker clears. */
+  private restartSession(id: string): null {
+    for (const g of this.snapshot.groups) {
+      const s = g.sessions.find((row) => row.id === id);
+      if (s) {
+        s.status = "running";
+        s.hibernated = false;
+      }
+    }
+    return null;
+  }
+
   /** Pin (or, with section=null, unpin) a session's section, then re-bucket.
    *  Mirrors the backend move_to_section: only the section assignment changes,
    *  never the owning project/group. */
@@ -332,11 +372,49 @@ class TauriSimulator {
     return { added, skipped: 0 };
   }
 
+  /** Detail for one session, derived from its snapshot row plus the seeded
+   *  diffstat — mirrors the backend's get_session_detail (null when gone). */
+  private sessionDetail(id: string): Record<string, unknown> | null {
+    const s = this.getSessions().find((row) => row.id === id);
+    if (!s) return null;
+    return {
+      id: s.id,
+      title: s.title,
+      branch: s.branch,
+      status: s.status,
+      program: s.program,
+      project_name: s.project_name,
+      pr_number: s.pr_number,
+      pr_url: s.pr_url,
+      pr_state: s.pr_state ?? "",
+      pr_draft: s.pr_draft,
+      created_at: "2026-06-13T00:00:00Z",
+      agent_state: s.agent_state,
+      diff_stat: this.diffStats[s.id] ?? null,
+    };
+  }
+
   /** [id, label] pairs for sessions whose PR has merged — the merged-PR sweep source. */
   private mergedPrSessions(): [string, string][] {
     return this.getSessions()
       .filter((s) => s.pr_state === "merged")
       .map((s) => [s.id, s.title]);
+  }
+
+  /** Contents of one directory in the fake file tree, sorted directories-first
+   *  then case-insensitive by name — mirroring the backend's list_session_dir. */
+  private listSessionDir(
+    subPath: string,
+    showHidden: boolean,
+  ): { rel_path: string; at_root: boolean; entries: FsEntry[] } {
+    const all = this.fileTree[subPath] ?? [];
+    const entries = all
+      .filter((e) => showHidden || !e.name.startsWith("."))
+      .sort((a, b) => {
+        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+    return { rel_path: subPath, at_root: subPath === "", entries };
   }
 
   private openReview(id: string): ReviewSnapshot {
@@ -395,15 +473,19 @@ declare global {
   interface Window {
     __CC_IWFT_SEED__: Seed;
     __CC_SIM__: TauriSimulator;
-    /** The app's real confirm/prompt dialogs, exposed for the Dialogs POM to
-     *  drive directly (they're pure DOM + Promise, no trigger flow needed). */
-    __CC_DIALOGS__: { confirmDialog: typeof confirmDialog; promptDialog: typeof promptDialog };
+    /** The app's real confirm/prompt/delete dialogs, exposed for the Dialogs
+     *  POM to drive directly (pure DOM + Promise, no trigger flow needed). */
+    __CC_DIALOGS__: {
+      confirmDialog: typeof confirmDialog;
+      promptDialog: typeof promptDialog;
+      deleteSessionDialog: typeof deleteSessionDialog;
+    };
   }
 }
 
 const sim = new TauriSimulator(window.__CC_IWFT_SEED__);
 window.__CC_SIM__ = sim;
-window.__CC_DIALOGS__ = { confirmDialog, promptDialog };
+window.__CC_DIALOGS__ = { confirmDialog, promptDialog, deleteSessionDialog };
 // metadata for getCurrentWindow() (main.ts wires onThemeChanged at module load);
 // mockIPC handles invoke + the event plugin.
 mockWindows("main");

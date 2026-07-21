@@ -74,6 +74,42 @@ export function matches(b: ParsedBinding, e: KeyboardEvent): boolean {
   return e.key === b.key;
 }
 
+/** KeyboardEvent.key values → display glyphs for the named keys we parse. */
+const KEY_GLYPHS: Record<string, string> = {
+  Enter: "↵",
+  Escape: "⎋",
+  Tab: "⇥",
+  Backspace: "⌫",
+  " ": "␣",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  PageUp: "⇞",
+  PageDown: "⇟",
+  Home: "↖",
+  End: "↘",
+  Delete: "⌦",
+  Insert: "Ins",
+};
+
+/**
+ * Render a config binding string ("Ctrl-Enter") as symbols ("⌃↵") for menus and
+ * the palette. Modifier order ⌃⌥⇧; single-char keys already carry Shift in their
+ * glyph (dispatch ignores the Shift bit for them), so ⇧ is only shown for named
+ * keys. Returns null when the string doesn't parse.
+ */
+export function formatBinding(s: string): string | null {
+  const b = parseBinding(s);
+  if (!b) return null;
+  let out = "";
+  if (b.ctrl) out += "⌃";
+  if (b.alt) out += "⌥";
+  if (b.shift === true) out += "⇧";
+  out += KEY_GLYPHS[b.key] ?? (b.key.length === 1 ? b.key.toUpperCase() : b.key);
+  return out;
+}
+
 /** Raw action → key-strings table, for the help overlay. */
 export let loadedBindings: Record<string, string[]> = {};
 
@@ -97,6 +133,7 @@ export function overlayOpen(): boolean {
     document.querySelector("#help-overlay:not(.hidden)") !== null ||
     document.querySelector("#settings-overlay:not(.hidden)") !== null ||
     document.querySelector("#review:not(.hidden)") !== null ||
+    document.querySelector("#file-explorer:not(.hidden)") !== null ||
     document.querySelector(".confirm-overlay") !== null ||
     document.querySelector(".context-menu") !== null
   );

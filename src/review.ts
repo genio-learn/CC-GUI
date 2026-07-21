@@ -194,11 +194,15 @@ const reviewEl = document.querySelector<HTMLDivElement>("#review")!;
 const titleEl = document.querySelector<HTMLSpanElement>("#review-title")!;
 const baseEl = document.querySelector<HTMLSpanElement>("#review-base")!;
 const statusEl = document.querySelector<HTMLSpanElement>("#review-status")!;
-const applyEl = document.querySelector<HTMLButtonElement>("#review-apply")!;
+const sidebarEl = document.querySelector<HTMLDivElement>("#review-sidebar")!;
+const progressEl = document.querySelector<HTMLDivElement>("#review-progress")!;
 const filesEl = document.querySelector<HTMLDivElement>("#review-files")!;
 const diffEl = document.querySelector<HTMLDivElement>("#review-diff")!;
+const applyBarEl = document.querySelector<HTMLDivElement>("#review-apply-bar")!;
+const applySummaryEl = document.querySelector<HTMLSpanElement>("#review-apply-summary")!;
+const applyEl = document.querySelector<HTMLButtonElement>("#review-apply")!;
 
-makeResizable({ key: "cc-review-files-width", target: filesEl, edge: "right", min: 180, max: 640 });
+makeResizable({ key: "cc-review-files-width", target: sidebarEl, edge: "right", min: 180, max: 640 });
 
 let sessionId: string | null = null;
 let snapshot: ReviewSnapshot | null = null;
@@ -254,6 +258,7 @@ async function refresh(): Promise<void> {
     selectedFile = snap.diff.files.length ? displayPath(snap.diff.files[0]) : null;
     clearSelection();
   }
+  renderProgress();
   renderFiles();
   renderDiff();
   renderApply();
@@ -317,6 +322,7 @@ async function toggleReviewed(path: string): Promise<void> {
   }
   if (now) reviewed.add(path);
   else reviewed.delete(path);
+  renderProgress();
   renderFiles();
 }
 
@@ -338,6 +344,38 @@ function selectFileByOffset(delta: number): void {
 }
 
 // ------------------------------------------------------------------- files
+
+/** The "N/total files reviewed" progress ring above the file list, filled
+ *  proportionally to the reviewed count. Hidden when there's no diff. */
+function renderProgress(): void {
+  progressEl.innerHTML = "";
+  const files = snapshot?.diff.files ?? [];
+  const total = files.length;
+  progressEl.style.display = total ? "" : "none";
+  if (!total) return;
+  // Count only reviewed paths still present in the diff — the stored set can
+  // hold stale paths after a refresh, which would overflow the ring.
+  const done = files.filter((f) => reviewed.has(displayPath(f))).length;
+  const pct = Math.round((done / total) * 100);
+
+  const wrap = document.createElement("div");
+  wrap.className = "review-progress";
+
+  const ring = document.createElement("span");
+  ring.className = "progress-ring";
+  ring.style.background = `conic-gradient(var(--success) ${pct}%, var(--border) 0)`;
+  const count = document.createElement("span");
+  count.className = "progress-ring-count";
+  count.textContent = `${done}/${total}`;
+  ring.appendChild(count);
+
+  const label = document.createElement("span");
+  label.className = "progress-label";
+  label.textContent = "Files reviewed";
+
+  wrap.append(ring, label);
+  progressEl.appendChild(wrap);
+}
 
 function renderFiles(): void {
   filesEl.innerHTML = "";
@@ -370,7 +408,7 @@ function renderFiles(): void {
 
     const tick = document.createElement("span");
     tick.className = "file-reviewed-toggle";
-    tick.textContent = isReviewed ? "✓" : "○";
+    tick.textContent = isReviewed ? "✓" : "";
     tick.title = isReviewed ? "Mark as not reviewed" : "Mark as reviewed";
     tick.addEventListener("click", (e) => {
       e.stopPropagation(); // toggling reviewed shouldn't also open the diff
@@ -479,22 +517,33 @@ function strandedFileRow(path: string, count: number): HTMLDivElement {
 
 // ---------------------------------------------------------------- comments
 
-function renderCommentBlock(c: Comment): HTMLDivElement {
-  const block = document.createElement("div");
-  block.className = `review-comment comment-${c.status}`;
+/** The "y" avatar + "you" + status tag row shared by a saved comment card and
+ *  the open composer (which reads "staged" ahead of the save that makes it so). */
+function commentHead(status: Comment["status"]): HTMLDivElement {
   const head = document.createElement("div");
   head.className = "comment-head";
   const avatar = document.createElement("span");
   avatar.className = "comment-avatar";
-  avatar.textContent = "you";
-  const badge = document.createElement("span");
-  badge.className = `comment-status comment-${c.status}`;
-  badge.textContent = c.status;
+  avatar.textContent = "y";
+  const who = document.createElement("span");
+  who.className = "comment-who";
+  who.textContent = "you";
+  const tag = document.createElement("span");
+  tag.className = `comment-tag comment-${status}`;
+  tag.textContent = status;
+  head.append(avatar, who, tag);
+  return head;
+}
+
+function renderCommentBlock(c: Comment): HTMLDivElement {
+  const block = document.createElement("div");
+  block.className = `review-comment comment-${c.status}`;
+  const head = commentHead(c.status);
   const range = document.createElement("span");
   range.className = "comment-range";
   const [start, end] = c.line_range;
   range.textContent = `${c.side} ${start === end ? start : `${start}–${end}`}`;
-  head.append(avatar, badge, range);
+  head.appendChild(range);
   if (c.status !== "applied") {
     const spacer = document.createElement("span");
     spacer.className = "spacer";
@@ -552,7 +601,16 @@ async function saveComment(lines: DiffLine[], comment: string): Promise<void> {
 
 function renderCommentEditor(lines: DiffLine[]): HTMLDivElement {
   const box = document.createElement("div");
-  box.className = "review-comment editor";
+  box.className = "review-comment editor comment-staged";
+  const draft = buildDraft(lines);
+  const head = commentHead("staged");
+  const tag = head.querySelector<HTMLSpanElement>(".comment-tag")!;
+  if (draft) {
+    const [start, end] = draft.lineRange;
+    tag.textContent = `staged · ${start === end ? `line ${end}` : `lines ${start}–${end}`}`;
+  }
+  box.appendChild(head);
+
   const textarea = noTextAssist(document.createElement("textarea"));
   textarea.placeholder = "Leave a comment for the agent… (Cmd/Ctrl+Enter to save, Esc to cancel)";
   textarea.rows = 3;
@@ -573,18 +631,18 @@ function renderCommentEditor(lines: DiffLine[]): HTMLDivElement {
 
   const buttons = document.createElement("div");
   buttons.className = "editor-buttons";
+  const save = document.createElement("button");
+  save.className = "editor-save";
+  save.textContent = "Save ⌘↵";
+  save.addEventListener("click", () => void saveComment(lines, textarea.value));
   const cancel = document.createElement("button");
-  cancel.className = "row-action";
+  cancel.className = "editor-cancel";
   cancel.textContent = "Cancel";
   cancel.addEventListener("click", () => {
     clearSelection();
     renderDiff();
   });
-  const save = document.createElement("button");
-  save.className = "row-action";
-  save.textContent = "Comment";
-  save.addEventListener("click", () => void saveComment(lines, textarea.value));
-  buttons.append(cancel, save);
+  buttons.append(save, cancel);
 
   box.append(textarea, buttons);
   setTimeout(() => {
@@ -882,13 +940,15 @@ function buildJuxtapose(oldUrl: string, newUrl: string): HTMLElement {
 
 function renderApply(): void {
   if (!snapshot) {
-    applyEl.classList.add("hidden");
+    applyBarEl.classList.add("hidden");
     return;
   }
   const pending = snapshot.comments.filter((c) => c.status !== "applied").length;
-  applyEl.classList.toggle("hidden", pending === 0);
+  applyBarEl.classList.toggle("hidden", pending === 0);
+  const noun = pending === 1 ? "comment" : "comments";
+  applySummaryEl.textContent = `${pending} ${noun} ready to send back to the agent`;
   applyEl.disabled = applying;
-  applyEl.textContent = applying ? "Applying…" : `Apply (${pending}) →`;
+  applyEl.textContent = applying ? "Applying…" : `Apply ${pending} ${noun} →`;
 }
 
 async function applyComments(): Promise<void> {

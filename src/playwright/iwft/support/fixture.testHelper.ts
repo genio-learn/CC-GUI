@@ -14,6 +14,9 @@ import { SettingsModalPageObject } from "../../pageObjects/SettingsModalPageObje
 import { DialogsPageObject } from "../../pageObjects/DialogsPageObject.testHelper";
 import { TerminalPageObject } from "../../pageObjects/TerminalPageObject.testHelper";
 import { BoardPageObject } from "../../pageObjects/BoardPageObject.testHelper";
+import { FileExplorerPageObject } from "../../pageObjects/FileExplorerPageObject.testHelper";
+import { OnboardingPageObject } from "../../pageObjects/OnboardingPageObject.testHelper";
+import { DetailPanePageObject } from "../../pageObjects/DetailPanePageObject.testHelper";
 
 interface Fixtures {
   /** Override in a test via `test.use({ seed: customSeed })` for bespoke state. */
@@ -34,6 +37,15 @@ interface Fixtures {
   terminal: TerminalPageObject;
   /** App booted against `seed`, board object ready (Console layout; call enter()). */
   board: BoardPageObject;
+  /** App booted against `seed` with the first session attached (so a terminal is
+   *  active), file explorer object ready (overlay starts closed; call open()). */
+  fileExplorer: FileExplorerPageObject;
+  /** App booted against `seed`, onboarding hero object ready (visible only
+   *  while `seed.snapshot.groups` is empty). */
+  onboarding: OnboardingPageObject;
+  /** App booted against `seed`, detail pane object ready (pane starts closed;
+   *  call open(title)). */
+  detail: DetailPanePageObject;
 }
 
 export const test = base.extend<Fixtures>({
@@ -73,6 +85,21 @@ export const test = base.extend<Fixtures>({
   board: async ({ page, seed }, use) => {
     await launchApp(page, seed);
     await use(new BoardPageObject(page));
+  },
+  fileExplorer: async ({ page, seed }, use) => {
+    await launchApp(page, seed);
+    // Attach the first session so a terminal is active — the explorer roots at
+    // the active session's repo.
+    await new TerminalPageObject(page).attach("fix login bug");
+    await use(new FileExplorerPageObject(page));
+  },
+  onboarding: async ({ page, seed }, use) => {
+    await launchApp(page, seed);
+    await use(new OnboardingPageObject(page));
+  },
+  detail: async ({ page, seed }, use) => {
+    await launchApp(page, seed);
+    await use(new DetailPanePageObject(page));
   },
 });
 

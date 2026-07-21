@@ -44,6 +44,27 @@ test("a boolean renders as a toggle and persists", async ({ settings }) => {
   expect(saved?.resume_session).toBe(false);
 });
 
+test("enabling hibernation gates its interval fields and persists", async ({
+  settings,
+}) => {
+  await settings.open();
+  await settings.selectCategory("hibernation");
+  expect(await settings.fieldKind("hibernate_enabled")).toBe("toggle");
+  // Interval fields are disabled until hibernation is enabled.
+  expect(await settings.field("hibernate_check_interval_secs").isDisabled()).toBe(true);
+
+  await settings.toggle("hibernate_enabled", true);
+  expect(await settings.field("hibernate_check_interval_secs").isDisabled()).toBe(false);
+  await settings.setText("hibernate_idle_timeout_secs", "3600");
+  await settings.setText("hibernate_check_interval_secs", "120");
+  await settings.save();
+
+  const saved = await settings.savedConfig();
+  expect(saved?.hibernate_enabled).toBe(true);
+  expect(saved?.hibernate_idle_timeout_secs).toBe(3600);
+  expect(saved?.hibernate_check_interval_secs).toBe(120);
+});
+
 test("a nested field round-trips into its sub-object", async ({ settings }) => {
   await settings.open();
   await settings.selectCategory("conversation");
@@ -96,13 +117,54 @@ test("unrendered keys (keybindings, theme) survive the save untouched", async ({
   expect(saved?.theme).toEqual({ accent: "#89b4fa" });
 });
 
-test("the CC-GUI tab switches theme mode (localStorage, not save_config)", async ({
+test("the Appearance category switches theme mode (localStorage, not save_config)", async ({
   settings,
 }) => {
   await settings.open();
-  await settings.selectTab("gui");
+  await settings.selectCategory("theme");
   await settings.setThemeMode("dark");
   expect(await settings.themeMode()).toBe("dark");
   // Theme prefs never go through save_config.
   expect(await settings.savedConfig()).toBeNull();
+});
+
+test("search filters the nav to matching categories", async ({ settings }) => {
+  await settings.open();
+  await settings.search("hibern");
+
+  await expect(settings.panelHeading()).toHaveText("Hibernation");
+  expect(await settings.navLabels()).toEqual(["Hibernation"]);
+  // The filtered-to category is live — its fields render and are editable.
+  expect(await settings.fieldKind("hibernate_enabled")).toBe("toggle");
+});
+
+test("search matches field labels, not just category names", async ({ settings }) => {
+  await settings.open();
+  // "Branch prefix" lives in General; "prefix" appears in no category label.
+  await settings.search("branch prefix");
+
+  expect(await settings.navLabels()).toContain("General");
+  await expect(settings.panelHeading()).toHaveText("General");
+});
+
+test("a search with no matches empties both nav and panel", async ({ settings }) => {
+  await settings.open();
+  await settings.search("zzz-no-such-setting");
+
+  expect(await settings.navLabels()).toEqual([]);
+  await expect(settings.panelHeading()).toHaveCount(0);
+});
+
+test("clearing the search restores every category", async ({ settings }) => {
+  await settings.open();
+  await settings.search("hibern");
+  await settings.search("");
+
+  const labels = await settings.navLabels();
+  expect(labels.length).toBeGreaterThan(10);
+  expect(labels).toContain("Appearance");
+  // The single nav starts with General and holds the GUI-only Appearance
+  // right after it — no tabs.
+  expect(labels[0]).toBe("General");
+  expect(labels[1]).toBe("Appearance");
 });

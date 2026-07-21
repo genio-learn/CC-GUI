@@ -81,9 +81,8 @@ in `src/help.ts` (the `?` overlay) and the keyboard table in `README.md`.
 `src-tauri/Cargo.toml` pins `claude-commander` to a release **tag** via a git
 dependency, so `Cargo.lock` records an exact commit (reproducible) and no
 sibling checkout is needed. Upstream is a Cargo workspace (since v0.24.0); the
-library CC-GUI consumes is the `claude-commander-core` crate, aliased back to
-`claude-commander` in `Cargo.toml`. To build against a local checkout for live
-CC development, copy `.cargo/config.toml.example` to `.cargo/config.toml`
-(gitignored). To adopt a newer CC release, bump the `tag` and run
-`cargo update -p claude-commander-core` — see
+library CC-GUI consumes is the `claude-commander-core` crate. To build against
+a local checkout for live CC development, copy `.cargo/config.toml.example` to
+`.cargo/config.toml` (gitignored). To adopt a newer CC release, bump the `tag`
+and run `cargo update -p claude-commander-core` — see
 [CONTRIBUTING.md](CONTRIBUTING.md).

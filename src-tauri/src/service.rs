@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use claude_commander::api::CommanderService;
-use claude_commander::session::{ProjectId, SessionId};
-use claude_commander::telemetry::FrontendInfo;
+use claude_commander_core::api::CommanderService;
+use claude_commander_core::session::{ProjectId, SessionId};
+use claude_commander_core::telemetry::FrontendInfo;
 use tokio::sync::OnceCell;
 
 static SERVICE: OnceCell<Arc<CommanderService>> = OnceCell::const_new();
@@ -12,7 +12,7 @@ static SERVICE: OnceCell<Arc<CommanderService>> = OnceCell::const_new();
 pub async fn service() -> Result<&'static Arc<CommanderService>, String> {
     SERVICE
         .get_or_try_init(|| async {
-            let config = claude_commander::Config::load().map_err(|e| e.to_string())?;
+            let config = claude_commander_core::Config::load().map_err(|e| e.to_string())?;
             let frontend = FrontendInfo::new("cc-gui", env!("CARGO_PKG_VERSION"));
             CommanderService::for_cli(config, frontend)
                 .map(Arc::new)

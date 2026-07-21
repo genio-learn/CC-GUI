@@ -12,6 +12,7 @@ It embeds `claude-commander` directly (as a library) and drives the same tmux-ba
 - **Code review** — read-only diff view with inline comments; stage comments and **Apply** them back to the agent.
 - **Cascade** — merge, resume, and abandon stacked sessions; push a stack.
 - **Theming** — 10 built-in themes plus your own custom themes, with a live-preview picker. See [`docs/theming.md`](docs/theming.md).
+- **File explorer** (`Cmd+E`) — keyboard-driven, nnn-style browser of the active session's repo; open a file to drop an `@path` reference into the terminal.
 - **Command palette** (`Cmd/Ctrl+K`) — fuzzy-jump to a session or run any command.
 - **Config hot-reload** — picks up `claude-commander` config changes for multi-instance sync.
 
@@ -114,6 +115,10 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Jump to terminal tab by number | `Cmd+1`–`Cmd+9` |
 | Previous / next terminal tab | `Cmd+Opt+←` / `Cmd+Opt+→` |
 | Previous / next session (attaches it) | `Cmd+Opt+↑` / `Cmd+Opt+↓` |
+| Open/close file explorer (active session's repo) | `Cmd+E` |
+| File explorer: move cursor | `↑`/`↓` or `j`/`k` |
+| File explorer: open folder / reference file as `@path` | `Enter` / `→` / `l` |
+| File explorer: up to parent / filter / toggle hidden | `Backspace` / `/` / `.` |
 | Terminal: switch to this session's shell | `Ctrl+\` |
 | Terminal: cursor to line start / end | `Cmd+←` / `Cmd+→` |
 | Terminal: delete to line start | `Cmd+Backspace` |
@@ -131,7 +136,7 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Add-project path: pick / drill into a directory | `↑` / `↓`, then `Enter` |
 | Add-project path: native folder picker | `Browse…` |
 | Project shell | `$` on the project |
-| Switch sidebar grouping (Sections / Projects) | `GROUP BY` control |
+| Switch sidebar grouping (Sections / Projects / Status) | `GROUP BY` control |
 | Move a session to a section | drag its row onto a section header (drop on *In Progress* to unpin) |
 | Save a review comment | `Cmd/Ctrl+Enter` |
 | Review: previous / next file | `↑` / `↓` or `Ctrl-P` / `Ctrl-N` |

@@ -73,10 +73,32 @@ export function confirmDialog(message: string, confirmLabel = "Confirm"): Promis
   });
 }
 
+/** One consequence line for the delete checklist: a toned glyph + text, with
+ *  an optional trailing mono fragment (the branch name). */
+function consequenceRow(glyph: string, tone: "cut" | "keep", text: string, mono?: string): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "delete-check";
+  const mark = document.createElement("span");
+  mark.className = `check-${tone}`;
+  mark.textContent = glyph;
+  const label = document.createElement("span");
+  label.textContent = text;
+  if (mono !== undefined) {
+    const m = document.createElement("span");
+    m.className = "check-mono";
+    m.textContent = mono;
+    label.append(" ", m);
+  }
+  row.append(mark, label);
+  return row;
+}
+
 /**
- * Dedicated delete-session confirmation. Red ⌦ icon, mono red session name, and
- * the branch-deletion warning body. Resolves true on Delete/Enter, false on
- * Cancel/Esc/backdrop click. Lifecycle mirrors confirmDialog.
+ * Dedicated delete-session confirmation: a danger-tinted ⌦ badge beside the
+ * title + mono session name, then the consequences as a checklist — one line
+ * per effect instead of prose. The branch line is deliberately a ✓ "kept":
+ * the backend never deletes the branch. Resolves true on Delete/Enter, false
+ * on Cancel/Esc/backdrop click. Lifecycle mirrors confirmDialog.
  */
 export function deleteSessionDialog(name: string, branch: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -85,22 +107,33 @@ export function deleteSessionDialog(name: string, branch: string): Promise<boole
     const box = document.createElement("div");
     box.className = "confirm-box delete-dialog";
 
+    const head = document.createElement("div");
+    head.className = "delete-head";
     const icon = document.createElement("div");
     icon.className = "delete-icon";
     icon.textContent = "⌦";
-
+    const titles = document.createElement("div");
+    titles.className = "delete-titles";
     const heading = document.createElement("div");
     heading.className = "delete-heading";
-    heading.textContent = "Delete this session?";
-
+    heading.textContent = "Delete session";
     const nameEl = document.createElement("div");
     nameEl.className = "delete-name";
     nameEl.textContent = name;
+    titles.append(heading, nameEl);
+    head.append(icon, titles);
 
-    const body = document.createElement("div");
-    body.className = "delete-body";
-    body.textContent =
-      `This kills the agent, removes its worktree + tmux session, and deletes the branch ${branch}. This can't be undone.`;
+    const intro = document.createElement("div");
+    intro.className = "delete-intro";
+    intro.textContent = "Deleting this session:";
+
+    const list = document.createElement("div");
+    list.className = "delete-list";
+    list.append(
+      consequenceRow("✕", "cut", "Kills the running agent"),
+      consequenceRow("✕", "cut", "Removes the worktree + tmux session"),
+      consequenceRow("✓", "keep", "Keeps the branch", branch),
+    );
 
     const buttons = document.createElement("div");
     buttons.className = "confirm-buttons";
@@ -111,7 +144,7 @@ export function deleteSessionDialog(name: string, branch: string): Promise<boole
     ok.textContent = "Delete session";
     buttons.append(cancel, ok);
 
-    box.append(icon, heading, nameEl, body, buttons);
+    box.append(head, intro, list, buttons);
     overlay.appendChild(box);
 
     const done = (result: boolean) => {

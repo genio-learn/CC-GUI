@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use claude_commander::api::CommanderService;
-use claude_commander::session::{AgentState, CascadeOutcome, SessionId};
-use claude_commander::tmux::AgentStateDetector;
+use claude_commander_core::api::CommanderService;
+use claude_commander_core::session::{AgentState, CascadeOutcome, SessionId};
+use claude_commander_core::tmux::AgentStateDetector;
 
 use crate::service::{parse_session_id, with_service};
 
