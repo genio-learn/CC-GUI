@@ -64,4 +64,7 @@ export type Seed = {
   /** The file explorer's fake filesystem: directory contents keyed by path
    *  relative to the session's repo root ("" = root). Answers list_session_dir. */
   fileTree?: Record<string, FsEntry[]>;
+  /** Per-session diffstat summary (git shortstat style, e.g. "3 files changed,
+   *  124 insertions(+), 38 deletions(-)") — feeds get_session_detail. */
+  diffStats?: Record<string, string>;
 };

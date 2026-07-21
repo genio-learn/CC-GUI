@@ -36,6 +36,7 @@ class TauriSimulator {
   private dirs: string[];
   private browsePath: string | null;
   private fileTree: Record<string, FsEntry[]>;
+  private diffStats: Record<string, string>;
   private openedUrls: string[] = [];
   // Bytes the frontend wrote to a PTY (write_pty) — the file explorer's @path
   // reference lands here, in order.
@@ -53,6 +54,7 @@ class TauriSimulator {
     this.dirs = seed.dirs ?? [];
     this.browsePath = seed.browsePath ?? null;
     this.fileTree = seed.fileTree ?? {};
+    this.diffStats = seed.diffStats ?? {};
     this.comments = {};
     this.reviewed = {};
     for (const [id, review] of Object.entries(seed.reviews)) {
@@ -160,6 +162,8 @@ class TauriSimulator {
         return this.moveToSection(args.id as string, (args.section as string | null) ?? null);
       case "merged_pr_sessions":
         return this.mergedPrSessions();
+      case "get_session_detail":
+        return this.sessionDetail(args.id as string);
       // ----- add project / scan / path autocomplete -----
       case "complete_path":
         return this.completePath(args.partial as string);
@@ -366,6 +370,28 @@ class TauriSimulator {
     const prefix = path.endsWith("/") ? path : `${path}/`;
     const added = this.dirs.filter((d) => d.startsWith(prefix)).length;
     return { added, skipped: 0 };
+  }
+
+  /** Detail for one session, derived from its snapshot row plus the seeded
+   *  diffstat — mirrors the backend's get_session_detail (null when gone). */
+  private sessionDetail(id: string): Record<string, unknown> | null {
+    const s = this.getSessions().find((row) => row.id === id);
+    if (!s) return null;
+    return {
+      id: s.id,
+      title: s.title,
+      branch: s.branch,
+      status: s.status,
+      program: s.program,
+      project_name: s.project_name,
+      pr_number: s.pr_number,
+      pr_url: s.pr_url,
+      pr_state: s.pr_state ?? "",
+      pr_draft: s.pr_draft,
+      created_at: "2026-06-13T00:00:00Z",
+      agent_state: s.agent_state,
+      diff_stat: this.diffStats[s.id] ?? null,
+    };
   }
 
   /** [id, label] pairs for sessions whose PR has merged — the merged-PR sweep source. */

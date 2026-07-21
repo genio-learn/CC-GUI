@@ -16,6 +16,7 @@ import { TerminalPageObject } from "../../pageObjects/TerminalPageObject.testHel
 import { BoardPageObject } from "../../pageObjects/BoardPageObject.testHelper";
 import { FileExplorerPageObject } from "../../pageObjects/FileExplorerPageObject.testHelper";
 import { OnboardingPageObject } from "../../pageObjects/OnboardingPageObject.testHelper";
+import { DetailPanePageObject } from "../../pageObjects/DetailPanePageObject.testHelper";
 
 interface Fixtures {
   /** Override in a test via `test.use({ seed: customSeed })` for bespoke state. */
@@ -42,6 +43,9 @@ interface Fixtures {
   /** App booted against `seed`, onboarding hero object ready (visible only
    *  while `seed.snapshot.groups` is empty). */
   onboarding: OnboardingPageObject;
+  /** App booted against `seed`, detail pane object ready (pane starts closed;
+   *  call open(title)). */
+  detail: DetailPanePageObject;
 }
 
 export const test = base.extend<Fixtures>({
@@ -92,6 +96,10 @@ export const test = base.extend<Fixtures>({
   onboarding: async ({ page, seed }, use) => {
     await launchApp(page, seed);
     await use(new OnboardingPageObject(page));
+  },
+  detail: async ({ page, seed }, use) => {
+    await launchApp(page, seed);
+    await use(new DetailPanePageObject(page));
   },
 });
 
