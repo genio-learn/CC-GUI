@@ -100,7 +100,7 @@ export function deleteSessionDialog(name: string, branch: string): Promise<boole
     const body = document.createElement("div");
     body.className = "delete-body";
     body.textContent =
-      `This kills the agent, removes its worktree + tmux session, and deletes the branch ${branch}. This can't be undone.`;
+      `This kills the agent and removes its worktree + tmux session (the branch ${branch} is kept). This can't be undone.`;
 
     const buttons = document.createElement("div");
     buttons.className = "confirm-buttons";

@@ -47,7 +47,7 @@ test("context menu names the Kill/Delete consequence on each row", async ({ side
     "stops the process, keeps the worktree",
   );
   await expect(sidebar.menuItemText("Delete session")).resolves.toContain(
-    "removes worktree, branch, tmux",
+    "removes worktree + tmux, keeps the branch",
   );
 });
 

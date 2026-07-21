@@ -209,7 +209,7 @@ export class SidebarPageObject extends AppPageObject {
     return this.step(`deleteViaRowAction: ${title}`, async () => {
       const row = this.row(title);
       await row.hover();
-      const del = row.getByTitle("Delete session (removes worktree + branch)");
+      const del = row.getByTitle("Delete session (removes worktree + tmux, keeps the branch)");
       await del.click(); // arms the confirm state
       await del.click(); // confirms
     });

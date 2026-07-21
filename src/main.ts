@@ -1960,7 +1960,7 @@ function buildActions(s: SessionRow): HTMLDivElement {
     );
   }
   actions.appendChild(
-    confirmButton("✕", "Delete session (removes worktree + branch)", () => deleteSession(s)),
+    confirmButton("✕", "Delete session (removes worktree + tmux, keeps the branch)", () => deleteSession(s)),
   );
   return actions;
 }
@@ -2088,7 +2088,7 @@ function sessionMenuItems(refs: RowRefs): MenuItem[] {
     "separator",
     {
       label: "Delete session…",
-      sublabel: "removes worktree, branch, tmux",
+      sublabel: "removes worktree + tmux, keeps the branch",
       danger: true,
       shortcut: kb("delete_session"),
       action: () => {
