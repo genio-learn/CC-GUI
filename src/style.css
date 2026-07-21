@@ -1080,7 +1080,7 @@ body {
 .row-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px; /* title → sub-line, per the mockup */
   min-width: 0;
 }
 
@@ -1092,9 +1092,18 @@ body {
   min-width: 0;
 }
 
+/* Sidebar-row leading dot is 9px per the mockup; the base .dot stays 8px for
+   tabs/palette. :where() keeps this at .glyph.dot specificity, so the later
+   .dot-waiting / .dot-hibernated rules (which size those glyph states to auto)
+   still win for them. */
+:where(.row-line) > .glyph.dot {
+  width: 9px;
+  height: 9px;
+}
+
 .row-main .title {
   font-family: var(--font-ui);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   flex: 1;
   min-width: 0;
@@ -1323,7 +1332,7 @@ body {
 .row-actions {
   display: none;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 9px; /* sub-line → action line, per the mockup */
 }
 
 .session-row:hover .row-actions,

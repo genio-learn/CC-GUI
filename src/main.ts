@@ -487,7 +487,10 @@ async function openShell(session: SessionRow): Promise<void> {
     toast(`shell failed: ${e}`, "error");
     return;
   }
-  await attachTerminal(name, `${session.title} — shell`, null);
+  // The tab carries a "❯ Shell" chip (name ends "-sh"), so the title stays the
+  // bare session name — keeping entry.title consistent across the tab, the
+  // split-pane header, and the board dock (all read entry.title).
+  await attachTerminal(name, session.title, null);
 }
 
 async function openProjectShell(group: ProjectGroup): Promise<void> {
@@ -498,7 +501,7 @@ async function openProjectShell(group: ProjectGroup): Promise<void> {
     toast(`project shell failed: ${e}`, "error");
     return;
   }
-  await attachTerminal(name, `${group.name} — shell`, null);
+  await attachTerminal(name, group.name, null); // see openShell re: the bare title
 }
 
 /**
@@ -687,11 +690,11 @@ async function attachTerminal(
   glyph.hidden = true; // shown once a matching session status is known
   const label = document.createElement("span");
   label.className = "tab-label";
+  label.textContent = title;
   // Shell tabs (tmux name ends "-sh") carry no session status, so the liveness
-  // dot stays hidden; mark them with the shared "❯ Shell" chip instead and drop
-  // the now-redundant " — shell" suffix so the chip carries the word.
+  // dot stays hidden; mark them with the shared "❯ Shell" chip instead (the
+  // title is already the bare name — see openShell).
   const isShell = name.endsWith("-sh");
-  label.textContent = isShell ? title.replace(/\s*—\s*shell$/, "") : title;
   const close = document.createElement("button");
   close.className = "tab-close";
   close.textContent = "×";

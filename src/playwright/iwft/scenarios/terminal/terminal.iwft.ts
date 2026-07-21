@@ -33,7 +33,7 @@ test("attaching opens a tab and streamed PTY bytes render", async ({ terminal })
 test("opening a shell tags its tab with the ❯ Shell chip, not a status dot", async ({ terminal }) => {
   await terminal.openShell("fix login bug");
 
-  // The chip carries the "Shell" word, so the label drops the "— shell" suffix.
+  // The chip carries the "Shell" word; the tab label is the bare session name.
   await expect(terminal.shellTabChipLabel()).toHaveText("Shell");
   await expect(terminal.tabLabels()).toHaveText(["fix login bug"]);
 });
