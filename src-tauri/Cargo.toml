@@ -18,10 +18,12 @@ portable-pty = "0.9"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 uuid = "1"
 
-# Pinned to a published claude-commander release for reproducible builds. To
-# develop against a local checkout instead, add a gitignored `.cargo/config.toml`
-# with `paths = ["../claude-commander"]` — see CONTRIBUTING.md.
-claude-commander = { git = "https://github.com/sizeak/claude-commander", tag = "v0.22.0" }
+# Pinned to a published claude-commander release for reproducible builds. Since
+# v0.24.0 the upstream repo is a workspace; the library lives in the
+# `claude-commander-core` crate, aliased here so `claude_commander::` paths keep
+# working. To develop against a local checkout instead, add a gitignored
+# `.cargo/config.toml` — see CONTRIBUTING.md.
+claude-commander = { package = "claude-commander-core", git = "https://github.com/sizeak/claude-commander", tag = "v0.30.1" }
 futures = "0.3.32"
 tracing = "0.1.44"
 chrono = "0.4.45"

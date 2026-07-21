@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use claude_commander::agent::AgentKind;
 use claude_commander::api::CommanderService;
 use claude_commander::git::effective_pr_state;
 use claude_commander::tmux::AgentStateDetector;
@@ -89,8 +90,9 @@ pub async fn build_groups(
         let mut rows = Vec::with_capacity(project_sessions.len());
         for (s, stacked_child) in session_display_order(&project_sessions) {
             let agent_state = match detect.as_deref_mut() {
-                Some(d) if s.status.is_active() && s.program.contains("claude") => {
-                    format!("{:?}", d.detect(&s.tmux_session_name).await).to_lowercase()
+                Some(d) if s.status.is_active() => {
+                    let kind = AgentKind::from_program(&s.program);
+                    format!("{:?}", d.detect(kind, &s.tmux_session_name).await).to_lowercase()
                 }
                 _ => "unknown".to_string(),
             };
@@ -149,7 +151,7 @@ fn session_display_order<'a>(
         Vec<&claude_commander::session::WorktreeSession>,
     > = HashMap::new();
     for s in sessions {
-        match resolve_stack_parent(s, sessions) {
+        match resolve_stack_parent(*s, sessions) {
             Some(parent_id) => children_by_parent.entry(parent_id).or_default().push(s),
             None => roots.push(*s),
         }

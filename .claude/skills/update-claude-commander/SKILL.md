@@ -56,8 +56,12 @@ Edit the `tag` in `src-tauri/Cargo.toml`, then refresh the exact commit in the
 lockfile:
 
 ```sh
-cd src-tauri && cargo update -p claude-commander
+cd src-tauri && cargo update -p claude-commander-core
 ```
+
+(Upstream is a workspace since v0.24.0; the GUI consumes the
+`claude-commander-core` library crate, aliased to `claude-commander` in
+`Cargo.toml`.)
 
 `Cargo.toml` and `Cargo.lock` must be committed **together** so the pinned
 commit is reproducible.

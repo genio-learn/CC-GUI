@@ -1,7 +1,7 @@
 //! Cascade-merge / push-stack commands. Each returns a short human-readable
 //! summary string for the frontend to toast.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use claude_commander::api::CommanderService;
@@ -11,22 +11,20 @@ use claude_commander::tmux::AgentStateDetector;
 use crate::service::{parse_session_id, with_service};
 
 /// Fresh agent states for the manager's working-agent pre-flight checks.
-async fn detect_states(svc: &CommanderService) -> HashMap<SessionId, AgentState> {
-    let sessions: Vec<(SessionId, String)> = {
+/// `detect_all` derives each session's harness from its program and reports
+/// `Unknown` for unrecognised ones, so no program filter is needed here.
+async fn detect_states(svc: &CommanderService) -> BTreeMap<SessionId, AgentState> {
+    let sessions: Vec<(SessionId, String, String)> = {
         let state = svc.store().read().await;
         state
             .sessions
             .values()
-            .filter(|s| s.status.is_active() && s.program.contains("claude"))
-            .map(|s| (s.id, s.tmux_session_name.clone()))
+            .filter(|s| s.status.is_active())
+            .map(|s| (s.id, s.tmux_session_name.clone(), s.program.clone()))
             .collect()
     };
     let mut detector = AgentStateDetector::new(svc.session_manager().tmux.clone(), Duration::ZERO);
-    let mut map = HashMap::new();
-    for (id, tmux_name) in sessions {
-        map.insert(id, detector.detect(&tmux_name).await);
-    }
-    map
+    detector.detect_all(&sessions).await
 }
 
 fn describe(outcome: CascadeOutcome) -> String {

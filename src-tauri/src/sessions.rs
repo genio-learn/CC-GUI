@@ -60,8 +60,10 @@ pub async fn create_session(project_path: String, title: String) -> Result<Strin
             initial_prompt: None,
             effort: None,
             mode: None,
+            model: None,
             base_branch: None,
             section: None,
+            stack_parent: None,
         };
         let id = svc.create_session(opts).await.map_err(|e| e.to_string())?;
         Ok(id.as_uuid().to_string())

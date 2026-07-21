@@ -24,7 +24,8 @@ test.use({
 test("renders typed controls keyed by kind", async ({ settings }) => {
   await settings.open();
   // General is the default category.
-  expect(await settings.fieldKind("default_program")).toBe("text");
+  // `default_program` is a legacy nullable fallback since CC v0.25 (programs list).
+  expect(await settings.fieldKind("default_program")).toBe("nullable");
   expect(await settings.fieldKind("editor")).toBe("nullable");
   expect(await settings.fieldKind("editor_gui")).toBe("select");
   expect(await settings.fieldTag("editor_gui")).toBe("select");
