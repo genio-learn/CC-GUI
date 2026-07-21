@@ -26,7 +26,9 @@ test("apply sends staged comments and returns to the workspace", async ({ review
   await review.selectLine("beta new");
   await review.writeComment("nit");
 
-  await expect(review.applyLocator()).toHaveText("Apply (1) →");
+  await expect(review.applyBarLocator()).toBeVisible();
+  await expect(review.applySummaryText()).resolves.toBe("1 comment ready to send back to the agent");
+  await expect(review.applyLocator()).toHaveText("Apply 1 comment →");
   await review.apply();
 
   // A successful apply clears the staged comment and closes the review,
@@ -48,14 +50,17 @@ test("a comment can be deleted", async ({ review }) => {
 
 test("toggling a file reviewed bands its row and persists to the fake", async ({ review }) => {
   await expect(review.reviewedRows()).toHaveCount(0);
+  await expect(review.progressCountText()).resolves.toBe("0/1");
 
   await review.toggleReviewed("notes.txt");
   await expect(review.reviewedRows()).toHaveCount(1);
+  await expect(review.progressCountText()).resolves.toBe("1/1");
   expect(await review.storedReviewed(SESSION_ID)).toEqual(["notes.txt"]);
 
   // Toggling again clears the mark.
   await review.toggleReviewed("notes.txt");
   await expect(review.reviewedRows()).toHaveCount(0);
+  await expect(review.progressCountText()).resolves.toBe("0/1");
   expect(await review.storedReviewed(SESSION_ID)).toEqual([]);
 });
 
