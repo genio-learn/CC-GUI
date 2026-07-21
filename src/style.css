@@ -607,6 +607,12 @@ body {
   border-color: transparent;
 }
 
+.card-status-row {
+  display: flex;
+  margin: 0 13px;
+  padding-bottom: 4px;
+}
+
 .card-subtitle {
   display: flex;
   align-items: center;
@@ -780,8 +786,10 @@ body {
   padding: 3px 8px;
 }
 
+/* Same "attach/go" accent as .card-action.attach (Phase 4) — not success green,
+   which is reserved for the Running liveness state. */
 #board-dock-attached {
-  color: var(--success);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -1002,7 +1010,7 @@ body {
 .session-row {
   display: flex;
   flex-direction: column;
-  padding: 9px 10px;
+  padding: 6px 10px;
   border-radius: 9px;
   cursor: pointer;
 }
@@ -1386,7 +1394,7 @@ body {
 .row-actions {
   display: none;
   gap: 6px;
-  margin-top: 9px; /* sub-line → action line, per the mockup */
+  margin-top: 5px;
 }
 
 .session-row:hover .row-actions,
@@ -1414,10 +1422,10 @@ body {
 
 .row-actions .row-action {
   flex: 1;
-  height: 29px;
+  height: 22px;
   padding: 0;
   border-radius: var(--radius-1);
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 
 .row-action:hover {
@@ -1624,8 +1632,8 @@ body {
   max-height: 60vh;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   display: flex;
   flex-direction: column;
@@ -1759,8 +1767,8 @@ body {
   overflow-y: auto;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   padding: 18px 22px;
 }
@@ -1832,8 +1840,8 @@ body {
   flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   overflow: hidden;
 }
@@ -2307,8 +2315,8 @@ body.resizing .panel-resizer {
   width: 380px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-dialog);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-raised);
   animation: overlay-in 0.13s ease;
   padding: 16px 18px;
 }
@@ -2489,7 +2497,7 @@ body.resizing .panel-resizer {
 .confirm-buttons button {
   background: var(--border);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-1);
   color: var(--text);
   cursor: pointer;
   font-size: 12px;
@@ -2513,9 +2521,9 @@ body.resizing .panel-resizer {
   min-width: 180px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-3);
   padding: 4px;
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--shadow-raised);
   font-size: 12px;
 }
 
@@ -2524,7 +2532,7 @@ body.resizing .panel-resizer {
   align-items: center;
   gap: 24px;
   padding: 6px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-1);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2540,8 +2548,19 @@ body.resizing .panel-resizer {
   letter-spacing: 1px;
 }
 
+.menu-sublabel {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .menu-item.danger {
   color: var(--danger);
+}
+
+/* Delete sits in its own tinted zone, one clear step below Kill/Stop — the
+   two destructive-looking rows no longer read as twins. */
+.menu-item.danger:not(:hover) {
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 
 .menu-item.warning {

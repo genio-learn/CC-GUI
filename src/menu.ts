@@ -9,6 +9,8 @@ export type MenuItem =
       warning?: boolean;
       /** Formatted shortcut glyphs (e.g. "⌃D"), shown right-aligned. */
       shortcut?: string;
+      /** Consequence text shown dim and inline after the label (e.g. "keeps the worktree"). */
+      sublabel?: string;
     }
   | "separator";
 
@@ -40,6 +42,12 @@ export function showContextMenu(e: MouseEvent, items: MenuItem[]): void {
     const label = document.createElement("span");
     label.className = "menu-label";
     label.textContent = item.label;
+    if (item.sublabel) {
+      const sub = document.createElement("span");
+      sub.className = "menu-sublabel";
+      sub.textContent = ` · ${item.sublabel}`;
+      label.appendChild(sub);
+    }
     row.appendChild(label);
     if (item.shortcut) {
       const kbd = document.createElement("span");
