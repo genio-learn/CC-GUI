@@ -349,9 +349,13 @@ function selectFileByOffset(delta: number): void {
  *  proportionally to the reviewed count. Hidden when there's no diff. */
 function renderProgress(): void {
   progressEl.innerHTML = "";
-  const total = snapshot?.diff.files.length ?? 0;
+  const files = snapshot?.diff.files ?? [];
+  const total = files.length;
+  progressEl.style.display = total ? "" : "none";
   if (!total) return;
-  const done = reviewed.size;
+  // Count only reviewed paths still present in the diff — the stored set can
+  // hold stale paths after a refresh, which would overflow the ring.
+  const done = files.filter((f) => reviewed.has(displayPath(f))).length;
   const pct = Math.round((done / total) * 100);
 
   const wrap = document.createElement("div");
