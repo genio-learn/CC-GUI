@@ -2027,8 +2027,10 @@ function branchMatchesTitle(title: string, branch: string): boolean {
   return slug(title) === slug(branch);
 }
 
-/** Rebuild the inner content of a row's main span (cheap; no input state). */
-function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
+/** Rebuild the inner content of a row's main span (cheap; no input state).
+ *  `actions` is the row's persistent hover-action element (see RowRefs): it's
+ *  re-appended at the sub-line's trailing edge so confirm state survives. */
+function fillRowMain(main: HTMLDivElement, s: SessionRow, actions: HTMLDivElement): void {
   main.innerHTML = "";
 
   // Top line: liveness dot · name · PR badge · right-side chips. The dot is the
@@ -2076,6 +2078,9 @@ function fillRowMain(main: HTMLDivElement, s: SessionRow): void {
     branch.textContent = s.branch;
     sub.append(branch);
   }
+  // Hover actions ride the sub-line (in line with the status chip) so revealing
+  // them doesn't add a line and shift the rows below.
+  sub.appendChild(actions);
   main.append(line, sub);
 }
 
@@ -2239,7 +2244,7 @@ function renderSessionRow(s: SessionRow): HTMLDivElement {
     return row;
   }
 
-  row.append(main, refs.actions);
+  row.append(main); // actions land inside main's sub-line via fillRowMain
   row.addEventListener("click", () => {
     selectRow(refs.session.id);
     void openTerminal(refs.session);
@@ -2359,16 +2364,14 @@ function clearDropTargets(): void {
 function updateRow(refs: RowRefs, s: SessionRow): void {
   refs.session = s;
   if (renamingId === s.id) return; // don't clobber the rename input
-  fillRowMain(refs.main, s);
+  if (refs.status !== s.status) {
+    refs.actions = buildActions(s);
+    refs.status = s.status;
+  }
+  fillRowMain(refs.main, s, refs.actions);
   refs.row.classList.toggle("active", s.tmux_session_name === activeTerm);
   refs.row.classList.toggle("attached", terminals.has(s.tmux_session_name));
   refs.row.classList.toggle("selected", s.id === selectedId);
-  if (refs.status !== s.status) {
-    const actions = buildActions(s);
-    refs.row.replaceChild(actions, refs.actions);
-    refs.actions = actions;
-    refs.status = s.status;
-  }
 }
 
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
