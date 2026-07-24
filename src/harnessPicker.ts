@@ -51,9 +51,20 @@ function lastUsed(projectKey: string): string | undefined {
   return readMemory()[projectKey];
 }
 
-/** Configured list if non-empty, else the built-in fallback set. */
-export function resolveShownList(programs: ProgramInfo[]): ProgramInfo[] {
-  return programs.length > 0 ? programs : BUILTIN_PROGRAMS;
+/**
+ * The programs to show. claude-commander never returns an empty list: with no
+ * configured programs it synthesizes a single entry whose label and command
+ * both equal `default_program` (e.g. `claude`/`claude`). Treat that synthesized
+ * default — and a genuinely empty list — as "unconfigured" and offer the
+ * built-in set. Anything the user actually configured (a distinct label, or
+ * more than one entry) is shown verbatim.
+ */
+export function resolveShownList(programs: ProgramInfo[], defaultProgram: string): ProgramInfo[] {
+  const isSynthesizedDefault =
+    programs.length === 1 &&
+    programs[0].label === programs[0].command &&
+    programs[0].command === defaultProgram;
+  return programs.length === 0 || isSynthesizedDefault ? BUILTIN_PROGRAMS : programs;
 }
 
 /** Per-project last-used if present *and still in the shown list*, else the
@@ -72,7 +83,7 @@ let shownListPromise: Promise<ProgramInfo[]> | null = null;
 function loadShownList(): Promise<ProgramInfo[]> {
   if (!shownListPromise) {
     shownListPromise = invoke<CreateOptions>("get_create_options")
-      .then((o) => resolveShownList(o.programs))
+      .then((o) => resolveShownList(o.programs, o.default_program))
       .catch(() => BUILTIN_PROGRAMS);
   }
   return shownListPromise;

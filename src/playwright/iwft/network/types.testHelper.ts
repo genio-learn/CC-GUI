@@ -71,6 +71,10 @@ export type Seed = {
    *  124 insertions(+), 38 deletions(-)") — feeds get_session_detail. */
   diffStats?: Record<string, string>;
   /** Configured programs answered by get_create_options. Empty/absent → the
-   *  frontend substitutes its built-in fallback set (Claude/Codex/OpenCode). */
+   *  frontend substitutes its built-in fallback set (Claude/Codex/OpenCode).
+   *  Note: real CC never returns empty — it synthesizes a single entry equal to
+   *  `defaultProgram`; seed that shape to exercise the synthesized-default path. */
   programs?: ProgramInfo[];
+  /** default_program answered by get_create_options (defaults to "claude"). */
+  defaultProgram?: string;
 };

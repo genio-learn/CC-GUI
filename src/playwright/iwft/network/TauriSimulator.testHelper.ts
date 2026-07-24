@@ -35,6 +35,7 @@ class TauriSimulator {
   private nextProject = 1;
   private dirs: string[];
   private programs: ProgramInfo[];
+  private defaultProgram: string;
   private browsePath: string | null;
   private fileTree: Record<string, FsEntry[]>;
   private diffStats: Record<string, string>;
@@ -54,6 +55,7 @@ class TauriSimulator {
     this.customThemes = seed.customThemes ?? [];
     this.dirs = seed.dirs ?? [];
     this.programs = seed.programs ?? [];
+    this.defaultProgram = seed.defaultProgram ?? "claude";
     this.browsePath = seed.browsePath ?? null;
     this.fileTree = seed.fileTree ?? {};
     this.diffStats = seed.diffStats ?? {};
@@ -153,7 +155,7 @@ class TauriSimulator {
         this.snapshot.view_mode = args.mode as string;
         return null;
       case "get_create_options":
-        return { default_program: "claude", programs: this.programs, sections: [] };
+        return { default_program: this.defaultProgram, programs: this.programs, sections: [] };
       case "create_session":
         return this.createSession(
           args.projectPath as string,

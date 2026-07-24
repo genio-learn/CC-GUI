@@ -61,6 +61,74 @@ test.describe("built-in fallback set (no configured programs)", () => {
   });
 });
 
+test.describe("CC's synthesized single default (unconfigured config)", () => {
+  // Real claude-commander never returns an empty programs list: with nothing
+  // configured it hands back one entry whose label and command both equal
+  // default_program. The picker treats that as "unconfigured" and offers the
+  // built-in three.
+  test.use({
+    seed: {
+      snapshot: makeSnapshot(),
+      reviews: {},
+      defaultProgram: "claude",
+      programs: [{ label: "claude", command: "claude" }],
+    },
+  });
+
+  test("the built-in three are shown, not the lone synthesized entry", async ({ sidebar }) => {
+    await sidebar.openInlineCreate("acme");
+    await sidebar.openHarnessMenu();
+    expect(await sidebar.harnessMenuItems()).toEqual([
+      "Claude · claude",
+      "Codex · codex",
+      "OpenCode · opencode",
+    ]);
+  });
+});
+
+test.describe("synthesized default for a non-claude default_program", () => {
+  // e.g. a config migrated from default_program = "codex" — still the synthesized
+  // shape (label === command === default_program), so still the built-in three.
+  test.use({
+    seed: {
+      snapshot: makeSnapshot(),
+      reviews: {},
+      defaultProgram: "codex",
+      programs: [{ label: "codex", command: "codex" }],
+    },
+  });
+
+  test("offers the built-in three (first entry Claude)", async ({ sidebar }) => {
+    await sidebar.openInlineCreate("acme");
+    await sidebar.openHarnessMenu();
+    expect(await sidebar.harnessMenuItems()).toEqual([
+      "Claude · claude",
+      "Codex · codex",
+      "OpenCode · opencode",
+    ]);
+    await expect(sidebar.harnessCommand()).toHaveText("claude");
+  });
+});
+
+test.describe("a genuine single-entry configured list is respected", () => {
+  // One entry, but with a distinct display label — a real user configuration, so
+  // shown as-is rather than replaced by the built-in set.
+  test.use({
+    seed: {
+      snapshot: makeSnapshot(),
+      reviews: {},
+      defaultProgram: "claude --model opus",
+      programs: [{ label: "Claude (Opus)", command: "claude --model opus" }],
+    },
+  });
+
+  test("shows only the configured entry", async ({ sidebar }) => {
+    await sidebar.openInlineCreate("acme");
+    await sidebar.openHarnessMenu();
+    expect(await sidebar.harnessMenuItems()).toEqual(["Claude (Opus) · claude --model opus"]);
+  });
+});
+
 test.describe("configured programs list (non-empty)", () => {
   // The user's own order — Codex first — so the picker's first entry is codex.
   test.use({
