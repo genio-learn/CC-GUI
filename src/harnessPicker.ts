@@ -125,7 +125,11 @@ export function createHarnessPicker(projectKey: string): HarnessPicker {
   wrap.appendChild(button);
 
   let shown: ProgramInfo[] = [];
-  let selectedCommand = lastUsed(projectKey) ?? "";
+  // Best-effort selection before the program list resolves: validate the
+  // remembered command against the built-in set so a stale value is never
+  // threaded into create_session if the user submits before get_create_options
+  // returns. Reconciled against the real shown list once it loads.
+  let selectedCommand = initialSelection(BUILTIN_PROGRAMS, projectKey);
   let menu: HTMLDivElement | null = null;
 
   const render = () => {

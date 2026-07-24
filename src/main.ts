@@ -2375,6 +2375,15 @@ function updateRow(refs: RowRefs, s: SessionRow): void {
   refs.row.classList.toggle("selected", s.id === selectedId);
 }
 
+/** Launch a new session in a project, remembering the chosen harness (if any)
+ *  and refreshing once the backend responds. Shared by both create entry points. */
+function startSession(group: ProjectGroup, title: string, program: string | undefined): void {
+  if (program) rememberHarness(group.repo_path, program);
+  invoke("create_session", { projectPath: group.repo_path, title, program })
+    .catch((err) => toast(`create failed: ${err}`, "error"))
+    .finally(() => void refreshNow());
+}
+
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = "create-input";
@@ -2403,10 +2412,7 @@ function renderCreateInput(group: ProjectGroup): HTMLDivElement {
       picker.closeMenu(); // drop the picker's document listener before the re-render
       newSessionProject = null;
       input.disabled = true;
-      if (program) rememberHarness(group.repo_path, program);
-      invoke("create_session", { projectPath: group.repo_path, title, program })
-        .catch((err) => toast(`create failed: ${err}`, "error"))
-        .finally(() => void refreshNow());
+      startSession(group, title, program);
     }
   });
   row.append(input, picker.element);
@@ -2678,12 +2684,7 @@ function projectPickerItems(): MenuItem[] {
 async function createSessionInProject(group: ProjectGroup): Promise<void> {
   const result = await createSessionDialog(`New session in ${group.name}`, group.repo_path);
   if (!result) return;
-  const { title } = result;
-  const program = result.program || undefined;
-  if (program) rememberHarness(group.repo_path, program);
-  invoke("create_session", { projectPath: group.repo_path, title, program })
-    .catch((err) => toast(`create failed: ${err}`, "error"))
-    .finally(() => void refreshNow());
+  startSession(group, result.title, result.program || undefined);
 }
 
 function cycleViewMode(): void {
