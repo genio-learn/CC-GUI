@@ -86,6 +86,7 @@ fn main() {
             groups::move_to_section,
             sessions::get_session_detail,
             sessions::generate_summary,
+            sessions::get_create_options,
             sessions::create_session,
             sessions::kill_session,
             sessions::restart_session,

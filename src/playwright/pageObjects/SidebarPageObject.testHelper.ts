@@ -9,6 +9,7 @@ import type { SessionRow } from "../iwft/network/types.testHelper";
 export class SidebarPageObject extends AppPageObject {
   private readonly sessions = this.page.locator("#sessions");
   private readonly rows = this.sessions.locator(".session-row");
+  private readonly harnessMenu = this.page.locator(".harness-menu");
 
   /** The row whose title cell matches `title`. */
   row(title: string): Locator {
@@ -70,6 +71,104 @@ export class SidebarPageObject extends AppPageObject {
     await header.hover();
     await header.getByTitle("New session in this project").click();
     await expect(this.sessions.locator(".create-input input")).toBeVisible();
+  }
+
+  // ----- harness picker (inline create-input + create-session dialog) -----
+
+  /** Open a project's inline create-input (no title typed yet). */
+  openInlineCreate(projectName: string): Promise<void> {
+    return this.step(`openInlineCreate: ${projectName}`, () => this.openCreateInput(projectName));
+  }
+
+  /** Open the create-session dialog via the full-width button (section/status
+   *  views), then pick the project — leaves the modal open. */
+  openCreateDialog(projectName: string): Promise<void> {
+    return this.step(`openCreateDialog: ${projectName}`, async () => {
+      await this.newSessionButton().click();
+      await this.menuItem(projectName).click();
+      await expect(this.page.locator(".confirm-overlay")).toBeVisible();
+    });
+  }
+
+  /** The harness split-button's command label, within `scope`. A Locator so
+   *  callers can `toHaveText(...)` and ride out the async initial-selection. */
+  harnessCommand(scope = ".create-input-row"): Locator {
+    return this.page.locator(`${scope} .harness-command`);
+  }
+
+  /** Open the harness dropdown by clicking its button, within `scope`. */
+  openHarnessMenu(scope = ".create-input-row"): Promise<void> {
+    return this.step("openHarnessMenu", async () => {
+      await this.page.locator(`${scope} .harness-button`).click();
+      await expect(this.harnessMenu).toBeVisible();
+    });
+  }
+
+  /** Open the harness dropdown from the keyboard (↓ in the title field). */
+  openHarnessMenuViaKey(inputSel = ".create-input input"): Promise<void> {
+    return this.step("openHarnessMenuViaKey", async () => {
+      await this.page.locator(inputSel).press("ArrowDown");
+      await expect(this.harnessMenu).toBeVisible();
+    });
+  }
+
+  /** Menu entry texts ("Label · command"), top to bottom. */
+  harnessMenuItems(): Promise<string[]> {
+    return this.harnessMenu.locator(".harness-menu-label").allInnerTexts();
+  }
+
+  /** The command marked selected (ticked) in the open menu. */
+  tickedHarness(): Promise<string | null> {
+    return this.harnessMenu.locator(".harness-menu-item.selected").getAttribute("data-command");
+  }
+
+  isHarnessMenuOpen(): Promise<boolean> {
+    return this.harnessMenu.isVisible();
+  }
+
+  /** Pick a program from the open harness menu. */
+  selectHarness(command: string): Promise<void> {
+    return this.step(`selectHarness: ${command}`, () =>
+      this.harnessMenu.locator(`.harness-menu-item[data-command="${command}"]`).click(),
+    );
+  }
+
+  /** Full flow: open inline create, pick a harness, type a title, commit. */
+  createWithHarness(projectName: string, title: string, command: string): Promise<void> {
+    return this.step(`createWithHarness: ${title} [${command}]`, async () => {
+      await this.openCreateInput(projectName);
+      await this.openHarnessMenu();
+      await this.selectHarness(command);
+      const input = this.sessions.locator(".create-input input");
+      await input.fill(title);
+      await input.press("Enter");
+    });
+  }
+
+  /** Fill and submit the create-session dialog's title field (Enter). */
+  submitCreateDialog(title: string): Promise<void> {
+    return this.step(`submitCreateDialog: ${title}`, async () => {
+      const input = this.page.locator(".confirm-overlay input");
+      await input.fill(title);
+      await input.press("Enter");
+    });
+  }
+
+  /** Program recorded on a created session's row (what the backend received). */
+  async programOf(title: string): Promise<string | undefined> {
+    const sessions = await this.storedSessions();
+    return sessions.find((s) => s.title === title)?.program;
+  }
+
+  /** Seed the per-project last-used harness memory directly (localStorage) — for
+   *  setting up a stale/prior preference the picker should read on open. */
+  seedHarnessMemory(repoPath: string, command: string): Promise<void> {
+    return this.step(`seedHarnessMemory: ${repoPath}=${command}`, () =>
+      this.page.evaluate(
+        ([key, cmd]) => localStorage.setItem("cc-harness-last", JSON.stringify({ [key]: cmd })),
+        [repoPath, command],
+      ),
+    );
   }
 
   // ----- project sub-headers + create paths (section views) -----

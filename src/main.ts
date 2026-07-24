@@ -40,6 +40,7 @@ import {
   type Theme,
 } from "./theme";
 import { openThemeModal } from "./themeModal";
+import { createHarnessPicker, createSessionDialog, rememberHarness } from "./harnessPicker";
 
 // Apply the GUI theme (CSS custom properties) before any dynamic content renders,
 // then follow the OS appearance via the native Tauri theme event when in System mode.
@@ -2377,23 +2378,39 @@ function updateRow(refs: RowRefs, s: SessionRow): void {
 function renderCreateInput(group: ProjectGroup): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = "create-input";
+  const row = document.createElement("div");
+  row.className = "create-input-row";
   const input = noTextAssist(document.createElement("input"));
   input.placeholder = "new session title…";
+  const picker = createHarnessPicker(group.repo_path);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      // A stray keypress while the harness menu is open closes it, not the input.
+      if (picker.isOpen()) {
+        picker.closeMenu();
+        return;
+      }
       newSessionProject = null;
       renderSidebar();
     }
+    if (e.key === "ArrowDown" && !picker.isOpen()) {
+      e.preventDefault();
+      picker.openMenu();
+    }
     if (e.key === "Enter" && input.value.trim()) {
       const title = input.value.trim();
+      const program = picker.selected() || undefined;
+      picker.closeMenu(); // drop the picker's document listener before the re-render
       newSessionProject = null;
       input.disabled = true;
-      invoke("create_session", { projectPath: group.repo_path, title })
+      if (program) rememberHarness(group.repo_path, program);
+      invoke("create_session", { projectPath: group.repo_path, title, program })
         .catch((err) => toast(`create failed: ${err}`, "error"))
         .finally(() => void refreshNow());
     }
   });
-  wrap.appendChild(input);
+  row.append(input, picker.element);
+  wrap.appendChild(row);
   setTimeout(() => input.focus(), 0);
   return wrap;
 }
@@ -2659,9 +2676,12 @@ function projectPickerItems(): MenuItem[] {
 }
 
 async function createSessionInProject(group: ProjectGroup): Promise<void> {
-  const title = await promptDialog(`New session in ${group.name}`, "session title…", "Create");
-  if (!title) return;
-  invoke("create_session", { projectPath: group.repo_path, title })
+  const result = await createSessionDialog(`New session in ${group.name}`, group.repo_path);
+  if (!result) return;
+  const { title } = result;
+  const program = result.program || undefined;
+  if (program) rememberHarness(group.repo_path, program);
+  invoke("create_session", { projectPath: group.repo_path, title, program })
     .catch((err) => toast(`create failed: ${err}`, "error"))
     .finally(() => void refreshNow());
 }

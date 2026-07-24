@@ -30,6 +30,9 @@ export type SessionRow = {
 /** One entry in a listed directory, mirroring the backend's FsEntry. */
 export type FsEntry = { name: string; is_dir: boolean; size: number };
 
+/** A launch program option, mirroring the backend's ProgramInfo. */
+export type ProgramInfo = { label: string; command: string };
+
 export type ProjectGroup = {
   id: string;
   name: string;
@@ -67,4 +70,7 @@ export type Seed = {
   /** Per-session diffstat summary (git shortstat style, e.g. "3 files changed,
    *  124 insertions(+), 38 deletions(-)") — feeds get_session_detail. */
   diffStats?: Record<string, string>;
+  /** Configured programs answered by get_create_options. Empty/absent → the
+   *  frontend substitutes its built-in fallback set (Claude/Codex/OpenCode). */
+  programs?: ProgramInfo[];
 };

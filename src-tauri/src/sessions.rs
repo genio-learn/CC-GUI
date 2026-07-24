@@ -2,9 +2,19 @@
 
 use std::path::PathBuf;
 
-use claude_commander_core::api::CreateSessionOpts;
+use claude_commander_core::api::{CreateOptions, CreateSessionOpts};
 
 use crate::service::{parse_session_id, service, with_service};
+
+/// New-session options from claude-commander config: `default_program`, the
+/// configured `programs` list, and `sections`. Returned as-is; the frontend
+/// picker uses `programs` (and substitutes a built-in fallback set when it is
+/// empty). A thin passthrough — no product logic lives here.
+#[tauri::command]
+pub async fn get_create_options() -> Result<CreateOptions, String> {
+    let svc = service().await?;
+    Ok(svc.create_options())
+}
 
 /// Detail for one session: full `SessionInfo` (flattened) + agent state,
 /// diff stat, and pane preview. `lines` caps the pane capture.
@@ -51,12 +61,16 @@ pub async fn generate_summary(id: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn create_session(project_path: String, title: String) -> Result<String, String> {
+pub async fn create_session(
+    project_path: String,
+    title: String,
+    program: Option<String>,
+) -> Result<String, String> {
     with_service(move |svc| async move {
         let opts = CreateSessionOpts {
             project_path: PathBuf::from(project_path),
             title,
-            program: None,
+            program,
             initial_prompt: None,
             effort: None,
             mode: None,

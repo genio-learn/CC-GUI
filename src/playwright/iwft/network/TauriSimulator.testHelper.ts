@@ -8,7 +8,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { confirmDialog, promptDialog, deleteSessionDialog } from "../../../toast";
 import type { Comment, ReviewSnapshot } from "../../../review/model";
-import type { FsEntry, Seed, SessionRow, Snapshot } from "./types.testHelper";
+import type { FsEntry, ProgramInfo, Seed, SessionRow, Snapshot } from "./types.testHelper";
 
 type CreateCommentArgs = {
   id: string;
@@ -34,6 +34,7 @@ class TauriSimulator {
   private nextSession = 1;
   private nextProject = 1;
   private dirs: string[];
+  private programs: ProgramInfo[];
   private browsePath: string | null;
   private fileTree: Record<string, FsEntry[]>;
   private diffStats: Record<string, string>;
@@ -52,6 +53,7 @@ class TauriSimulator {
     this.keybindings = seed.keybindings ?? {};
     this.customThemes = seed.customThemes ?? [];
     this.dirs = seed.dirs ?? [];
+    this.programs = seed.programs ?? [];
     this.browsePath = seed.browsePath ?? null;
     this.fileTree = seed.fileTree ?? {};
     this.diffStats = seed.diffStats ?? {};
@@ -150,8 +152,14 @@ class TauriSimulator {
       case "set_view_mode":
         this.snapshot.view_mode = args.mode as string;
         return null;
+      case "get_create_options":
+        return { default_program: "claude", programs: this.programs, sections: [] };
       case "create_session":
-        return this.createSession(args.projectPath as string, args.title as string);
+        return this.createSession(
+          args.projectPath as string,
+          args.title as string,
+          args.program as string | undefined,
+        );
       case "rename_session":
         return this.renameSession(args.id as string, args.title as string);
       case "delete_session":
@@ -243,7 +251,9 @@ class TauriSimulator {
   }
 
   // ----- sidebar mutations (frontend reads them back via refreshNow→get_groups) -----
-  private createSession(projectPath: string, title: string): null {
+  // Records the threaded `program` on the new session's row (the backend infers
+  // the harness from it). `undefined` mirrors the backend default of "claude".
+  private createSession(projectPath: string, title: string, program?: string): null {
     const group = this.snapshot.groups.find((g) => g.repo_path === projectPath);
     if (!group) return null;
     const id = `new-sess-${this.nextSession++}`;
@@ -252,7 +262,7 @@ class TauriSimulator {
       title,
       branch: `cc/${id}`,
       status: "running",
-      program: "claude",
+      program: program ?? "claude",
       agent_state: "idle",
       tmux_session_name: `cc-${id}`,
       pr_number: null,
