@@ -8,7 +8,7 @@ const HELP_SECTIONS: [string, [string, string][]][] = [
       ["Click row", "Attach terminal (recreates stopped sessions)"],
       ["Right-click row", "Full menu: shell, review, rename, editor, PR, lifecycle"],
       ["ⓘ / ±", "Details pane / review diff"],
-      ["+ on project", "New session (Enter creates, Esc cancels)"],
+      ["+ on project", "New session (Enter creates, Esc cancels; ↓ picks the harness)"],
       ["$ on project", "Project shell terminal"],
       ["Right-click project", "New session, project shell, remove project"],
     ],

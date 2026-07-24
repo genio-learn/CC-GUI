@@ -132,6 +132,7 @@ Press `?` in the app (outside a text input) for the full, always-current list.
 | Attach / recreate a session | click its row |
 | Full session menu (shell, review, rename, editor, PR, lifecycle) | right-click row |
 | New session in a project | `+` on the project |
+| New session: pick the harness (Claude / Codex / OpenCode) | `↓` in the title field, or click the `command ▾` button |
 | Add-project path: complete to common prefix | `Tab` |
 | Add-project path: pick / drill into a directory | `↑` / `↓`, then `Enter` |
 | Add-project path: native folder picker | `Browse…` |

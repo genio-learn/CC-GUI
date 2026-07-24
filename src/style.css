@@ -1510,6 +1510,107 @@ body {
   outline: none;
 }
 
+/* Title field + harness picker joined into a split control. */
+.create-input-row,
+.create-session-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.create-input-row input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.create-session-row {
+  gap: 0;
+  margin-top: 8px;
+}
+
+.create-session-row input {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Harness picker: split-button dropdown joined to the title field's right edge. */
+.harness-picker {
+  position: relative;
+  flex: none;
+  display: flex;
+}
+
+.harness-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.harness-button:hover {
+  background: var(--border);
+}
+
+.harness-caret {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.harness-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 101;
+  min-width: 160px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-3);
+  padding: 4px;
+  box-shadow: var(--shadow-raised);
+}
+
+.harness-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: var(--radius-1);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  padding: 6px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.harness-menu-item:hover,
+.harness-menu-item:focus {
+  background: var(--border);
+  outline: none;
+}
+
+.harness-tick {
+  width: 12px;
+  flex: none;
+  color: var(--accent);
+}
+
+.harness-menu-item.selected {
+  color: var(--accent);
+}
+
 .path-input-row {
   display: flex;
   gap: 4px;
