@@ -1,0 +1,511 @@
+<!doctype html>
+<!--
+  THROWAWAY PROTOTYPE — not shipped, not imported by the app.
+  Answers: "what should a set of NEW cc-gui themes look like — distinct from each
+  other and the existing 10, while each still clearly reads dark or light?"
+
+  Open this file directly in a browser (file://) — it's fully self-contained.
+  Flip between candidate themes with the bottom bar or ← / → arrow keys.
+
+  Winners get folded into src/theme.ts (with full xterm `terminal` palettes,
+  which are carried here per theme so nothing is lost); this file then moves to
+  a throwaway branch. See the /prototype skill.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CC-GUI theme prototype</title>
+    <style>
+      /* ---- mock chrome: a compact restatement of the real semantic tokens ---- */
+      :root {
+        --font-ui: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+        --row-selected-bg: color-mix(in srgb, var(--accent) 14%, transparent);
+        --row-hover-bg: color-mix(in srgb, var(--text) 6%, transparent);
+        --chip-faint-bg: color-mix(in srgb, var(--text) 6%, transparent);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: var(--font-ui);
+        background: var(--bg-base);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      .app {
+        height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        padding-bottom: 56px; /* room for switcher */
+      }
+
+      /* header */
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 14px;
+        background: var(--bg-elevated);
+        border-bottom: 1px solid var(--bg-inset);
+      }
+      .logo {
+        width: 22px; height: 22px; border-radius: 6px;
+        background: linear-gradient(135deg, var(--accent), var(--info));
+      }
+      .title { font-weight: 600; }
+      .title .dim { color: var(--text-dim); font-weight: 400; }
+      .spacer { flex: 1; }
+      .pill {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 3px 8px;
+        border: 1px solid var(--border);
+        background: var(--bg-inset);
+        border-radius: 999px;
+      }
+      .pill.warn {
+        color: var(--warning);
+        border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+        background: color-mix(in srgb, var(--warning) 12%, transparent);
+      }
+      .kbd {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-dim);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 2px 6px;
+      }
+
+      /* body split */
+      .body { display: grid; grid-template-columns: 260px 1fr 300px; min-height: 0; }
+      .sidebar { background: var(--bg-elevated); border-right: 1px solid var(--border); overflow: auto; padding: 6px 0; }
+      .main { background: var(--bg-base); overflow: auto; padding: 14px 16px; }
+      .aside { background: var(--bg-elevated); border-left: 1px solid var(--border); overflow: auto; padding: 12px 14px; }
+
+      /* sidebar groups + rows */
+      .group-head {
+        display: flex; align-items: center; gap: 6px;
+        padding: 8px 14px 4px;
+        font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .group-count { color: var(--overlay1); font-weight: 500; }
+      .row {
+        display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 9px;
+        padding: 7px 14px; cursor: default;
+        border-left: 2px solid transparent;
+      }
+      .row:hover { background: var(--row-hover-bg); }
+      .row.sel { background: var(--row-selected-bg); border-left-color: var(--accent); }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--state); }
+      .row .name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .row .meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .branch {
+        justify-self: end;
+        font-family: var(--font-mono); font-size: 10px;
+        color: var(--text-muted);
+        background: var(--chip-faint-bg);
+        border: 1px solid var(--border);
+        border-radius: 5px; padding: 1px 6px;
+      }
+
+      /* terminal pane */
+      .term {
+        font-family: var(--font-mono); font-size: 12px; line-height: 1.65;
+        background: var(--bg-inset);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        white-space: pre-wrap;
+      }
+      .term .prompt { color: var(--accent); }
+      .term .user { color: var(--text); }
+      .term .assistant { color: var(--subtext1); }
+      .term .tool { color: var(--accent-tool); }
+      .term .ok { color: var(--success); }
+      .term .warn { color: var(--warning); }
+      .term .err { color: var(--danger); }
+      .term .info { color: var(--info); }
+      .term .cyan { color: var(--cyan); }
+      .term .dim { color: var(--text-dim); }
+      .term .blocked { color: var(--attn-blocked); }
+      .term .attn { color: var(--attention); }
+
+      h2.section { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); margin: 18px 0 8px; }
+
+      /* diff strip */
+      .diff {
+        font-family: var(--font-mono); font-size: 12px;
+        border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+      }
+      .diff .ln { padding: 1px 12px; white-space: pre; }
+      .diff .add { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+      .diff .del { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+      .diff .ctx { color: var(--text-muted); }
+      .diff .hunk { color: var(--info); background: var(--chip-faint-bg); }
+
+      /* aside: token legend */
+      .aside h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); margin: 0 0 10px; }
+      .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .sw { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); }
+      .sw i { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-strong); flex: none; }
+      .surfaces { display: flex; gap: 0; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+      .surfaces div { flex: 1; height: 34px; display: flex; align-items: end; justify-content: center; font-size: 9px; color: var(--text-dim); padding-bottom: 2px; }
+
+      button.chip {
+        font-family: var(--font-ui); font-size: 12px;
+        color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent);
+        border: 1px solid var(--accent); border-radius: 7px; padding: 5px 11px; cursor: pointer;
+      }
+
+      /* switcher */
+      .switcher {
+        position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+        display: flex; align-items: center; gap: 4px;
+        background: #101014; color: #f4f4f6;
+        border: 1px solid #2a2a34; border-radius: 999px;
+        padding: 5px 6px; box-shadow: 0 8px 30px rgba(0,0,0,.45);
+        font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; z-index: 999;
+      }
+      .switcher button {
+        appearance: none; border: 0; background: transparent; color: #f4f4f6;
+        width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 15px;
+      }
+      .switcher button:hover { background: #26262f; }
+      .switcher .label { padding: 0 12px; min-width: 240px; text-align: center; }
+      .switcher .idx { color: #8b8b98; font-variant-numeric: tabular-nums; }
+      .switcher .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 1px 7px; border-radius: 999px; margin-left: 8px; }
+      .switcher .tag.dark { background: #2a2f45; color: #9db4ff; }
+      .switcher .tag.light { background: #45401f; color: #ffe08a; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="logo"></div>
+        <div class="title">CC-GUI <span class="dim">— theme preview</span></div>
+        <div class="spacer"></div>
+        <span class="pill warn">2 need you</span>
+        <span class="pill">7 sessions</span>
+        <span class="kbd">⌘K</span>
+      </header>
+
+      <div class="body">
+        <!-- sidebar: status-grouped sessions -->
+        <nav class="sidebar">
+          <div class="group-head">Needs you <span class="group-count">2</span></div>
+          <div class="row sel">
+            <span class="dot" style="--state: var(--warning)"></span>
+            <div>
+              <div class="name">auth-refactor</div>
+              <div class="meta">waiting for input</div>
+            </div>
+            <span class="branch">fix-jwt</span>
+          </div>
+          <div class="row">
+            <span class="dot" style="--state: var(--attn-blocked)"></span>
+            <div>
+              <div class="name">payment-webhook</div>
+              <div class="meta">blocked · needs approval</div>
+            </div>
+            <span class="branch">webhook</span>
+          </div>
+
+          <div class="group-head">Active <span class="group-count">3</span></div>
+          <div class="row">
+            <span class="dot" style="--state: var(--success)"></span>
+            <div><div class="name">theme-registry</div><div class="meta">running</div></div>
+            <span class="branch">themes</span>
+          </div>
+          <div class="row">
+            <span class="dot" style="--state: var(--cyan)"></span>
+            <div><div class="name">split-screen-view</div><div class="meta">thinking…</div></div>
+            <span class="branch">split</span>
+          </div>
+          <div class="row">
+            <span class="dot" style="--state: var(--success)"></span>
+            <div><div class="name">harness-picker</div><div class="meta">running tests</div></div>
+            <span class="branch">picker</span>
+          </div>
+
+          <div class="group-head">Parked <span class="group-count">2</span></div>
+          <div class="row">
+            <span class="dot" style="--state: var(--text-dim)"></span>
+            <div><div class="name">docs-sweep</div><div class="meta">idle · 2h</div></div>
+            <span class="branch">docs</span>
+          </div>
+          <div class="row">
+            <span class="dot" style="--state: var(--text-dim)"></span>
+            <div><div class="name">flaky-test-hunt</div><div class="meta">idle · 1d</div></div>
+            <span class="branch">flaky</span>
+          </div>
+        </nav>
+
+        <!-- main: terminal + diff -->
+        <main class="main">
+          <div class="term"><span class="prompt">›</span> <span class="user">refactor the token validation to reject expired JWTs</span>
+
+<span class="assistant">I'll add an expiry check and a test that reproduces the gap first.</span>
+
+<span class="tool">⏺ Read</span><span class="dim">(src/auth/jwt.ts)</span>
+<span class="tool">⏺ Edit</span><span class="dim">(src/auth/jwt.ts)</span> <span class="ok">+18 −4</span>
+<span class="tool">⏺ Bash</span><span class="dim">(npm test -- jwt)</span>
+  <span class="ok">✓</span> rejects tokens past exp
+  <span class="ok">✓</span> accepts tokens within window
+  <span class="warn">⚠</span> clock-skew tolerance not covered
+  <span class="err">✗</span> refresh path throws on malformed header
+  <span class="blocked">⛔ approval required to run migration</span>
+  <span class="info">ℹ</span> <span class="info">3 files changed</span>, <span class="cyan">2 tools</span>, <span class="attn">1 retry</span></div>
+
+          <h2 class="section">Review · src/auth/jwt.ts</h2>
+          <div class="diff">
+            <div class="ln hunk">@@ -41,7 +41,10 @@ export function verify(token: string)</div>
+            <div class="ln ctx">   const { header, payload } = decode(token);</div>
+            <div class="ln del">-  return payload;</div>
+            <div class="ln add">+  if (payload.exp * 1000 < Date.now()) {</div>
+            <div class="ln add">+    throw new TokenExpiredError(payload.exp);</div>
+            <div class="ln add">+  }</div>
+            <div class="ln add">+  return payload;</div>
+            <div class="ln ctx"> }</div>
+          </div>
+
+          <div style="margin-top:14px; display:flex; gap:8px">
+            <button class="chip">Approve</button>
+            <button class="chip">Comment</button>
+          </div>
+        </main>
+
+        <!-- aside: token legend, so distinctness is obvious at a glance -->
+        <aside class="aside">
+          <h3>Surfaces</h3>
+          <div class="surfaces">
+            <div style="background: var(--bg-inset)">inset</div>
+            <div style="background: var(--bg-base)">base</div>
+            <div style="background: var(--bg-elevated)">elev</div>
+          </div>
+          <h3>Palette</h3>
+          <div class="swatches">
+            <div class="sw"><i style="background: var(--accent)"></i>accent</div>
+            <div class="sw"><i style="background: var(--info)"></i>info</div>
+            <div class="sw"><i style="background: var(--success)"></i>success</div>
+            <div class="sw"><i style="background: var(--danger)"></i>danger</div>
+            <div class="sw"><i style="background: var(--warning)"></i>warning</div>
+            <div class="sw"><i style="background: var(--attention)"></i>attention</div>
+            <div class="sw"><i style="background: var(--cyan)"></i>cyan</div>
+            <div class="sw"><i style="background: var(--accent-tool)"></i>tool</div>
+            <div class="sw"><i style="background: var(--attn-blocked)"></i>blocked</div>
+            <div class="sw"><i style="background: var(--tag-cool)"></i>tag-cool</div>
+          </div>
+          <h3 style="margin-top:16px">Text</h3>
+          <div style="color: var(--text)">text — primary</div>
+          <div style="color: var(--subtext1)">subtext1 — body paragraph</div>
+          <div style="color: var(--text-muted)">text-muted — secondary</div>
+          <div style="color: var(--text-dim)">text-dim — tertiary</div>
+          <div style="color: var(--overlay1)">overlay1 — faint</div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="switcher">
+      <button id="prev" title="Previous (←)">‹</button>
+      <span class="label"><span id="idx" class="idx"></span> <span id="name"></span><span id="tag" class="tag"></span></span>
+      <button id="next" title="Next (→)">›</button>
+    </div>
+
+    <script>
+      // ---- candidate themes. cssVars drive the chrome; `terminal` is carried
+      // for folding into src/theme.ts later (unused by this preview). ----
+      const THEMES = [
+        {
+          id: "gruvbox-dark", label: "Gruvbox Dark", appearance: "dark",
+          cssVars: {
+            "bg-base": "#282828", "bg-elevated": "#242424", "bg-inset": "#1d2021",
+            border: "#3c3836", "border-strong": "#504945", surface2: "#665c54",
+            text: "#ebdbb2", "text-muted": "#d5c4a1", "text-dim": "#928374",
+            overlay1: "#a89984", subtext1: "#d5c4a1",
+            accent: "#83a598", success: "#b8bb26", danger: "#fb4934", warning: "#fabd2f",
+            attention: "#fe8019", info: "#d3869b", cyan: "#8ec07c",
+            "accent-tool": "#d3869b", "attn-blocked": "#cc241d", "tag-cool": "#8ec07c",
+          },
+          terminal: {
+            foreground: "#ebdbb2", background: "#282828", cursor: "#ebdbb2", cursorAccent: "#282828", selectionBackground: "#504945",
+            black: "#282828", red: "#cc241d", green: "#98971a", yellow: "#d79921", blue: "#458588", magenta: "#b16286", cyan: "#689d6a", white: "#a89984",
+            brightBlack: "#928374", brightRed: "#fb4934", brightGreen: "#b8bb26", brightYellow: "#fabd2f", brightBlue: "#83a598", brightMagenta: "#d3869b", brightCyan: "#8ec07c", brightWhite: "#ebdbb2",
+          },
+        },
+        {
+          id: "everforest-dark", label: "Everforest Dark", appearance: "dark",
+          cssVars: {
+            "bg-base": "#2d353b", "bg-elevated": "#272e33", "bg-inset": "#232a2e",
+            border: "#3d484d", "border-strong": "#475258", surface2: "#4f585e",
+            text: "#d3c6aa", "text-muted": "#9da9a0", "text-dim": "#7a8478",
+            overlay1: "#859289", subtext1: "#d3c6aa",
+            accent: "#7fbbb3", success: "#a7c080", danger: "#e67e80", warning: "#dbbc7f",
+            attention: "#e69875", info: "#d699b6", cyan: "#83c092",
+            "accent-tool": "#d699b6", "attn-blocked": "#e67e80", "tag-cool": "#83c092",
+          },
+          terminal: {
+            foreground: "#d3c6aa", background: "#2d353b", cursor: "#d3c6aa", cursorAccent: "#2d353b", selectionBackground: "#475258",
+            black: "#4b565c", red: "#e67e80", green: "#a7c080", yellow: "#dbbc7f", blue: "#7fbbb3", magenta: "#d699b6", cyan: "#83c092", white: "#d3c6aa",
+            brightBlack: "#7a8478", brightRed: "#e67e80", brightGreen: "#a7c080", brightYellow: "#dbbc7f", brightBlue: "#7fbbb3", brightMagenta: "#d699b6", brightCyan: "#83c092", brightWhite: "#d3c6aa",
+          },
+        },
+        {
+          id: "rose-pine", label: "Rosé Pine", appearance: "dark",
+          cssVars: {
+            "bg-base": "#191724", "bg-elevated": "#1f1d2e", "bg-inset": "#16141f",
+            border: "#403d52", "border-strong": "#524f67", surface2: "#6e6a86",
+            text: "#e0def4", "text-muted": "#908caa", "text-dim": "#6e6a86",
+            overlay1: "#6e6a86", subtext1: "#e0def4",
+            accent: "#c4a7e7", success: "#9ccfd8", danger: "#eb6f92", warning: "#f6c177",
+            attention: "#ebbcba", info: "#31748f", cyan: "#9ccfd8",
+            "accent-tool": "#c4a7e7", "attn-blocked": "#eb6f92", "tag-cool": "#9ccfd8",
+          },
+          terminal: {
+            foreground: "#e0def4", background: "#191724", cursor: "#e0def4", cursorAccent: "#191724", selectionBackground: "#403d52",
+            black: "#26233a", red: "#eb6f92", green: "#31748f", yellow: "#f6c177", blue: "#9ccfd8", magenta: "#c4a7e7", cyan: "#ebbcba", white: "#e0def4",
+            brightBlack: "#6e6a86", brightRed: "#eb6f92", brightGreen: "#31748f", brightYellow: "#f6c177", brightBlue: "#9ccfd8", brightMagenta: "#c4a7e7", brightCyan: "#ebbcba", brightWhite: "#e0def4",
+          },
+        },
+        {
+          id: "kanagawa", label: "Kanagawa", appearance: "dark",
+          cssVars: {
+            "bg-base": "#1f1f28", "bg-elevated": "#1a1a22", "bg-inset": "#16161d",
+            border: "#2a2a37", "border-strong": "#363646", surface2: "#54546d",
+            text: "#dcd7ba", "text-muted": "#c8c093", "text-dim": "#727169",
+            overlay1: "#938aa9", subtext1: "#dcd7ba",
+            accent: "#7e9cd8", success: "#98bb6c", danger: "#e46876", warning: "#e6c384",
+            attention: "#ffa066", info: "#957fb8", cyan: "#7fb4ca",
+            "accent-tool": "#957fb8", "attn-blocked": "#c34043", "tag-cool": "#7aa89f",
+          },
+          terminal: {
+            foreground: "#dcd7ba", background: "#1f1f28", cursor: "#c8c093", cursorAccent: "#1f1f28", selectionBackground: "#2d4f67",
+            black: "#16161d", red: "#c34043", green: "#76946a", yellow: "#c0a36e", blue: "#7e9cd8", magenta: "#957fb8", cyan: "#6a9589", white: "#c8c093",
+            brightBlack: "#727169", brightRed: "#e82424", brightGreen: "#98bb6c", brightYellow: "#e6c384", brightBlue: "#7fb4ca", brightMagenta: "#938aa9", brightCyan: "#7aa89f", brightWhite: "#dcd7ba",
+          },
+        },
+        {
+          id: "ayu-dark", label: "Ayu Dark", appearance: "dark",
+          cssVars: {
+            "bg-base": "#0b0e14", "bg-elevated": "#0d1017", "bg-inset": "#060810",
+            border: "#1c212b", "border-strong": "#2d3640", surface2: "#3d4550",
+            text: "#bfbdb6", "text-muted": "#8a9199", "text-dim": "#565b66",
+            overlay1: "#565b66", subtext1: "#bfbdb6",
+            accent: "#59c2ff", success: "#aad94c", danger: "#f26d78", warning: "#e6b450",
+            attention: "#ff8f40", info: "#d2a6ff", cyan: "#39bae6",
+            "accent-tool": "#d2a6ff", "attn-blocked": "#f26d78", "tag-cool": "#95e6cb",
+          },
+          terminal: {
+            foreground: "#bfbdb6", background: "#0b0e14", cursor: "#e6b450", cursorAccent: "#0b0e14", selectionBackground: "#1c2733",
+            black: "#01060e", red: "#ea6c73", green: "#91b362", yellow: "#f9af4f", blue: "#53bdfa", magenta: "#fae994", cyan: "#90e1c6", white: "#c7c7c7",
+            brightBlack: "#686868", brightRed: "#f07178", brightGreen: "#c2d94c", brightYellow: "#ffb454", brightBlue: "#59c2ff", brightMagenta: "#ffee99", brightCyan: "#95e6cb", brightWhite: "#ffffff",
+          },
+        },
+        {
+          id: "gruvbox-light", label: "Gruvbox Light", appearance: "light",
+          cssVars: {
+            "bg-base": "#fbf1c7", "bg-elevated": "#f2e5bc", "bg-inset": "#ebdbb2",
+            border: "#d5c4a1", "border-strong": "#bdae93", surface2: "#a89984",
+            text: "#3c3836", "text-muted": "#504945", "text-dim": "#7c6f64",
+            overlay1: "#665c54", subtext1: "#504945",
+            accent: "#076678", success: "#79740e", danger: "#9d0006", warning: "#b57614",
+            attention: "#af3a03", info: "#8f3f71", cyan: "#427b58",
+            "accent-tool": "#8f3f71", "attn-blocked": "#cc241d", "tag-cool": "#427b58",
+          },
+          terminal: {
+            foreground: "#3c3836", background: "#fbf1c7", cursor: "#3c3836", cursorAccent: "#fbf1c7", selectionBackground: "#d5c4a1",
+            black: "#3c3836", red: "#cc241d", green: "#98971a", yellow: "#d79921", blue: "#458588", magenta: "#b16286", cyan: "#689d6a", white: "#7c6f64",
+            brightBlack: "#928374", brightRed: "#9d0006", brightGreen: "#79740e", brightYellow: "#b57614", brightBlue: "#076678", brightMagenta: "#8f3f71", brightCyan: "#427b58", brightWhite: "#3c3836",
+          },
+        },
+        {
+          id: "everforest-light", label: "Everforest Light", appearance: "light",
+          cssVars: {
+            "bg-base": "#fdf6e3", "bg-elevated": "#f4f0d9", "bg-inset": "#efebd4",
+            border: "#e6e2cc", "border-strong": "#e0dcc7", surface2: "#bec5b2",
+            text: "#5c6a72", "text-muted": "#829181", "text-dim": "#a6b0a0",
+            overlay1: "#939f91", subtext1: "#5c6a72",
+            accent: "#3a94c5", success: "#8da101", danger: "#f85552", warning: "#dfa000",
+            attention: "#f57d26", info: "#df69ba", cyan: "#35a77c",
+            "accent-tool": "#df69ba", "attn-blocked": "#f85552", "tag-cool": "#35a77c",
+          },
+          terminal: {
+            foreground: "#5c6a72", background: "#fdf6e3", cursor: "#5c6a72", cursorAccent: "#fdf6e3", selectionBackground: "#e6e2cc",
+            black: "#5c6a72", red: "#f85552", green: "#8da101", yellow: "#dfa000", blue: "#3a94c5", magenta: "#df69ba", cyan: "#35a77c", white: "#829181",
+            brightBlack: "#a6b0a0", brightRed: "#f85552", brightGreen: "#8da101", brightYellow: "#dfa000", brightBlue: "#3a94c5", brightMagenta: "#df69ba", brightCyan: "#35a77c", brightWhite: "#5c6a72",
+          },
+        },
+        {
+          id: "rose-pine-dawn", label: "Rosé Pine Dawn", appearance: "light",
+          cssVars: {
+            "bg-base": "#faf4ed", "bg-elevated": "#fffaf3", "bg-inset": "#f2e9e1",
+            border: "#dfdad9", "border-strong": "#cecacd", surface2: "#9893a5",
+            text: "#575279", "text-muted": "#797593", "text-dim": "#9893a5",
+            overlay1: "#9893a5", subtext1: "#575279",
+            accent: "#907aa9", success: "#56949f", danger: "#b4637a", warning: "#ea9d34",
+            attention: "#d7827e", info: "#286983", cyan: "#56949f",
+            "accent-tool": "#907aa9", "attn-blocked": "#b4637a", "tag-cool": "#56949f",
+          },
+          terminal: {
+            foreground: "#575279", background: "#faf4ed", cursor: "#575279", cursorAccent: "#faf4ed", selectionBackground: "#dfdad9",
+            black: "#f2e9e1", red: "#b4637a", green: "#56949f", yellow: "#ea9d34", blue: "#286983", magenta: "#907aa9", cyan: "#d7827e", white: "#575279",
+            brightBlack: "#9893a5", brightRed: "#b4637a", brightGreen: "#56949f", brightYellow: "#ea9d34", brightBlue: "#286983", brightMagenta: "#907aa9", brightCyan: "#d7827e", brightWhite: "#575279",
+          },
+        },
+        {
+          id: "daylight-hc", label: "Daylight (High Contrast)", appearance: "light",
+          cssVars: {
+            "bg-base": "#fbfbf9", "bg-elevated": "#eef0ed", "bg-inset": "#e2e5e1",
+            border: "#a8afb4", "border-strong": "#848c92", surface2: "#6a7278",
+            text: "#0a0e14", "text-muted": "#2c353d", "text-dim": "#49535b",
+            overlay1: "#5b656d", subtext1: "#171d24",
+            accent: "#0349b4", success: "#0a5d20", danger: "#a0111f", warning: "#6f4a00",
+            attention: "#8a3800", info: "#6420b0", cyan: "#08606c",
+            "accent-tool": "#6420b0", "attn-blocked": "#8a0f1a", "tag-cool": "#08606c",
+          },
+          terminal: {
+            foreground: "#0a0e14", background: "#fbfbf9", cursor: "#0a0e14", cursorAccent: "#fbfbf9", selectionBackground: "#c9d4e3",
+            black: "#0a0e14", red: "#a0111f", green: "#0a5d20", yellow: "#6f4a00", blue: "#0349b4", magenta: "#6420b0", cyan: "#08606c", white: "#6a7278",
+            brightBlack: "#49535b", brightRed: "#8a0f1a", brightGreen: "#0a5d20", brightYellow: "#6f4a00", brightBlue: "#0349b4", brightMagenta: "#6420b0", brightCyan: "#08606c", brightWhite: "#0a0e14",
+          },
+        },
+      ];
+
+      const idxEl = document.getElementById("idx");
+      const nameEl = document.getElementById("name");
+      const tagEl = document.getElementById("tag");
+      let i = 0;
+
+      function apply(n) {
+        i = (n + THEMES.length) % THEMES.length;
+        const t = THEMES[i];
+        const root = document.documentElement;
+        for (const [k, v] of Object.entries(t.cssVars)) root.style.setProperty(`--${k}`, v);
+        root.dataset.appearance = t.appearance;
+        idxEl.textContent = `${i + 1}/${THEMES.length}`;
+        nameEl.textContent = t.label;
+        tagEl.textContent = t.appearance;
+        tagEl.className = "tag " + t.appearance;
+        location.hash = t.id;
+      }
+
+      document.getElementById("prev").onclick = () => apply(i - 1);
+      document.getElementById("next").onclick = () => apply(i + 1);
+      window.addEventListener("keydown", (e) => {
+        const el = document.activeElement;
+        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+        if (e.key === "ArrowLeft") apply(i - 1);
+        else if (e.key === "ArrowRight") apply(i + 1);
+      });
+
+      const start = THEMES.findIndex((t) => t.id === location.hash.slice(1));
+      apply(start >= 0 ? start : 0);
+    </script>
+  </body>
+</html>
