@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-24T00:00:00Z",
+  "title": "Design System: CC-GUI",
+  "extensions": {
+    "colorMeta": {
+      "bg-base": { "role": "neutral", "displayName": "App Ground", "canonical": "#1e1e2e", "tonalRamp": ["#100f18", "#15141f", "#1a1926", "#1e1e2e", "#2a2a3d", "#3a3a52", "#4d4d6b", "#666688"] },
+      "bg-elevated": { "role": "neutral", "displayName": "Elevated Chrome", "canonical": "#191926" },
+      "bg-inset": { "role": "neutral", "displayName": "Inset Well", "canonical": "#11111b" },
+      "border": { "role": "neutral", "displayName": "Hairline Border", "canonical": "#343650" },
+      "border-strong": { "role": "neutral", "displayName": "Strong Border", "canonical": "#4a4c68" },
+      "surface2": { "role": "neutral", "displayName": "Raised Fill", "canonical": "#5c5f78" },
+      "text": { "role": "neutral", "displayName": "Primary Text", "canonical": "#e4e8fb", "tonalRamp": ["#3a3d55", "#565b7d", "#7f849c", "#a3a9c6", "#bac2de", "#cdd3ee", "#e4e8fb", "#f2f4ff"] },
+      "text-muted": { "role": "neutral", "displayName": "Muted Text", "canonical": "#b7bedd" },
+      "text-dim": { "role": "neutral", "displayName": "Dim Text", "canonical": "#8a90ad" },
+      "overlay1": { "role": "neutral", "displayName": "Placeholder / Disabled", "canonical": "#7f849c" },
+      "subtext1": { "role": "neutral", "displayName": "Subtext", "canonical": "#bac2de" },
+      "accent": { "role": "primary", "displayName": "Interactive Accent", "canonical": "#8fb8ff", "tonalRamp": ["#1b2a4d", "#274073", "#345699", "#4d74c2", "#6f96e0", "#8fb8ff", "#b3d0ff", "#d8e6ff"] },
+      "success": { "role": "secondary", "displayName": "Success / Running", "canonical": "#a9e6a4", "tonalRamp": ["#173d18", "#245a26", "#347c36", "#49a24a", "#78c674", "#a9e6a4", "#c7f0c3", "#e2f8e0"] },
+      "danger": { "role": "secondary", "displayName": "Danger", "canonical": "#f58fab", "tonalRamp": ["#4d1a29", "#732740", "#993556", "#c24d72", "#e06f92", "#f58fab", "#f9b3c6", "#fdd8e2"] },
+      "warning": { "role": "secondary", "displayName": "Warning / Needs-you", "canonical": "#f6dd9c", "tonalRamp": ["#4d3f17", "#735e24", "#998034", "#c2a749", "#e0c674", "#f6dd9c", "#f9e8bd", "#fdf3de"] },
+      "attention": { "role": "secondary", "displayName": "Attention", "canonical": "#fab387" },
+      "info": { "role": "secondary", "displayName": "Info / Tool", "canonical": "#cba6f7", "tonalRamp": ["#33234d", "#4a3473", "#634699", "#7f5cc2", "#a37fe0", "#cba6f7", "#dcc4fa", "#ede2fd"] },
+      "cyan": { "role": "secondary", "displayName": "Idle", "canonical": "#8fe0ee", "tonalRamp": ["#173d44", "#245a63", "#347c88", "#49a2b0", "#6fc4d3", "#8fe0ee", "#b6ecf4", "#dbf6fa"] },
+      "accent-tool": { "role": "secondary", "displayName": "Tool Accent", "canonical": "#b4befe" },
+      "attn-blocked": { "role": "secondary", "displayName": "Blocked", "canonical": "#eba0ac" },
+      "tag-cool": { "role": "tertiary", "displayName": "Project Cool Tag", "canonical": "#94e2d5" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "First-run onboarding hero only." },
+      "title": { "displayName": "Title", "purpose": "Dialog titles and section headings." },
+      "body": { "displayName": "Body", "purpose": "Session rows, menus, palette rows, most chrome." },
+      "label": { "displayName": "Label", "purpose": "Uppercase structural signposts: group headers, field labels, key hints." },
+      "mono": { "displayName": "Mono / Data", "purpose": "Machine data: diffs, counts, ids, shortcuts, pills." }
+    },
+    "shadows": [
+      { "name": "raised", "value": "0 8px 24px rgba(0,0,0,0.28)", "purpose": "Context menus, popovers, command palette box, raised cards." },
+      { "name": "terminal", "value": "0 8px 30px rgba(0,0,0,0.25)", "purpose": "The rounded terminal frame floating over the pane." },
+      { "name": "popover", "value": "0 20px 50px rgba(0,0,0,0.5)", "purpose": "Anchored popovers such as the theme picker." },
+      { "name": "dialog", "value": "0 28px 70px rgba(0,0,0,0.6)", "purpose": "Modal dialogs — the deepest lift, topmost layer." }
+    ],
+    "motion": [
+      { "name": "state", "value": "0.12s ease", "purpose": "Default transition for color/border/background state changes." },
+      { "name": "overlay-in", "value": "0.13s ease", "purpose": "Entrance fade/scale for palette and overlays." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default dialog action; danger variant swaps text + stroke to --danger.",
+      "html": "<div style=\"display:flex;gap:8px\"><button class=\"ds-btn\">Cancel</button><button class=\"ds-btn ds-btn-danger\">Delete</button></div>",
+      "css": ".ds-btn { background: var(--border); color: var(--text); border: 1px solid var(--border-strong); border-radius: 7px; font: 500 12px/1 'IBM Plex Sans', sans-serif; padding: 5px 12px; cursor: pointer; transition: border-color 0.12s ease; } .ds-btn:hover { border-color: var(--text-dim); } .ds-btn-danger { color: var(--danger); border-color: var(--danger); } .ds-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Text field; focus shifts the border to accent and adds a 3px accent glow ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Filter sessions…\" />",
+      "css": ".ds-input { background: var(--bg-inset); color: var(--text); border: 1px solid var(--border-strong); border-radius: 10px; font: 400 12px/1.4 'IBM Plex Sans', sans-serif; padding: 5px 10px; outline: none; width: 260px; transition: border-color 0.12s ease, box-shadow 0.12s ease; } .ds-input::placeholder { color: var(--overlay1); } .ds-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }"
+    },
+    {
+      "name": "Attention Pill",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "The warning-toned 'N waiting on you' summary pill; mono, fully rounded.",
+      "html": "<span class=\"ds-pill\">3 waiting on you</span>",
+      "css": ".ds-pill { display: inline-block; font: 400 12px/1 'IBM Plex Mono', monospace; padding: 4px 10px; border-radius: 999px; color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); background: color-mix(in srgb, var(--warning) 12%, transparent); white-space: nowrap; }"
+    },
+    {
+      "name": "Session Row (selected)",
+      "kind": "custom",
+      "refersTo": "session-row",
+      "description": "A session row with the running-state dot and the selected accent left border.",
+      "html": "<div class=\"ds-row ds-row-selected\"><span class=\"ds-dot\"></span><span class=\"ds-row-title\">fix-terminal-path</span><span class=\"ds-row-meta\">2m</span></div>",
+      "css": ".ds-row { display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 9px; cursor: pointer; font: 500 13px/1.2 'IBM Plex Sans', sans-serif; color: var(--text); } .ds-row:hover { background: color-mix(in srgb, var(--text) 5%, transparent); } .ds-row-selected { background: color-mix(in srgb, var(--accent) 12%, transparent); border-left: 2px solid var(--accent); padding-left: 8px; } .ds-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--success); flex-shrink: 0; } .ds-row-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-row-meta { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); }"
+    },
+    {
+      "name": "Terminal Tab (active)",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "Active terminal tab: bg-base fill with a 2px accent top-border; inactive reserves it transparent so switching never shifts layout.",
+      "html": "<div class=\"ds-tabs\"><div class=\"ds-tab ds-tab-active\">atlas <button class=\"ds-tab-x\">✕</button></div><div class=\"ds-tab\">web-ui</div><button class=\"ds-tab-new\">+</button></div>",
+      "css": ".ds-tabs { display: flex; align-items: stretch; height: 44px; background: var(--bg-elevated); } .ds-tab { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; font: 500 13px/1 'IBM Plex Sans', sans-serif; color: var(--text-muted); border-right: 1px solid var(--border); border-top: 2px solid transparent; cursor: pointer; } .ds-tab-active { color: var(--text); background: var(--bg-base); border-top: 2px solid var(--accent); } .ds-tab-x { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; padding: 0 6px; } .ds-tab-x:hover { color: var(--danger); } .ds-tab-new { background: none; border: none; border-top: 2px solid transparent; color: var(--text-dim); font-size: 18px; padding: 0 14px; cursor: pointer; } .ds-tab-new:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }"
+    },
+    {
+      "name": "Command Palette Row",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "A grouped palette row with a toned command icon; selected/hover fills with --border.",
+      "html": "<div class=\"ds-pal\"><div class=\"ds-pal-group\">Session</div><div class=\"ds-pal-row ds-pal-selected\"><span class=\"ds-pal-icon ds-tone-success\">▶</span><span class=\"ds-pal-label\">Attach session</span></div><div class=\"ds-pal-row\"><span class=\"ds-pal-icon ds-tone-info\">⌥</span><span class=\"ds-pal-label\">Open review</span></div></div>",
+      "css": ".ds-pal { width: 360px; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 12px; padding: 6px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.28); } .ds-pal-group { padding: 10px 14px 4px; font: 600 11px/1 'IBM Plex Sans', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); } .ds-pal-row { display: flex; align-items: center; gap: 10px; padding: 7px 14px; font: 400 13px/1.2 'IBM Plex Sans', sans-serif; color: var(--text); cursor: pointer; } .ds-pal-row:hover, .ds-pal-selected { background: var(--border); } .ds-pal-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 12px; color: var(--text-dim); } .ds-tone-success { color: var(--success); background: color-mix(in srgb, var(--success) 15%, transparent); } .ds-tone-info { color: var(--info); background: color-mix(in srgb, var(--info) 15%, transparent); }"
+    },
+    {
+      "name": "Toggle Switch",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Settings toggle; checked track fills with accent.",
+      "html": "<label class=\"ds-switch\"><input type=\"checkbox\" checked><span class=\"ds-slider\"></span></label>",
+      "css": ".ds-switch { position: relative; display: inline-block; width: 36px; height: 20px; } .ds-switch input { opacity: 0; width: 0; height: 0; } .ds-slider { position: absolute; inset: 0; background: var(--border-strong); border-radius: 20px; transition: background 0.12s ease; cursor: pointer; } .ds-slider::before { content: ''; position: absolute; height: 14px; width: 14px; left: 3px; top: 3px; background: var(--bg-elevated); border-radius: 50%; transition: transform 0.12s ease; } .ds-switch input:checked + .ds-slider { background: var(--accent); } .ds-switch input:checked + .ds-slider::before { transform: translateX(16px); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Working Shell",
+    "overview": "CC-GUI is the shell a developer sits inside all day to run agentic coding. Its job is to keep many Claude sessions manageable without getting in the way, and to multiply the work happening inside them — the review screen lets you comment on a diff and apply feedback in-place instead of round-tripping through GitHub PRs; the palette and file explorer keep hands on the keyboard. The interface is a quiet frame around session content and the one signal that matters most: what needs you, and what's in progress.\n\nThe system's defining move is that it has no fixed palette. The visual identity is a 21-token semantic contract that any of nineteen built-in editor themes plus user-authored JSON themes can fill. The same contract themes three surfaces in lockstep: the CSS chrome, the xterm terminal palette, and the Shiki diff highlighter. So the brand is not a color; it is the structure — spacing rhythm, mono-for-data discipline, tonal layering, restraint — that stays constant while the developer swaps the skin to match their editor.\n\nThe feel is refined and restrained: tight 0.12s transitions, small radii, 1px hairline borders, and semantic state color used sparingly against a calm neutral ground. Depth is gently layered but never allowed to become a feature.",
+    "keyCharacteristics": [
+      "Themeable by contract, not by palette — 21 semantic tokens, 19+ skins, 3 surfaces.",
+      "Keyboard-first, dense, native-desktop chrome; no page scroll, fixed shell.",
+      "Semantic state color carries the signal; neutral chrome carries everything else.",
+      "Mono type is reserved for machine data (diffs, counts, ids, shortcuts).",
+      "Quiet by default; motion and shadow serve legibility, not expression."
+    ],
+    "rules": [
+      { "name": "The Token Contract Rule", "body": "There are exactly 21 semantic color tokens. Every theme must fill all of them, and every consumer references var(--token), never a raw hex.", "section": "colors" },
+      { "name": "The Reskinnable Tint Rule", "body": "Derived tints are built with color-mix(in srgb, var(--token) N%, transparent), never a hardcoded rgba(). Tints must follow the theme.", "section": "colors" },
+      { "name": "The State-Color Lockstep Rule", "body": "A session's state color is defined once and reused by the accent bar, the state pill, and the dot. running→success, finished/waiting/transient→warning, idle→cyan, stopped/hibernated→text-dim.", "section": "colors" },
+      { "name": "The Mono-for-Data Rule", "body": "IBM Plex Mono is reserved for machine-generated or machine-addressable data: diffs, counts, ids, names, and shortcuts. Human prose and chrome are always IBM Plex Sans.", "section": "typography" },
+      { "name": "The Depth-Serves-Legibility Rule", "body": "Shadow scales with how far a surface floats above the app (menu < terminal < popover < dialog) and communicates layer order, nothing more.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do reference semantic tokens (var(--accent), var(--bg-inset)) for every color — all 21 exist in every theme.",
+      "Do build tints and scrims with color-mix() off a token so they reskin.",
+      "Do use IBM Plex Mono for machine data and IBM Plex Sans for everything human.",
+      "Do keep transitions fast and small (0.12s ease; 0.13s for overlay entrance) and radii on the 7/10/12 + pill scale.",
+      "Do reserve the accent for interaction, selection, and focus — treat it as a scarce signal.",
+      "Do scale shadow to a surface's float height (menu < terminal < popover < dialog) and no further."
+    ],
+    "donts": [
+      "Don't hardcode a hex or an rgba() in a component — it breaks theming.",
+      "Don't let depth become decorative: no ambient shadow on flat resting chrome beyond a quiet lift, no gradients except the titlebar mark.",
+      "Don't hand-pick a project color — projects hash to --proj-N; consume var(--proj-color).",
+      "Don't break the State-Color Lockstep — a session's dot, pill, and bar share one --state-color.",
+      "Don't design for mobile reflow or a scrolling page; this is a fixed desktop window with overflow: hidden.",
+      "Don't add chrome that competes with session content for attention — the shell recedes."
+    ]
+  }
+}
