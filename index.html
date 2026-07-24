@@ -11,7 +11,14 @@
         <span class="tb-mark"></span>
         <span class="tb-name">claude-commander</span>
         <span id="tb-count" class="tb-pill"></span>
-        <span id="tb-attention" class="tb-pill attention hidden"></span>
+        <span
+          id="tb-attention"
+          class="tb-pill attention hidden"
+          role="button"
+          tabindex="0"
+          aria-live="polite"
+          title="Jump to the next session that needs you"
+        ></span>
       </div>
       <div class="tb-segment">
         <button id="tb-console">Console</button>
@@ -29,7 +36,7 @@
           <h1>SESSIONS</h1>
           <button id="sidebar-menu" class="row-action" title="Projects menu">⋯</button>
         </header>
-        <div id="sessions"></div>
+        <div id="sessions" role="listbox" aria-label="Sessions" tabindex="0"></div>
         <footer id="sidebar-footer">
           <div id="commander-chip" class="hidden" title="Attach to the commander session"></div>
         </footer>

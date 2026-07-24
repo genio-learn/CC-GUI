@@ -15,11 +15,18 @@ function toastStack(): HTMLDivElement {
   return stack;
 }
 
-/** Show a transient toast. Errors stay longer and are styled red. */
-export function toast(message: string, kind: "info" | "error" = "info"): void {
+/** Show a transient toast. Errors stay longer and are styled red. `detail`
+ *  (e.g. a raw backend error) is tucked into the hover title so the visible
+ *  message can stay a plain-language sentence. */
+export function toast(
+  message: string,
+  kind: "info" | "error" = "info",
+  detail?: string,
+): void {
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
   el.textContent = message;
+  if (detail) el.title = detail;
   el.addEventListener("click", () => el.remove());
   toastStack().appendChild(el);
   setTimeout(() => {

@@ -273,11 +273,11 @@ indent. The titlebar mark is the one gradient in the system (accent→info).
 
 ### Chips / Status pills
 - **Style:** fully-rounded (`999px`), mono, 11–12px, `2px 8px`. Faint tint (`chip-faint-bg`) by default.
-- **State:** the "N waiting on you" attention pill is warning-toned (12% warning fill, 35% warning border) and hidden entirely at zero — a summary, never a control.
+- **State:** the "N waiting on you" attention pill is warning-toned (12% warning fill, 35% warning border) and hidden entirely at zero. It is also an accelerator: click or Enter jumps to the next session that needs you, cycling the attention queue — the one status pill that acts, because acting on "what needs you" is the north star.
 
 ### Session row (signature)
 - **Shape:** 9px radius, `6px 10px` padding, transparent at rest.
-- **States:** hover → 5%-text wash; **selected** → 12%-accent wash + 2px accent left border; **active/attached** → `border-strong` fill and a 600-weight title. Each row carries a leading liveness **dot** whose color follows the State-Color Lockstep Rule.
+- **States:** hover → 5%-text wash; **selected** → 12%-accent wash + 2px accent left border; **active/attached** → `border-strong` fill and a 600-weight title. Each row carries a leading liveness **dot** whose color follows the State-Color Lockstep Rule. The dot also carries a non-color cue so state survives grayscale: running pulses, waiting/hibernated swap the circle for a `?`/`☾` glyph, and idle renders as a hollow ring rather than a filled dot.
 - **Stacks:** a cascade stack is a bordered group with a faint `info` tint; children indent minimally and wear a project-color left spine.
 
 ### Inputs / Fields

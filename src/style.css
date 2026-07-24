@@ -215,6 +215,19 @@ body {
   color: var(--warning);
   border-color: color-mix(in srgb, var(--warning) 35%, transparent);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
+  cursor: pointer;
+}
+
+/* The pill is an accelerator: click / Enter jumps to the next session that
+   needs you (jumpToAttention). Brighten on hover, accent ring on focus. */
+.tb-pill.attention:hover {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+.tb-pill.attention:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .tb-pill.hidden {
@@ -342,6 +355,18 @@ body {
   border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Mirror of the title-bar accelerator: click / Enter jumps to what needs you. */
+.board-attention:hover {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+.board-attention:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .board-attention.hidden {
@@ -892,6 +917,13 @@ body {
   padding: 6px;
 }
 
+/* Listbox focus lives on the container; the active option is shown by
+   .session-row.selected (accent spine + wash), the standard aria-activedescendant
+   indicator, so the panel itself doesn't draw a full-height ring. */
+#sessions:focus {
+  outline: none;
+}
+
 .project-header {
   display: flex;
   align-items: center;
@@ -923,6 +955,26 @@ body {
 .project-subheader .meta {
   font-weight: 400;
   color: var(--text-dim);
+}
+
+/* Status grouping's "Needs you" tier — the north-star signal. Amplified in the
+   system's own attention tone (warning) so it reads as the list's peak rather
+   than one more dim group label; its count becomes a warning-toned mono pill,
+   reusing the chip vocabulary. The other tiers keep the plain treatment. */
+.project-header.tier-attention {
+  color: var(--warning);
+}
+
+.project-header.tier-attention .meta {
+  font-family: var(--font-mono);
+  color: var(--warning);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.project-header.tier-attention .header-rule {
+  border-top-color: color-mix(in srgb, var(--warning) 30%, transparent);
 }
 
 /* Project sub-header inside a section bucket: indented under the section,
@@ -1218,6 +1270,9 @@ body {
 }
 
 .row-main .meta {
+  /* Branch names are machine-addressable data — mono per the Mono-for-Data
+     rule, matching .stack-name and keeping branch columns aligned. */
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
@@ -1257,8 +1312,14 @@ body {
   background: var(--warning);
 }
 
+/* Idle reads as an open ring, not a filled dot, so it stays distinct from the
+   filled running/finished/stopped dots without relying on hue alone — it
+   survives grayscale and colour-blindness, and lets the two filled "needs you"
+   states (Done, and the ? waiting glyph) carry the visual weight. The row's
+   word chip still spells out "Idle". */
 .dot-idle {
-  background: var(--cyan);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--cyan);
 }
 
 .dot-stopped {
@@ -1676,6 +1737,8 @@ body {
 }
 
 .pr-badge {
+  /* "#123" is a machine id — mono per the Mono-for-Data rule. */
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   padding: 0 5px;

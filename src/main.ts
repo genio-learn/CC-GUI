@@ -187,6 +187,24 @@ type SessionDetail = {
 };
 
 const sessionsEl = document.querySelector<HTMLDivElement>("#sessions")!;
+// Native listbox navigation when the sidebar list itself holds focus: bare
+// ↑/↓ walk the cursor and Enter opens, matching the ARIA listbox pattern for
+// keyboard/AT users. The global Cmd+Opt+↑/↓ chords still work regardless of
+// focus; this only adds the standard interaction when #sessions is focused.
+sessionsEl.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.altKey || e.ctrlKey) return; // don't shadow the chords
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    cycleSession(1);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    cycleSession(-1);
+  } else if (e.key === "Enter" && selectedId) {
+    e.preventDefault();
+    const s = findSession(selectedId);
+    if (s) void openTerminal(s);
+  }
+});
 const tabsEl = document.querySelector<HTMLDivElement>("#tabs")!;
 const terminalsEl = document.querySelector<HTMLDivElement>("#terminals")!;
 const placeholderEl = document.querySelector<HTMLDivElement>("#placeholder")!;
@@ -1654,8 +1672,16 @@ let visibleGroups: string[][] = [];
 
 function updateSelectionClasses(): void {
   for (const [id, refs] of rowRefs) {
-    refs.row.classList.toggle("selected", id === selectedId);
+    const sel = id === selectedId;
+    refs.row.classList.toggle("selected", sel);
+    refs.row.setAttribute("aria-selected", sel ? "true" : "false");
   }
+  // The listbox tracks its cursor via aria-activedescendant, so assistive tech
+  // follows the same selectedId the keyboard chords move.
+  sessionsEl.setAttribute(
+    "aria-activedescendant",
+    selectedId ? `row-${selectedId}` : "",
+  );
   // Board cards share the sidebar's selection model.
   for (const [id, card] of boardCardRefs) {
     card.classList.toggle("selected", id === selectedId);
@@ -1891,6 +1917,26 @@ async function refreshNow(): Promise<void> {
   }
 }
 
+/** Plain-language verb per lifecycle/command action, for error toasts. */
+const ACTION_VERB: Record<string, string> = {
+  kill_session: "stop the session",
+  restart_session: "restart the session",
+  restart_fresh: "restart the session fresh",
+  delete_session: "delete the session",
+  move_to_section: "move the session",
+  cascade_merge: "merge the stack",
+  push_stack: "push the stack",
+  cascade_resume: "resume the stack",
+  cascade_abandon: "abandon the stack",
+};
+
+/** Error toast naming the action in plain language; the raw backend error is
+ *  kept on the hover title rather than shown inline. */
+function actionErrorToast(action: string, e: unknown): void {
+  const verb = ACTION_VERB[action] ?? action.replace(/_/g, " ");
+  toast(`Couldn't ${verb}.`, "error", String(e));
+}
+
 async function lifecycle(action: string, id: string): Promise<void> {
   await lifecycleArgs(action, { id });
 }
@@ -1899,7 +1945,7 @@ async function lifecycleArgs(action: string, args: Record<string, unknown>): Pro
   try {
     await invoke(action, args);
   } catch (e) {
-    toast(`${action} failed: ${e}`, "error");
+    actionErrorToast(action, e);
   }
   await refreshNow();
 }
@@ -1910,7 +1956,7 @@ async function invokeToast(action: string, args: Record<string, unknown>): Promi
     const msg = await invoke<string | null>(action, args);
     if (msg) toast(msg);
   } catch (e) {
-    toast(`${action} failed: ${e}`, "error");
+    actionErrorToast(action, e);
   }
   await refreshNow();
 }
@@ -1964,7 +2010,7 @@ function deleteSession(s: SessionRow): void {
     .then(() => refreshNow()) // a fresh snapshot confirms absence and clears the mask
     .catch((e) => {
       pendingDeletes.delete(s.id); // failed: un-mask so the row returns
-      toast(`delete failed: ${e}`, "error");
+      actionErrorToast("delete_session", e);
       void refreshNow();
     });
 }
@@ -2231,6 +2277,12 @@ function renderRenameInput(s: SessionRow): HTMLInputElement {
 function renderSessionRow(s: SessionRow): HTMLDivElement {
   const row = document.createElement("div");
   row.className = "session-row";
+  // Option in the #sessions listbox: keyboard cursor is tracked by the
+  // container's aria-activedescendant (updateSelectionClasses), so the row
+  // needs a stable DOM id and the option role. aria-selected + aria-label are
+  // set from state in updateRow.
+  row.id = `row-${s.id}`;
+  row.setAttribute("role", "option");
   if (s.stacked_child) row.classList.add("stacked");
 
   const main = document.createElement("div");
@@ -2372,7 +2424,11 @@ function updateRow(refs: RowRefs, s: SessionRow): void {
   fillRowMain(refs.main, s, refs.actions);
   refs.row.classList.toggle("active", s.tmux_session_name === activeTerm);
   refs.row.classList.toggle("attached", terminals.has(s.tmux_session_name));
-  refs.row.classList.toggle("selected", s.id === selectedId);
+  const sel = s.id === selectedId;
+  refs.row.classList.toggle("selected", sel);
+  refs.row.setAttribute("aria-selected", sel ? "true" : "false");
+  refs.row.setAttribute("aria-label", `${s.title} — ${sessionStateWord(s, sessionStateKey(s))}`);
+  if (sel) sessionsEl.setAttribute("aria-activedescendant", refs.row.id);
 }
 
 /** Launch a new session in a project, remembering the chosen harness (if any)
@@ -3008,7 +3064,9 @@ function renderStatusTiers(): void {
     const tierRows = buckets.get(tier);
     if (!tierRows?.length) continue;
     const header = document.createElement("div");
-    header.className = "project-header";
+    // tier-* lets the "Needs you" tier read as the list's peak (see CSS); the
+    // other tiers keep the plain group-header treatment.
+    header.className = `project-header tier-${tier}`;
     const name = document.createElement("span");
     name.textContent = label;
     const count = document.createElement("span");
@@ -3162,13 +3220,31 @@ const tbConsole = document.querySelector<HTMLButtonElement>("#tb-console")!;
 const tbBoard = document.querySelector<HTMLButtonElement>("#tb-board")!;
 
 /** Sessions waiting on the user: the agent asked for input, or finished while
- *  away (unread) — the audit's at-a-glance attention queue. In lockstep with
- *  the status-chip vocabulary via sessionStateKey. */
-function attentionCount(): number {
+ *  away (unread) — the at-a-glance attention queue, in sidebar snapshot order.
+ *  In lockstep with the status-chip vocabulary via sessionStateKey. */
+function attentionSessions(): SessionRow[] {
   return groups.flatMap((g) => g.sessions).filter((s) => {
     const key = sessionStateKey(s);
     return key === "waiting" || key === "finished";
-  }).length;
+  });
+}
+
+function attentionCount(): number {
+  return attentionSessions().length;
+}
+
+/** Jump to the next session that needs the user — select it and open its
+ *  terminal — cycling through the attention queue on repeat activation, so the
+ *  "N waiting on you" pill doubles as a one-key sweep of everything blocked on
+ *  you. No-op when nothing waits. */
+function jumpToAttention(): void {
+  const queue = attentionSessions();
+  if (!queue.length) return;
+  const cur = selectedId ? queue.findIndex((s) => s.id === selectedId) : -1;
+  const next = queue[(cur + 1) % queue.length];
+  setLayout("console");
+  selectRow(next.id);
+  void openTerminal(next);
 }
 
 function updateTitleBarCounts(): void {
@@ -3183,6 +3259,20 @@ function updateTitleBarCounts(): void {
     boardAttentionEl.classList.toggle("hidden", waiting === 0);
   }
 }
+
+/** Make an attention pill actionable: click or Enter/Space jumps to the next
+ *  session that needs you (see jumpToAttention). The title-bar markup already
+ *  carries role/tabindex/aria-live; the board mirror gets them here. */
+function wireAttentionPill(el: HTMLElement): void {
+  el.addEventListener("click", jumpToAttention);
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      jumpToAttention();
+    }
+  });
+}
+wireAttentionPill(tbAttention);
 
 function setLayout(next: "console" | "board"): void {
   if (next === layout) return;
@@ -3733,6 +3823,11 @@ function renderBoardFilterBar(): void {
   // (updateTitleBarCounts fills both). Hidden while nothing waits.
   boardAttentionEl = document.createElement("span");
   boardAttentionEl.className = "board-attention hidden";
+  boardAttentionEl.setAttribute("role", "button");
+  boardAttentionEl.tabIndex = 0;
+  boardAttentionEl.setAttribute("aria-live", "polite");
+  boardAttentionEl.title = "Jump to the next session that needs you";
+  wireAttentionPill(boardAttentionEl);
   pills.appendChild(boardAttentionEl);
 
   // Toggle: hide section columns with zero visible cards.
