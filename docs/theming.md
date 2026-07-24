@@ -1,9 +1,11 @@
 # Custom themes
 
-CC-GUI ships ten built-in themes — dark: Catppuccin Mocha, Catppuccin Frappé,
-Catppuccin Macchiato, Tokyo Night, One Dark Pro, Dracula, Nord; light: Catppuccin
-Latte, GitHub Light, Solarized Light. You can add your own without rebuilding the
-app by dropping JSON files in the themes folder.
+CC-GUI ships nineteen built-in themes — dark: Catppuccin Mocha, Catppuccin Frappé,
+Catppuccin Macchiato, Tokyo Night, One Dark Pro, Dracula, Nord, Gruvbox Dark,
+Everforest Dark, Rosé Pine, Kanagawa, Ayu Dark; light: Catppuccin Latte, GitHub
+Light, Solarized Light, Gruvbox Light, Everforest Light, Rosé Pine Dawn, Daylight
+(High Contrast). You can add your own without rebuilding the app by dropping JSON
+files in the themes folder.
 
 ## Where themes live
 
@@ -27,7 +29,7 @@ A full working example lives at [`example-theme.json`](./example-theme.json).
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `id` | ✅ | Unique slug. Must **not** match a built-in id (`catppuccin-mocha`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `tokyo-night`, `one-dark-pro`, `dracula`, `nord`, `github-light`, `solarized-light`). |
+| `id` | ✅ | Unique slug. Must **not** match a built-in id (`catppuccin-mocha`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `tokyo-night`, `one-dark-pro`, `dracula`, `nord`, `gruvbox-dark`, `everforest-dark`, `rose-pine`, `kanagawa`, `ayu-dark`, `github-light`, `solarized-light`, `gruvbox-light`, `everforest-light`, `rose-pine-dawn`, `daylight-hc`). |
 | `label` | ✅ | Display name shown in the picker. |
 | `appearance` | ✅ | `"light"` or `"dark"`. Determines which slot (preferred-light / preferred-dark) the theme fills, and the OS-appearance it's used for in System mode. |
 | `cssVars` | optional | The 21 chrome color tokens (below). Any you omit are inherited from the base. |
